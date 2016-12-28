@@ -2,6 +2,7 @@
 #define __TERMINAL_RESOURCE_H_
 
 #define MODULUS(A) (A < 0) ? -A : A
+#define BITS_IN_BYTE 8
 
 typedef enum {
 	FALSE,

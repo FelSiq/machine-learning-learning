@@ -30,6 +30,7 @@ bool stack_push(STACK *s, char *c){
 			return TRUE;
 		};
 	};
+	printf("E: \"%s\" failed.\n", __FUNCTION__);
 	return FALSE;
 };
 
@@ -45,6 +46,7 @@ char *stack_pop(STACK *s){
 		free(sn);
 		return aux;
 	};
+	printf("E: \"%s\" failed.\n", __FUNCTION__);
 	return NULL;
 };
 
@@ -64,6 +66,7 @@ bool stack_destroy(STACK **s){
 		(*s) = NULL;
 		return TRUE;
 	};
+	printf("E: \"%s\" failed.\n", __FUNCTION__);
 	return FALSE;
 };
 
@@ -77,5 +80,6 @@ bool stack_clear(STACK *s){
 		};
 		return TRUE;
 	};
+	printf("E: \"%s\" failed.\n", __FUNCTION__);
 	return FALSE;
 };

@@ -22,6 +22,7 @@ static bool memory_dump(COMMAND *c){
 		};
 		return TRUE;
 	};
+	printf("E: \"%s\" failed.\n", __FUNCTION__);
 	return FALSE;
 };
 
@@ -65,8 +66,8 @@ static void string_tokenizer(COMMAND *c){
 					token = NULL;
 					j = 0;
 					valid = FALSE;
-				} else --j;
-			}
+				};
+			};
 
 		if (token != NULL)
 			free(token);
@@ -88,6 +89,7 @@ static char *get_string(){
 		return s;
 	} else {
 		free(s);
+		printf("E: \"%s\" failed.\n", __FUNCTION__);
 		return NULL;
 	};
 };
@@ -108,6 +110,7 @@ COMMAND *cinit(){
 		//Something went wrong, abort.
 		free(c);
 	};
+	printf("E: \"%s\" failed.\n", __FUNCTION__);
 	return NULL;
 };
 
@@ -121,6 +124,7 @@ bool cdestroy(COMMAND **c){
 		(*c) = NULL;
 		return TRUE;
 	};
+	printf("E: \"%s\" failed.\n", __FUNCTION__);
 	return FALSE;
 };
 

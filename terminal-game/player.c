@@ -13,6 +13,7 @@ bool pdestroy(PLAYER **p){
 		(*p) = NULL;
 		return TRUE;
 	};
+	printf("E: \"%s\" failed.\n", __FUNCTION__);
 	return FALSE;
 };
 
@@ -28,6 +29,7 @@ static bool func_playerSetup(PLAYER *p){
 			return TRUE;
 		};
 	};
+	printf("E: \"%s\" failed.\n", __FUNCTION__);
 	return FALSE;
 };
 
@@ -42,5 +44,6 @@ PLAYER *pinit(){
 		//At this point something went wrong
 		free(p);
 	};
+	printf("E: \"%s\" failed.\n", __FUNCTION__);
 	return NULL;
 };

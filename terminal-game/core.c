@@ -2,22 +2,23 @@
 #include "resources.h"
 #include "player.h"
 #include "commands.h"
+#include "structure.h"
 #include <stdlib.h>
 #include <stdio.h>
 #include <pthread.h>
 #include <unistd.h>
 
 int main(int argc, char const *argv[]){
-	PLAYER *p = pinit();
-	COMMAND *command = cinit();
+	GAME *game = ginit();
 	byte i = 6;
-	if (command != NULL){
+
+	if (game != NULL){
+		game->world->chsetup(game->world);
 		while(0 < i--){
-			(*command).get_command(command);
-			(*command).mem_dump(command);
+			game->command->get_command(game->command);
+			game->command->mem_dump(game->command);
 		};
-		cdestroy(&command);
 	};
-	pdestroy(&p);
+	gdestroy(&game);
 	return 0;
 };

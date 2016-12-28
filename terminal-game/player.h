@@ -3,7 +3,6 @@
 
 #include "core.h"
 #include "resources.h"
-
 #define GLOBALV_PINV_STDSIZE 10
 #define GLOBALV_PLAYER_STDSTART (15*4 + 7)
 
