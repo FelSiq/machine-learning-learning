@@ -1,14 +1,14 @@
 all: resources.o commands.o player.o structure.o core.o
-	gcc resources.o commands.o player.o core.o structure.o -o v0_terminal -Wall
+	gcc -g resources.o commands.o player.o core.o structure.o -o v0_terminal -Wall -DDEBUG
 resources.o:
-	gcc -c resources.c -Wall
+	gcc -c -g resources.c -Wall -DDEBUG
 commands.o:
-	gcc -c commands.c -Wall
+	gcc -c -g commands.c -Wall -DDEBUG
 player.o:
-	gcc -c player.c -Wall
+	gcc -c -g player.c -Wall -DDEBUG
 structure.o:
-	gcc -c structure.c -Wall
+	gcc -c -g structure.c -Wall -DDEBUG
 core.o:
-	gcc -c core.c -Wall
+	gcc -c -g core.c -Wall -DDEBUG
 clean:
 	rm *.o v0_terminal

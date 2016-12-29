@@ -89,7 +89,9 @@ static char *get_string(){
 		return s;
 	} else {
 		free(s);
-		printf("E: \"%s\" failed.\n", __FUNCTION__);
+		#ifdef DEBUG
+		printf("D: \"%s\" failed.\n", __FUNCTION__);
+		#endif
 		return NULL;
 	};
 };

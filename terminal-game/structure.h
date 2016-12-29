@@ -5,6 +5,7 @@
 #define GLOBALV_MAPW 6
 #define GLOBALV_MAPH 4
 
+typedef struct path PATH;
 typedef struct the_game GAME;
 typedef struct the_world WORLD;
 typedef struct the_player PLAYER;
@@ -41,7 +42,14 @@ struct map_chamber {
 
 	//Resources
 	IACTV **iactives;
-	CHAMBER **adjchambers;
+	PATH **adjchambers;
+	byte actnum, adjnum;
+};
+
+struct path {
+	CHAMBER *a, *b;
+	char *string;
+	bool open;
 };
 
 GAME *ginit();
@@ -49,5 +57,7 @@ WORLD *winit();
 CHAMBER *chinit();
 bool wdestroy(WORLD **);
 bool gdestroy(GAME **);
+bool idestroy(IACTV **);
+bool chdestroy(CHAMBER **);
 
 #endif

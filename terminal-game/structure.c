@@ -7,13 +7,6 @@
 #include <stdio.h>
 #include <stdarg.h>
 
-#define DEBUG
-
-typedef union {
-	uint pack;
-	byte line[sizeof(uint)];
-} mapsketch;
-
 /* World map sketch 
 	10111000 
 	11101100 
@@ -24,15 +17,13 @@ typedef union {
 static bool chamber_setup(WORLD *w){
 	if (NULL != w && NULL != w->allchambers){
 		CHAMBER *aux;
-		mapsketch ms;
-		uint mask = (1 << (sizeof(uint) * BITS_IN_BYTE - 1));
 		//Here's some hard codded number, which express exacly the world map sketch above, when in binary notation.
-		ms.pack = 3102488808;
+		uint ms = 3102488808, mask = (1 << (sizeof(uint) * BITS_IN_BYTE - 1));
 
 		#ifdef DEBUG
 			printf("D: will create chamber list in this model:\n");
 			for(uint Q = (1 << (sizeof(uint)*BITS_IN_BYTE - 1)), counter = 0; Q > 0; Q >>= 1, ++counter){
-				printf("%d", (ms.pack & Q) >= 1);
+				printf("%d", (ms & Q) >= 1);
 				if ((counter + 1) % GLOBALV_MAPW == 0){
 					printf("\n");
 					Q >>= 2;
@@ -41,10 +32,11 @@ static bool chamber_setup(WORLD *w){
 		#endif
 		//Work here.
 		for (byte i = 0; i < (GLOBALV_MAPH * GLOBALV_MAPW); ++i, mask >>= 1){
-			if (ms.pack & mask){
+			if (ms & mask){
 				aux = chinit();
 				if (aux != NULL){
-					*(w->allchambers + i - 1) = aux;
+					++(w->nused);
+					*(w->allchambers + i) = aux;
 				} else {
 					//Something went wrong, abort.
 					for(byte k = i; k > 0; --k)
@@ -120,11 +112,59 @@ static bool game_setup(GAME *const g){
 
 static bool ch_adjch_setup(CHAMBER *ch, byte num, ...){
 	if (NULL != ch){
-		ch->adjchambers = malloc(sizeof(CHAMBER *) * num);
+
+		#ifdef DEBUG
+			printf("D: will start path construction on [%p] chamber...\n", ch);
+		#endif
+
+		CHAMBER *aux;
+		PATH *p;
+		ch->adjchambers = realloc(ch->adjchambers, sizeof(PATH *) * (ch->adjnum + num));
 		if (NULL != ch->adjchambers){
+			//ch->adjnum += num;
 			va_list adjchambers;
 			va_start(adjchambers, num);
-			for (byte i = num; i > 0; *(ch->adjchambers + i - 1) = va_arg(adjchambers, CHAMBER *), --i);
+			for (byte i = num; i > 0; --i){
+				aux = va_arg(adjchambers, CHAMBER *);
+				if (aux != NULL){
+					p = malloc(sizeof(PATH));
+					if (p != NULL){
+						//Set the new path
+						*(ch->adjchambers + ch->adjnum + i - 1) = p;
+						p->a = ch;
+						p->b = aux;
+						p->open = TRUE;
+						p->string = NULL;
+						//Set the new path on the b chamber
+						p->b->adjchambers = realloc(p->b->adjchambers, sizeof(PATH *) * (p->b->adjnum + 1));
+						if (p->b->adjchambers != NULL){
+							*(p->b->adjchambers + p->b->adjnum++) = p;
+
+							#ifdef DEBUG
+								printf("D: successfully set path between {[%p]<->[%p]} chambers...\n", p->a, p->b);
+							#endif
+						};
+					} else {
+						//Something went wrong, backtrack everything and abort.
+						//ch->adjnum -= num;
+						for (byte j = (i - 1); j < num; ++j)
+							free(*(ch->adjchambers + ch->adjnum + j));
+						if (ch->adjnum > 0)
+							ch->adjchambers = realloc(ch->adjchambers, sizeof(PATH *) * ch->adjnum);
+						else {
+							free(ch->adjchambers);
+							ch->adjchambers = NULL;
+						}
+						va_end(adjchambers);
+						printf("E: \"%s\" failed.\n", __FUNCTION__);
+						return FALSE;
+					};
+				};
+			};
+			#ifdef DEBUG
+				printf("D: endded path construction on [%p] chamber...\n", ch);
+			#endif
+			ch->adjnum += num;
 			va_end(adjchambers);
 			return TRUE;
 		};
@@ -188,8 +228,51 @@ CHAMBER *chinit(){
 		ch->iactv_setup = &ch_iatcv_setup;
 		ch->adjchambers = NULL;
 		ch->iactives = NULL;
+		ch->adjnum = 0;
 	};
 	return ch;
+};
+
+bool idestroy(IACTV **i){
+	if (i != NULL && *i != NULL){
+		free(*i);
+		(*i) = NULL;
+		return TRUE;
+	};
+	printf("E: \"%s\" failed.\n", __FUNCTION__);
+	return FALSE;
+};
+
+bool chdestroy(CHAMBER **ch){
+	if (ch != NULL && *ch != NULL){
+		if ((*ch)->adjchambers != NULL){
+			CHAMBER *caux;
+			PATH *aux;
+			for (byte j = (*ch)->adjnum; j > 0; --j){
+				aux = *((*ch)->adjchambers + j - 1);
+				if (aux != NULL){
+					caux = (aux->b == (*ch)) ? aux->a : aux->b;
+					for(byte i = caux->adjnum; i > 0; --i){
+						if (*(caux->adjchambers + i - 1) != aux)
+							continue;
+						*(caux->adjchambers + i - 1) = NULL;
+					};
+					free(aux);
+				};
+			};
+			free((*ch)->adjchambers);
+		};
+		if ((*ch)->iactives != NULL){
+			while(0 < (*ch)->actnum--)
+				free(*((*ch)->iactives + (*ch)->actnum));
+			free((*ch)->iactives);
+		};
+		free(*ch);
+		(*ch) = NULL;
+		return TRUE;
+	};
+	printf("E: \"%s\" failed.\n", __FUNCTION__);
+	return FALSE;
 };
 
 bool wdestroy(WORLD **w){
@@ -197,7 +280,7 @@ bool wdestroy(WORLD **w){
 		if((*w)->allchambers != NULL){
 			for(byte i = (GLOBALV_MAPW * GLOBALV_MAPH); i > 0; --i)
 				if (NULL != *((*w)->allchambers + i - 1))
-					free(*((*w)->allchambers + i - 1));
+					chdestroy(&*((*w)->allchambers + i - 1));
 			free((*w)->allchambers);
 		};
 		free(*w);
