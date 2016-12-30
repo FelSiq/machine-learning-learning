@@ -7,6 +7,8 @@
 #define SPACEBAR 32
 #define ENTER 10
 
+#include "resources.h"
+
 typedef struct commands COMMAND;
 
 struct commands {
@@ -15,6 +17,7 @@ struct commands {
 	void (*tkn_treatment)(char **);
 	char *(*get_string)();
 	bool (*mem_dump)(COMMAND *);
+	bool (*cprocess)(STACK *);
 
 	STACK *memory;
 	char *string;

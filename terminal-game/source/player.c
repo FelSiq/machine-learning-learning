@@ -7,14 +7,14 @@
 #include "controls.h"
 #include <unistd.h>
 
-static bool func_playerGetname(PLAYER *p){
-	if (p != NULL){
+static bool func_playerGetname(PLAYER *p, FILE *fp){
+	if (p != NULL && fp != NULL){
 		if (p->name != NULL){
 			free(p->name);
 			p->name = NULL;
 		};
 
-		while((p->name = get_string(stdin)) == NULL);
+		while((p->name = get_string(fp)) == NULL);
 		return TRUE;
 	};
 	err_exit;

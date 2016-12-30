@@ -4,6 +4,14 @@
 #include <stdlib.h>
 #include <stdio.h>
 
+static bool cprocess(STACK *s){
+	if (s != NULL){
+
+		return TRUE;
+	};
+	err_exit;
+};
+
 static void get_command(COMMAND *c){
 	if (c != NULL){
 		c->string = (*c).get_string();
@@ -111,6 +119,7 @@ COMMAND *cinit(){
 			c->tkn_treatment = &token_treatment;
 			c->mem_dump = &memory_dump;
 			c->get_string = &get_string;
+			c->cprocess = &cprocess;
 			c->string = NULL;
 			return c;
 		};

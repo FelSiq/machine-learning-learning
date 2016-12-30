@@ -16,10 +16,14 @@ typedef struct map_chamber CHAMBER;
 
 struct the_game {
 	bool (*gsetup)(GAME *);
+	bool (*grefresh)(GAME *);
+	void (*ginterface)();
 
 	WORLD *world;
 	PLAYER *player;
 	COMMAND *command;
+
+	byte ddebug_lvl;
 };
 
 struct the_world {

@@ -15,6 +15,15 @@
 	11101000
 */
 
+static void game_interface(){
+
+};
+
+static bool game_refreshProgress(){
+	return TRUE;
+	err_exit;
+};
+
 static bool chamber_setup(WORLD *w){
 	if (NULL != w && NULL != w->allchambers){
 		CHAMBER *aux;
@@ -272,7 +281,7 @@ static void *wgetlabels(void *vw){
 					for(size_t i = 0; *(string + i) != '\0'; decodify((byte *) (string + i)), ++i);
 					aux->string = string;
 					#ifdef DEBUG
-						printf("D: got new chamber label: \"%s\" at chamber index [%d].\n", aux->string, index);
+						printf("D: got new chamber label: \"%s\" at chamber index [%d].\n", aux->string, index - 1);
 					#endif
 				} else printf("E: something went wrong in chamber labelling (can't get label).\n");
 			};
@@ -393,6 +402,8 @@ GAME *ginit(){
 	GAME *g = malloc(sizeof(GAME));
 	if (g != NULL){
 		g->gsetup = &game_setup;
+		g->ginterface = &game_interface;
+		g->grefresh = &game_refreshProgress;
 
 		#ifdef DEBUG
 			printf("D: will start game main structure...\n");
