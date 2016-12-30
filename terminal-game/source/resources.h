@@ -3,6 +3,7 @@
 
 #define MODULUS(A) (A < 0) ? -A : A
 #define BITS_IN_BYTE 8
+#define GLOBALV_IACTVNUM 30
 
 typedef enum {
 	FALSE,

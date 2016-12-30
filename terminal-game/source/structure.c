@@ -180,15 +180,27 @@ static bool ch_adjch_setup(CHAMBER *ch, byte num, ...){
 	err_exit;
 };
 
-
 static bool ch_iatcv_setup(CHAMBER *ch, byte num, ...){
 	if (NULL != ch && num > 0){
 		ch->iactives = malloc(sizeof(IACTV *) * num);
 		if (NULL != ch->iactives){
+			IACTV *aux = NULL;
 			va_list iactv;
 			va_start(iactv, num);
-			for (byte i = num; i > 0; *(ch->iactives + i - 1) = va_arg(iactv, IACTV *), --i);
+			for (byte i = num; i > 0; --i){
+				aux = va_arg(iactv, IACTV *);
+				if (aux != NULL){
+					*(ch->iactives + i - 1) = aux;
+					++ch->actnum;
+					aux = NULL;
+				} else printf("W: invalid argument in \"%s\".\n", __FUNCTION__);
+			};
 			va_end(iactv);
+
+			#ifdef DEBUG
+				printf("D: put (%hu) interactives on \"%s\" chamber.\n", ch->actnum, ch->string);
+			#endif
+
 			return TRUE;
 		}
 	};
@@ -202,7 +214,11 @@ static bool ch_iatcv_setup(CHAMBER *ch, byte num, ...){
 	P1P0P000
 */
 
-static bool wload(WORLD *w){
+static void *wload(void *vw){
+	WORLD *w = (WORLD *) vw;
+	bool *ret = malloc(sizeof(bool));
+	*ret = FALSE;
+
 	#ifdef DEBUG
 		printf("D: will load hardcoded world map...\n");
 	#endif
@@ -227,12 +243,16 @@ static bool wload(WORLD *w){
 			printf("D: created (%hhu/%u) path between chambers.\n", counter, GLOBAV_NUMPATHS);
 		#endif
 		if (counter == GLOBAV_NUMPATHS)
-			return TRUE;
+			*ret = TRUE;
 	};
-	err_exit;
+	return ret;
 };
 
-static bool wgetlabels(WORLD *w){
+static void *wgetlabels(void *vw){
+	WORLD *w = (WORLD *) vw;
+	bool *ret = malloc(sizeof(bool));
+	*ret = FALSE;
+
 	#ifdef DEBUG
 		printf("D: started process of chamber labelling...\n");
 	#endif
@@ -261,29 +281,112 @@ static bool wgetlabels(WORLD *w){
 			#endif
 
 			fclose(fp);
-			return TRUE;
+			*ret = TRUE;
 		} else printf("E: can't access \"./data/chlabels\".\n");
 	};
-	err_exit;
+	return ret;
 };
 
-static bool iload(IACTV *i, char const path[]){
+static IACTV *iload(IACTV *i, char const path[]){
+	if (access(path, R_OK) == 0)
+		#ifdef DEBUG
+			printf("D: file \"%s\" is found and is readable.\n", path);
+		#endif
+	else {
+		printf("E: can't access \"%s\" file.\n", path);
+		free(i);
+		return NULL;
+	};
+
 	if (i != NULL && access(path, R_OK) == 0){
 		FILE *fp = fopen(path, "r");
-		char *aux;
+		char *aux = NULL;
+		byte n, security_v = 255;
 		if (fp != NULL){
-			//WORK HERE!
 			i->label = get_string(fp);
-			decodify(&(i->label));
-			if (!feof(fp) && i->label != NULL){
+			if (i->label != NULL){
+				for(n = 0; *(i->label + n) != '\0'; decodify((byte *) (i->label + n)), ++n);
+				if (!feof(fp)){
+					while(security_v > 0 && (aux == NULL || *aux != '#')){
+						aux = get_string(fp);
+						if (aux != NULL && *aux != '#'){
+							for (n = 0; *(aux + n) == '\0'; decodify((byte *) (aux + n)), ++n);
+							i->script = realloc(i->script, sizeof(char *) * (i->scpnum + 1));
+							*(i->script + i->scpnum++) = aux;
+						};
+						--security_v;
+					};
+					if (aux != NULL && *aux == '#'){
+						free(aux);
+						aux = NULL;
+						if (!feof(fp)){
+							while(security_v > 0 && (aux == NULL || *aux != '#')){
+								aux = get_string(fp);
+								if (aux != NULL && *aux != '#'){
+									for (n = 0; *(aux + n) == '\0'; decodify((byte *) (aux + n)), ++n);
+									i->actions = realloc(i->actions, sizeof(char *) * (i->actnum + 1));
+									*(i->actions + i->actnum++) = aux;
+								};
+								--security_v;
+							};
+							if (aux != NULL && *aux == '#')
+								free(aux);
+						};
+					};
 
-				fclose(fp);
-				return TRUE;
-			};
+					if (security_v == 0)
+						printf("W: security_v ran out! (possible non-stopping loop error due to bad extern file)\n");
+
+					#ifdef DEBUG
+						if (i->label != NULL)
+							printf("D: successfully loaded \"%s\" file on \"%s\" IACTV:\n", path, i->label);
+						else
+							printf("D: successfully loaded \"%s\" file on [%p] (NIL label) IACTV:\n", path, i);
+						printf("ACTIONS (%hu):\n", i->actnum);
+						for (n = i->actnum; n > 0; printf("\"%s\"\n", *(i->actions + n - 1)), --n);
+						printf("\nSCRIPT (%hu):\n", i->scpnum);
+						for (n = i->scpnum; n > 0; printf("\"%s\"\n", *(i->script + n - 1)), --n);
+					#endif
+				};
+			} else printf("E: can't get label on [%p] structure.\n", i);
 			fclose(fp);
-		};
+		} else printf("E: can't open \"%s\" file.\n", path);
 	};
-	err_exit;
+	return i;
+};
+
+static void *isetup(void *vw){
+	WORLD *w = (WORLD *) vw;
+	bool *ret = malloc(sizeof(bool));
+	*ret = FALSE;
+
+	if (w != NULL){
+		IACTV **i = NULL;	
+		for(byte n = 0, num = 0; n < (GLOBALV_MAPW * GLOBALV_MAPH); ++n){
+			if (*(w->allchambers + n) != NULL){
+				switch(n){
+					case 0: num = 2; break;
+					default: num = 0;
+				};
+
+				i = malloc(sizeof(IACTV *) * num);
+				for(byte z = num; z > 0; *(i + z - 1) = iinit(), --z);
+
+				if (i != NULL){
+					switch(n){
+						case 0:
+							(*(w->allchambers + 0))->iactv_setup(*(w->allchambers + 0), num, 
+								(*(i + 0))->iload(*(i + 0), "./iactv/d00"), (*(i + 1))->iload(*(i + 1), "./iactv/d01")); 
+							break;
+					};
+				};
+				free(i);
+				i = NULL;
+			};
+		};
+		*ret = TRUE;
+	};
+	return ret;
 };
 
 GAME *ginit(){
@@ -312,8 +415,10 @@ WORLD *winit(){
 		if (NULL != w->allchambers){
 			for (byte i = (GLOBALV_MAPW * GLOBALV_MAPH); i > 0; *(w->allchambers + i - 1) = NULL, --i);
 			w->chsetup = &chamber_setup;
+			w->isetup = &isetup;
 			w->wload = &wload;
 			w->wgetlabels = &wgetlabels;
+			w->nused = 0;
 			return w;
 		};
 		free(w);
@@ -334,6 +439,7 @@ CHAMBER *chinit(){
 		ch->iactives = NULL;
 		ch->string = NULL;
 		ch->adjnum = 0;
+		ch->actnum = 0;
 	} else printf("E: failed to start a CHAMBER structure in \"%s\".\n", __FUNCTION__);
 
 	return ch;
@@ -381,7 +487,7 @@ bool idestroy(IACTV **i){
 		free(*i);
 		(*i) = NULL;
 		#ifdef DEBUG
-			printf("D: INTERACTIVE [%p] structure destruction process completed successfully.\n", *i);
+			printf("D: destruction process completed.\n");
 		#endif
 		return TRUE;
 	};
@@ -416,7 +522,7 @@ bool chdestroy(CHAMBER **ch){
 		if ((*ch)->iactives != NULL){
 			for (byte j = (*ch)->actnum; j > 0; --j)
 				if (NULL != *((*ch)->iactives + j - 1))
-					idestroy((*ch)->iactives + j - 1);
+					idestroy(((*ch)->iactives + j - 1));
 			free((*ch)->iactives);
 		};
 		if ((*ch)->string != NULL)
@@ -439,7 +545,7 @@ bool wdestroy(WORLD **w){
 		if((*w)->allchambers != NULL){
 			for(byte i = (GLOBALV_MAPW * GLOBALV_MAPH); i > 0; --i)
 				if (NULL != *((*w)->allchambers + i - 1))
-					chdestroy(&*((*w)->allchambers + i - 1));
+					chdestroy(((*w)->allchambers + i - 1));
 			free((*w)->allchambers);
 		};
 		free(*w);

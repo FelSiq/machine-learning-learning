@@ -1,14 +1,17 @@
 all: resources.o commands.o player.o structure.o core.o
-	gcc -g resources.o commands.o player.o core.o structure.o -o v0_terminal -Wall -DDEBUG
+	gcc -g resources.o commands.o player.o core.o structure.o -o tridle -lpthread -Wall -DDEBUG
+	rm *.o
 resources.o:
-	gcc -c -g resources.c -Wall -DDEBUG
+	gcc -c -g ./source/resources.c -Wall -DDEBUG
 commands.o:
-	gcc -c -g commands.c -Wall -DDEBUG
+	gcc -c -g ./source/commands.c -Wall -DDEBUG
 player.o:
-	gcc -c -g player.c -Wall -DDEBUG
+	gcc -c -g ./source/player.c -Wall -DDEBUG
 structure.o:
-	gcc -c -g structure.c -Wall -DDEBUG
+	gcc -c -g ./source/structure.c -Wall -DDEBUG
 core.o:
-	gcc -c -g core.c -Wall -DDEBUG
+	gcc -c -g core.c -lpthread -Wall -DDEBUG
 clean:
-	rm *.o v0_terminal
+	rm *.o
+cleanall:
+	rm *.o tridle

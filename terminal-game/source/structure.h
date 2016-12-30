@@ -1,6 +1,7 @@
 #ifndef __TERMINAL_STRUCTURE_H_
 #define __TERMINAL_STRUCTURE_H_
 #include "commands.h"
+#include "resources.h"
 
 #define GLOBAV_NUMPATHS 8
 #define GLOBALV_MAPW 6
@@ -22,16 +23,17 @@ struct the_game {
 };
 
 struct the_world {
-	bool (*wload)(WORLD *);
-	bool (*wgetlabels)(WORLD *);
 	bool (*chsetup)(WORLD *);
+	void *(*wgetlabels)(void *);
+	void *(*wload)(void *);
+	void *(*isetup)(void *);
 
 	CHAMBER **allchambers;
 	byte nused;
 };
 
 struct interactives {
-	bool (*iload)(IACTV *, char const *); 
+	IACTV *(*iload)(IACTV *, char const *); 
 
 	char **script, *label, **actions;
 	byte progress;
