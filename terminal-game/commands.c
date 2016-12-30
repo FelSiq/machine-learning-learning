@@ -22,8 +22,7 @@ static bool memory_dump(COMMAND *c){
 		};
 		return TRUE;
 	};
-	printf("E: \"%s\" failed.\n", __FUNCTION__);
-	return FALSE;
+	err_exit;
 };
 
 static void token_treatment(char **s){
@@ -76,24 +75,30 @@ static void string_tokenizer(COMMAND *c){
 	};
 };
 
-static char *get_string(){
-	char *s = malloc(sizeof(char) * (GLOBALV_COMMAND_MAXLEN + 1)), c = 0;
-	int i = 0;
-	while(i < GLOBALV_COMMAND_MAXLEN && c != ENTER && c != EOF && c != '\r'){
-		c = fgetc(stdin);
-		*(s + i++) = c;
-	}
-	if (i > 1){
-		*(s + i - 1) = SPACEBAR;
-		*(s + i) = '\0';
-		return s;
-	} else {
-		free(s);
-		#ifdef DEBUG
-		printf("D: \"%s\" failed.\n", __FUNCTION__);
-		#endif
-		return NULL;
+char *get_string(FILE *fp){
+	if (fp != NULL){
+		char *s = malloc(sizeof(char) * (GLOBALV_COMMAND_MAXLEN + 1)), c = 0;
+		int i = 0;
+		
+		while(i < GLOBALV_COMMAND_MAXLEN && c != ENTER && c != EOF && c != '\r'){
+			c = fgetc(fp);
+			*(s + i++) = c;
+		};
+
+		if (i > 1){
+			if (fp == stdin){
+				*(s + i - 1) = SPACEBAR;
+				*(s + i) = '\0';
+			} else *(s +i - 1) = '\0';
+			return s;
+		} else {
+			free(s);
+			#ifdef DEBUG
+				printf("D: \"%s\" failed.\n", __FUNCTION__);
+			#endif
+		};
 	};
+	return NULL;
 };
 
 COMMAND *cinit(){
@@ -112,8 +117,7 @@ COMMAND *cinit(){
 		//Something went wrong, abort.
 		free(c);
 	};
-	printf("E: \"%s\" failed.\n", __FUNCTION__);
-	return NULL;
+	err_exit;
 };
 
 bool cdestroy(COMMAND **c){
@@ -126,7 +130,5 @@ bool cdestroy(COMMAND **c){
 		(*c) = NULL;
 		return TRUE;
 	};
-	printf("E: \"%s\" failed.\n", __FUNCTION__);
-	return FALSE;
+	err_exit;
 };
-

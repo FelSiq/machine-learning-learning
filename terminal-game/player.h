@@ -11,12 +11,12 @@ typedef struct the_player PLAYER;
 struct the_player {
 	//P. Methods
 	bool (*psetup)(PLAYER *);
-	bool (*pdestroy)(PLAYER **);
+	bool (*pgetname)(PLAYER *);
 
 	//P. characteristics
 	bool enable;
-	uint *colectibles;
-	byte pos;
+	byte *colectibles, pos;
+	char *name;
 };
 
 PLAYER *pinit();

@@ -2,6 +2,7 @@
 #define __TERMINAL_STRUCTURE_H_
 #include "commands.h"
 
+#define GLOBAV_NUMPATHS 8
 #define GLOBALV_MAPW 6
 #define GLOBALV_MAPH 4
 
@@ -21,6 +22,8 @@ struct the_game {
 };
 
 struct the_world {
+	bool (*wload)(WORLD *);
+	bool (*wgetlabels)(WORLD *);
 	bool (*chsetup)(WORLD *);
 
 	CHAMBER **allchambers;
@@ -28,11 +31,11 @@ struct the_world {
 };
 
 struct interactives {
-	bool (*iload)(IACTV *); 
+	bool (*iload)(IACTV *, char const *); 
 
-	char *label, **actions;
+	char **script, *label, **actions;
 	byte progress;
-	byte actnum;
+	byte scpnum, actnum;
 };
 
 struct map_chamber {
@@ -43,6 +46,7 @@ struct map_chamber {
 	//Resources
 	IACTV **iactives;
 	PATH **adjchambers;
+	char *string;
 	byte actnum, adjnum;
 };
 
@@ -54,6 +58,7 @@ struct path {
 
 GAME *ginit();
 WORLD *winit();
+IACTV *iinit();
 CHAMBER *chinit();
 bool wdestroy(WORLD **);
 bool gdestroy(GAME **);

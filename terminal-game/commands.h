@@ -22,5 +22,6 @@ struct commands {
 
 COMMAND *cinit();
 bool cdestroy(COMMAND **);
+char *get_string(FILE *);
 
 #endif
