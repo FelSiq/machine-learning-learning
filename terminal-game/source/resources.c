@@ -79,3 +79,133 @@ bool stack_clear(STACK *s){
 	};
 	err_exit;
 };
+
+//LIST STUFF
+
+typedef struct list_node {
+	byte key;
+	struct list_node *next, *prev;
+	char *string;
+} LNODE;
+
+struct list {
+	LNODE *hnode;
+};
+
+LIST *list_init(){
+	LIST *l = malloc(sizeof(LIST));
+	if (l != NULL){
+		l->hnode = malloc(sizeof(LNODE));
+		if (l->hnode != NULL){
+			l->hnode->next = l->hnode;
+			l->hnode->prev = l->hnode;
+			l->hnode->string = NULL;
+			l->hnode->key = 0;
+			return l;
+		};
+		free(l);
+	};
+	return NULL;
+};
+
+bool list_empty(LIST *l){
+	if (l != NULL && l->hnode != NULL)
+		return (l->hnode->next == l->hnode);
+	return TRUE;
+};
+
+bool list_append(LIST *l, byte key, char *string){
+	if (l != NULL && string != NULL){
+		LNODE *ln = malloc(sizeof(LNODE));
+		if (ln != NULL){
+			ln->prev = l->hnode->prev;
+			ln->next = l->hnode;
+			l->hnode->prev->next = ln;
+			l->hnode->prev = ln;
+			ln->string = string;
+			ln->key = key;
+			return TRUE;
+		};
+	};
+	err_exit;
+};
+
+bool list_modify(LIST *l, byte key, char *string){
+	if (l != NULL && string != NULL){
+		LNODE *ln = l->hnode->next;
+		while(ln != l->hnode && ln->key != key)
+			ln = ln->next;
+		if (ln != l->hnode){
+			if (ln->string != NULL)
+				free(ln->string);
+			ln->string = string;
+			return TRUE;
+		};
+		return FALSE;
+	};
+	err_exit;
+};
+
+bool list_remove(LIST *l, byte key){
+	if (l != NULL){
+		LNODE *ln = l->hnode->next;
+		while(ln != l->hnode && ln->key != key)
+			ln = ln->next;
+		if (ln != l->hnode){
+			if (ln->string != NULL)
+				free(ln->string);
+			ln->prev->next = ln->next;
+			ln->next->prev = ln->prev;
+			free(ln);
+			return TRUE;
+		};
+		return FALSE;
+	};
+	err_exit;
+};
+
+bool list_clear(LIST *l){
+	if (l != NULL){
+		if (l->hnode != NULL){
+			LNODE *aux = (l->hnode->next), *rem;
+			while(aux != l->hnode){
+				rem = aux;
+				aux = aux->next;
+				free(rem);
+			};
+		};
+		l->hnode->next = l->hnode;
+		l->hnode->prev = l->hnode;
+		return TRUE;
+	};
+	err_exit;
+};
+
+bool list_destroy(LIST **l){
+	if (l != NULL && *l != NULL){
+		if ((*l)->hnode != NULL){
+			LNODE *aux = ((*l)->hnode->next), *rem;
+			while(aux != (*l)->hnode){
+				rem = aux;
+				aux = aux->next;
+				free(rem);
+			};
+			free((*l)->hnode);
+		};
+		free(*l);
+		(*l) = NULL;
+		return TRUE;
+	};
+	err_exit;
+};
+
+void list_print(LIST *l){
+	if (l != NULL && !list_empty(l)){
+		LNODE *aux = l->hnode->next;
+		byte i = 0;
+		while(aux != l->hnode){
+			printf("%hu. \"%s\"\n", ++i, aux->string);
+			aux = aux->next;
+		};
+	};
+};

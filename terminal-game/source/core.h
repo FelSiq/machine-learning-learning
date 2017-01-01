@@ -5,12 +5,6 @@
 
 #define err_exit {printf("E: \"%s\" failed.\n", __FUNCTION__); return FALSE;}
 
-enum {
-	DLVL_TOP,
-	DLVL_MID,
-	DLVL_DEEP
-};
-
 void decodify(byte *);
 
 #endif

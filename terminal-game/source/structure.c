@@ -15,12 +15,35 @@
 	11101000
 */
 
-static void game_interface(){
-
+static void game_interfacePre(GAME *g, CHAMBER *tvl, FILE **fp){
+	//Update terminal measures
+	system("tput cols >./data/tmeasures");
+	*fp = fopen("./data/tmeasures", "r");
+	if (fp != NULL && *fp != NULL){
+		byte i, aux;
+		for(fscanf(*fp, "%hhu%*c", &aux), i = aux; i > 0; printf("_"), --i);
+		printf("\nJogando como %s\n", g->player->name);
+		for(i = aux; i > 0; printf("_"), --i);
+	} else printf("E: unable to access \"./data/tmeasures\" in order to print interface in %s.\n", __FUNCTION__);
+	printf("\n");
 };
 
-static bool game_refreshProgress(){
-	return TRUE;
+static void game_interfacePos(GAME *g, CHAMBER *tvl, FILE **fp){
+	if (fp != NULL && *fp != NULL){
+		byte i, aux;
+		fseek(*fp, 0, SEEK_SET);
+		for(fscanf(*fp, "%hhu%*c", &aux), i = aux; i > 0; printf("_"), --i);
+		printf("\nLocal: %s\t\tTarefas completas: %hu/%hu\n", tvl->string, g->player->tasksdone, GLOBALV_NUMTASK);
+		for(i = aux; i > 0; printf("_"), --i);
+		printf("\nDigite: ");
+		fclose(*fp);
+	} else printf("E: NIL pointer of \"./data/tmeasures\" file on %s function.\n", __FUNCTION__);
+};
+
+static bool game_refreshProgress(GAME *g){
+	if (g != NULL){
+		return TRUE;
+	};
 	err_exit;
 };
 
@@ -116,6 +139,21 @@ static bool game_setup(GAME *const g){
 				printf("D:failed to start WORLD structure, aborting...\n");
 			#endif
 		};
+	};
+	err_exit;
+};
+
+static bool ch_path_isopen(CHAMBER *ch, ...){
+	if (ch != NULL){
+		va_list boolv;
+		va_start(boolv, ch);
+		
+		for(byte i = 0; i < ch->adjnum; ++i)
+			(*(ch->adjchambers + i))->open = va_arg(boolv, bool);
+
+		va_end(boolv);
+
+		return TRUE;
 	};
 	err_exit;
 };
@@ -236,22 +274,35 @@ static void *wload(void *vw){
 		//Hardcoded section
 		//First line
 		counter += (*(w->allchambers + 3))->adjch_setup(*(w->allchambers + 3), 2, *(w->allchambers + 2), *(w->allchambers + 4));
+		(*(w->allchambers + 3))->chpath_setup((*(w->allchambers + 3)), TRUE, FALSE);
 		//Second line
 		counter += (*(w->allchambers + 6))->adjch_setup(*(w->allchambers + 6), 2, *(w->allchambers + 0), *(w->allchambers + 7));
+		(*(w->allchambers + 6))->chpath_setup((*(w->allchambers + 6)), TRUE, FALSE);
+
 		counter += (*(w->allchambers + 8))->adjch_setup(*(w->allchambers + 8), 3, *(w->allchambers + 7), 
 			*(w->allchambers + 2), *(w->allchambers + 14));
+		(*(w->allchambers + 8))->chpath_setup((*(w->allchambers + 8)), TRUE, TRUE, TRUE);
+		
 		counter += (*(w->allchambers + 10))->adjch_setup(*(w->allchambers + 10), 3, *(w->allchambers + 4), 
 			*(w->allchambers + 11), *(w->allchambers + 16));
+		(*(w->allchambers + 10))->chpath_setup((*(w->allchambers + 10)), TRUE, TRUE, TRUE);
 		//Third line
 		counter += (*(w->allchambers + 15))->adjch_setup(*(w->allchambers + 15), 2, *(w->allchambers + 14), *(w->allchambers + 16));
+		(*(w->allchambers + 15))->chpath_setup((*(w->allchambers + 15)), FALSE, TRUE);
 		//Last line
 		counter += (*(w->allchambers + 18))->adjch_setup(*(w->allchambers + 18), 1, *(w->allchambers + 19));
+		(*(w->allchambers + 18))->chpath_setup((*(w->allchambers + 18)), TRUE);
+		
 		counter += (*(w->allchambers + 20))->adjch_setup(*(w->allchambers + 19), 2, *(w->allchambers + 7), *(w->allchambers + 14));
+		(*(w->allchambers + 20))->chpath_setup((*(w->allchambers + 20)), FALSE);
+
 		counter += (*(w->allchambers + 22))->adjch_setup(*(w->allchambers + 22), 1, *(w->allchambers + 16));
+		(*(w->allchambers + 22))->chpath_setup((*(w->allchambers + 22)), FALSE);
+
 		#ifdef DEBUG
-			printf("D: created (%hhu/%u) path between chambers.\n", counter, GLOBAV_NUMPATHS);
+			printf("D: created (%hhu/%u) path between chambers.\n", counter, GLOBALV_NUMPATHS);
 		#endif
-		if (counter == GLOBAV_NUMPATHS)
+		if (counter == GLOBALV_NUMPATHS)
 			*ret = TRUE;
 	};
 	return ret;
@@ -402,8 +453,10 @@ GAME *ginit(){
 	GAME *g = malloc(sizeof(GAME));
 	if (g != NULL){
 		g->gsetup = &game_setup;
-		g->ginterface = &game_interface;
+		g->ginterfacePre = &game_interfacePre;
+		g->ginterfacePos = &game_interfacePos;
 		g->grefresh = &game_refreshProgress;
+		g->END_FLAG = FALSE;
 
 		#ifdef DEBUG
 			printf("D: will start game main structure...\n");
@@ -446,6 +499,7 @@ CHAMBER *chinit(){
 		#endif
 		ch->adjch_setup = &ch_adjch_setup;
 		ch->iactv_setup = &ch_iatcv_setup;
+		ch->chpath_setup = &ch_path_isopen;
 		ch->adjchambers = NULL;
 		ch->iactives = NULL;
 		ch->string = NULL;

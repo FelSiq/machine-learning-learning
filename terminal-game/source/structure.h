@@ -1,9 +1,9 @@
 #ifndef __TERMINAL_STRUCTURE_H_
 #define __TERMINAL_STRUCTURE_H_
-#include "commands.h"
 #include "resources.h"
 
-#define GLOBAV_NUMPATHS 8
+#define GLOBALV_NUMPATHS 8
+#define GLOBALV_NUMTASK 20
 #define GLOBALV_MAPW 6
 #define GLOBALV_MAPH 4
 
@@ -14,16 +14,19 @@ typedef struct the_player PLAYER;
 typedef struct interactives IACTV;
 typedef struct map_chamber CHAMBER;
 
+typedef struct commands COMMAND;
+
 struct the_game {
+	void (*ginterfacePre)(GAME *, CHAMBER *, FILE **);
+	void (*ginterfacePos)(GAME *, CHAMBER *, FILE **);
 	bool (*gsetup)(GAME *);
 	bool (*grefresh)(GAME *);
-	void (*ginterface)();
 
 	WORLD *world;
 	PLAYER *player;
 	COMMAND *command;
 
-	byte ddebug_lvl;
+	byte ddebug_lvl, END_FLAG;
 };
 
 struct the_world {
@@ -48,6 +51,7 @@ struct map_chamber {
 	//Methods
 	bool (*adjch_setup)(CHAMBER *, byte, ...);
 	bool (*iactv_setup)(CHAMBER *, byte, ...);
+	bool (*chpath_setup)(CHAMBER *, ...);
 
 	//Resources
 	IACTV **iactives;

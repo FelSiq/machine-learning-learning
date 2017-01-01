@@ -1,22 +1,112 @@
 #include "core.h"
 #include "resources.h"
+#include "structure.h"
 #include "commands.h"
+#include "player.h"
 #include <stdlib.h>
 #include <stdio.h>
+#include <string.h>
 
-static bool cprocess(STACK *s){
-	if (s != NULL){
+static bool cprocess(GAME *g, CHAMBER *tvl, STACK *s){
+	if (g != NULL && g->command != NULL && s != NULL && tvl != NULL){
+		while(!stack_empty(s)){
+			char *string = stack_pop(s);
+			if (string != NULL){
+				bool FLAG = TRUE;
+				#ifdef DEBUG
+					printf("D: will process \"%s\"...\n", string);
+				#endif
+				//Test global commands first
+				for(byte i = g->command->gcnum; FLAG && (i > 0); --i)
+					if (strcmp(string, *(g->command->gcommands + i -1)) == 0){
+						if (strcmp(string, "sair") == 0){
+							g->END_FLAG = TRUE;
+							FLAG = FALSE;
+						} else if (strcmp(string, "observar") == 0){
+							printf("(Você observa ao seu redor, em \"%s\", e consegue notar...)\n", tvl->string);
+							if (tvl->adjchambers != NULL){
+								CHAMBER *aux;
+								for(byte j = tvl->adjnum; j > 0; --j){
+									aux = (*(tvl->adjchambers + j - 1))->a;
 
+									if (aux == tvl)
+										aux = (*(tvl->adjchambers + j - 1))->b;
+									
+									printf("Caminho para \"%s\"", aux->string);
+
+									if (!(*(tvl->adjchambers + j - 1))->open){
+										if ((*(tvl->adjchambers + j - 1))->string != NULL)
+											printf(" (%s)", (*(tvl->adjchambers + j - 1))->string);
+										else
+											printf(" (interditado)");
+									};
+									printf("\n");
+								};
+							};
+
+							if (tvl->iactives != NULL){
+								for(byte j = tvl->actnum; j > 0; --j){
+									printf("\"%s\"", (*(tvl->iactives + j - 1))->label);
+									if ((*(tvl->iactives + j - 1))->progress > 0)
+										printf(" [tarefa em progresso...]");
+									printf("\n");
+								};
+							} else printf("e nenhum objeto interessante.\n");
+
+							FLAG = FALSE;
+						} else if (strcmp(string, "notas") == 0){
+							if (!list_empty(g->player->notes)){
+								list_print(g->player->notes);
+							} else printf("Você não possui nenhuma tarefa ativa no momento.\n");
+							FLAG = FALSE;
+						} else if (strcmp(string, "fazer") == 0){
+							FLAG = FALSE;
+						};
+					};
+						
+				free(string);
+			};
+		};
 		return TRUE;
 	};
 	err_exit;
 };
 
-static void get_command(COMMAND *c){
+static bool load_globalCommands(COMMAND *c, char const path[]){
 	if (c != NULL){
-		c->string = (*c).get_string();
-		(*c).str_tokenizer(c);
+		FILE *fp = fopen(path, "r");
+		if (fp != NULL){
+			char *aux;
+			c->gcommands = malloc(sizeof(char *) * GLOBALV_COMMAND_MAXNUM);
+			if (c->gcommands != NULL){
+				while (!feof(fp) && c->gcnum < GLOBALV_COMMAND_MAXNUM){
+					aux = get_string(fp);
+					if (aux != NULL)
+						*(c->gcommands + c->gcnum++) = aux;
+				};
+				c->gcommands = realloc(c->gcommands, sizeof(char *) * (c->gcnum));
+				#ifdef DEBUG
+					printf("D: loaded global commands:\n");
+					for(byte i = c->gcnum; i > 0; printf("%hu. \"%s\"\n", i, *(c->gcommands + i - 1)), --i);
+				#endif
+				fclose(fp);
+				return TRUE;
+			} else printf("E: failed to create global commands.\n");
+		} else printf("E: can't open \"%s\".\n", path);
+		fclose(fp);
 	};
+	err_exit;
+};
+
+static bool get_command(COMMAND *c){
+	if (c != NULL){
+		c->string = (*c).get_string(stdin);
+		if (c->string != NULL){
+			(*c).str_tokenizer(c);
+			return TRUE;
+		};
+	};
+	return FALSE;
 };
 
 static bool memory_dump(COMMAND *c){
@@ -94,6 +184,7 @@ char *get_string(FILE *fp){
 		};
 
 		if (i > 1){
+			s = realloc(s, sizeof(char) * (i + 1));
 			if (fp == stdin){
 				*(s + i - 1) = SPACEBAR;
 				*(s + i) = '\0';
@@ -120,7 +211,10 @@ COMMAND *cinit(){
 			c->mem_dump = &memory_dump;
 			c->get_string = &get_string;
 			c->cprocess = &cprocess;
+			c->loadglobal = &load_globalCommands;
+			c->gcommands = NULL;
 			c->string = NULL;
+			c->gcnum = 0;
 			return c;
 		};
 		//Something went wrong, abort.
@@ -135,6 +229,12 @@ bool cdestroy(COMMAND **c){
 			stack_destroy(&(*c)->memory);
 		if ((*c)->string != NULL)
 			free((*c)->string);
+		if ((*c)->gcommands != NULL){
+			for(byte i = (*c)->gcnum; i > 0; --i)
+				if (*((*c)->gcommands + i - 1) != NULL)
+					free (*((*c)->gcommands + i - 1));
+			free((*c)->gcommands);
+		};
 		free(*c);
 		(*c) = NULL;
 		return TRUE;

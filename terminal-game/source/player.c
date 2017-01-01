@@ -23,8 +23,6 @@ static bool func_playerGetname(PLAYER *p, FILE *fp){
 static bool func_playerSetup(PLAYER *p){
 	if (p != NULL){
 		//Setting up main player stuff
-		p->enable = TRUE;
-		p->pos = GLOBALV_PLAYER_STDSTART;
 		p->colectibles = malloc(sizeof(byte) * GLOBALV_PINV_STDSIZE);
 		//Cleaning player's invectory up
 		if (p->colectibles != NULL){
@@ -52,9 +50,19 @@ static bool func_playerSetup(PLAYER *p){
 				};
 				printf("D: end of player setup proccess.\n");
 			#endif
+
 			if (fp != NULL)
 				fclose(fp);
-			return TRUE;
+
+			//Now player's note setup
+			p->notes = list_init();
+			if (p->notes != NULL)
+				return TRUE;
+			else 
+				printf("E: can't init player's notes setup (LIST) on \"%s\".\n", __FUNCTION__);
+			
+			//Something went wrong, abort.
+			free(p->colectibles);
 		};
 	};
 	err_exit;
@@ -66,6 +74,11 @@ PLAYER *pinit(){
 		//Setting player's methods
 		(*p).psetup = &func_playerSetup;
 		(*p).pgetname = &func_playerGetname;
+		p->tasksdone = 0;
+		p->colectibles = NULL;
+		p->enable = TRUE;
+		p->name = NULL;
+		p->notes = NULL;
 		//Setting player's invectory up
 		if ((*p).psetup(p))
 			return p;
@@ -79,6 +92,10 @@ bool pdestroy(PLAYER **p){
 	if (p != NULL && *p != NULL){
 		if ((*p)->colectibles != NULL)
 			free((*p)->colectibles);
+		if ((*p)->name != NULL)
+			free((*p)->name);
+		if ((*p)->notes != NULL)
+			list_destroy(&(*p)->notes);
 		free(*p);
 		(*p) = NULL;
 		return TRUE;

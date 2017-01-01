@@ -34,76 +34,82 @@ int main(int argc, char const *argv[]){
 						printf("D: defined ddebug-level as %hu.\n", game->ddebug_lvl);
 				};
 			#endif
-			game->world->chsetup(game->world);
-			//PARALLELS
-			pthread_t *process = malloc(sizeof(pthread_t) * THREAD_NUM);
-			if (process != NULL){
-				bool **returnvals = malloc(sizeof(bool *) * THREAD_NUM);
-				if (returnvals != NULL){
-					byte sum = 0;
-					#ifdef DEBUG
-						printf("D: will start multithreading now...\n");
-					#endif
-					//Multithread section
-					sum += pthread_create((process + 0), NULL, game->world->wgetlabels, (void *) game->world);
-					sum += pthread_create((process + 1), NULL, game->world->wload, (void *) game->world);
-					sum += pthread_create((process + 2), NULL, game->world->isetup, (void *) game->world);
-
-					//Test if thread creation works fine.
-					if (sum != 0){
-						printf("E: can't create threads. abort.\n");
-						for(byte i = THREAD_NUM; i > 0; --i)
-							pthread_cancel(*(process + i - 1));
-					} else {
-						#ifdef DEBUG
-							printf("D: successfully created threads. Will now join then.\n");
-						#endif
-						for(byte i = THREAD_NUM; i > 0; --i)
-							pthread_join(*(process + i - 1), (void **) (returnvals + i - 1));
-					};
-					
-					//Test return values of functions.
-					sum = 0;
-					for(byte i = THREAD_NUM; i > 0; sum += *(*(returnvals + i - 1)), free(*(returnvals + i - 1)), --i);
-					free(returnvals);
-					if (sum == THREAD_NUM){
-						#ifdef DEBUG
-							printf("D: successfully constructed WORLD structure.\n");
-						#endif
-						
-						CHAMBER *traveller = *(game->world->allchambers + GLOBALV_PLAYER_STDSTART);
-						byte END_FLAG = FALSE;
-						FILE *fp = stdin;
-
-						//Check if it's the player's first time.
-						if (access("./data/pname", R_OK) == -1)
-							printf("Me parece que este é o seu primeiro acesso. Qual seu nome?\n");
-						else 
-							fp = fopen("./data/pname", "r");
-
-						if(game->player->pgetname(game->player, fp))
+			//Load chamber data
+			if(game->world->chsetup(game->world)){
+				//Load global command
+				if(game->command->loadglobal(game->command, "./source/globalc")){
+					//PARALLELS
+					pthread_t *process = malloc(sizeof(pthread_t) * THREAD_NUM);
+					if (process != NULL){
+						bool **returnvals = malloc(sizeof(bool *) * THREAD_NUM);
+						if (returnvals != NULL){
+							byte sum = 0;
 							#ifdef DEBUG
-								printf("D: got a player new name: \"%s\".\n", game->player->name);
+								printf("D: will start multithreading now...\n");
 							#endif
-						else printf("E: can't get player's name.\n");
+							//Multithread section
+							sum += pthread_create((process + 0), NULL, game->world->wgetlabels, (void *) game->world);
+							sum += pthread_create((process + 1), NULL, game->world->wload, (void *) game->world);
+							sum += pthread_create((process + 2), NULL, game->world->isetup, (void *) game->world);
 
-						//Everyting is set up. Game can now start.
-						while(!END_FLAG){
-							system("clear");
-							game->ginterface();
-							game->command->get_command(game->command);
-							game->command->cprocess(game->command->memory);
-						};
-						// Saves player progress before games end.
-						if(game->grefresh(game))
-							#ifdef DEBUG
-								printf("D: saved player's progress.\n");
-							#endif
-						else printf("E: can't save new game data. Progress maybe is lost.\n");
-					} else printf("E: something went wrong in WORLD setup on \"%s\". abort.\n", __FUNCTION__);
-				} else printf("E: failed to init \"returnvals\" on \"%s\".\n", __FUNCTION__);
-				free(process);
-			} else printf("E: failed to init \"process\" on \"%s\".\n", __FUNCTION__);
+							//Test if thread creation works fine.
+							if (sum != 0){
+								printf("E: can't create threads. abort.\n");
+								for(byte i = THREAD_NUM; i > 0; --i)
+									pthread_cancel(*(process + i - 1));
+							} else {
+								#ifdef DEBUG
+									printf("D: successfully created threads. Will now join then.\n");
+								#endif
+								for(byte i = THREAD_NUM; i > 0; --i)
+									pthread_join(*(process + i - 1), (void **) (returnvals + i - 1));
+							};
+							
+							//Test return values of functions.
+							sum = 0;
+							for(byte i = THREAD_NUM; i > 0; sum += *(*(returnvals + i - 1)), free(*(returnvals + i - 1)), --i);
+							free(returnvals);
+							if (sum == THREAD_NUM){
+								#ifdef DEBUG
+									printf("D: successfully constructed WORLD structure.\n");
+								#endif
+								
+								CHAMBER *traveller = *(game->world->allchambers + GLOBALV_PLAYER_STDSTART);
+								FILE *fp = stdin;
+
+								//Check if it's the player's first time.
+								if (access("./data/pname", R_OK) == -1)
+									printf("Me parece que este é o seu primeiro acesso. Qual seu nome?\n");
+								else 
+									fp = fopen("./data/pname", "r");
+
+								if(game->player->pgetname(game->player, fp))
+									#ifdef DEBUG
+										printf("D: got a player new name: \"%s\".\n", game->player->name);
+									#endif
+								else printf("E: can't get player's name.\n");
+
+								//Everyting is set up. Game can now start.
+								FILE *interface_pointer = NULL;
+								while(!game->END_FLAG){
+									if(game->command->get_command(game->command))
+										system("clear");
+									game->ginterfacePre(game, traveller, &interface_pointer);
+									game->command->cprocess(game, traveller, game->command->memory);
+									game->ginterfacePos(game, traveller, &interface_pointer);
+								};
+								// Saves player progress before games end.
+								if(game->grefresh(game))
+									#ifdef DEBUG
+										printf("D: saved player's progress.\n");
+									#endif
+								else printf("E: can't save new game data. Progress maybe is lost.\n");
+							} else printf("E: something went wrong in WORLD setup on \"%s\". abort.\n", __FUNCTION__);
+						} else printf("E: failed to init \"returnvals\" on \"%s\".\n", __FUNCTION__);
+						free(process);
+					} else printf("E: failed to init \"process\" on \"%s\".\n", __FUNCTION__);
+				} else printf("E: failed to load global commands on \"%s\".\n", __FUNCTION__);
+			} else printf("E: failed to init chamber setup on \"%s\".\n", __FUNCTION__);
 		} else printf("E: failed to init GAME STRUCTURE on \"%s\".\n", __FUNCTION__);
 		
 		//Destroy GAME main structure.

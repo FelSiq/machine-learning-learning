@@ -24,4 +24,16 @@ char *stack_top(STACK *);
 bool stack_destroy(STACK **);
 bool stack_clear(STACK *);
 
+//LIST STUFF
+typedef struct list LIST;
+
+LIST *list_init();
+bool list_append(LIST *, byte, char *);
+bool list_modify(LIST *, byte, char *);
+bool list_remove(LIST *, byte);
+bool list_clear(LIST *);
+bool list_empty(LIST *);
+bool list_destroy(LIST **);
+void list_print(LIST *);
+
 #endif
