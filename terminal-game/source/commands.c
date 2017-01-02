@@ -6,18 +6,33 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#include <time.h>
+
+void string_uppercase(char *s){
+	if (s != NULL)
+		for(uint i = 0; *(s + i) != '\0'; ++i)
+			if (*(s + i) >= ASCIIa && *(s + i) <= ASCIIz)
+				*(s + i) -= MODULUS(ASCIIa - ASCIIA);
+};
+
+void string_lowercase(char *s){
+	if (s != NULL)
+		for(uint i = 0; *(s + i) != '\0'; ++i)
+			if (*(s + i) >= ASCIIA && *(s + i) <= ASCIIZ)
+				*(s + i) += MODULUS(ASCIIa - ASCIIA);
+};
 
 static bool cprocess(GAME *g, CHAMBER *tvl, STACK *s){
 	if (g != NULL && g->command != NULL && s != NULL && tvl != NULL){
+		bool FLAG = TRUE;
 		while(!stack_empty(s)){
 			char *string = stack_pop(s);
 			if (string != NULL){
-				bool FLAG = TRUE;
 				#ifdef DEBUG
 					printf("D: will process \"%s\"...\n", string);
 				#endif
 				//Test global commands first
-				for(byte i = g->command->gcnum; FLAG && (i > 0); --i)
+				for(byte i = g->command->gcnum; FLAG && (i > 0); --i){
 					if (strcmp(string, *(g->command->gcommands + i -1)) == 0){
 						if (strcmp(string, "sair") == 0){
 							g->END_FLAG = TRUE;
@@ -59,15 +74,73 @@ static bool cprocess(GAME *g, CHAMBER *tvl, STACK *s){
 								list_print(g->player->notes);
 							} else printf("Você não possui nenhuma tarefa ativa no momento.\n");
 							FLAG = FALSE;
-						} else if (strcmp(string, "fazer") == 0){
+						} else if (strcmp(string, "mochila") == 0){
+							FILE *fp = fopen("./data/tmeasures", "r");
+							uint aux = 0, val;
+							if (fp != NULL){
+								fscanf(fp, "%u%*c", &aux);
+								printf("(Você olha dentro de sua mochila e...)\n");
+								for(byte i = 0; i < GLOBALV_PINV_STDSIZE; ++i){
+									printf("[");
+									val = strlen(*(g->player->colnames + *(g->player->colectibles + i)));
+									if (val < aux/GLOBALV_BACKPACK_LINES)
+										for(byte j = 0; j < (aux/GLOBALV_BACKPACK_LINES - val + 1)/2 - 1; printf(" "), ++j);
+									if (g->player->colnamnum > *(g->player->colectibles + i))
+										printf("%s", *(g->player->colnames + *(g->player->colectibles + i)));
+									else
+										printf("???");
+									if (val < aux/GLOBALV_BACKPACK_LINES)
+										for(byte j = 0; j < (aux/GLOBALV_BACKPACK_LINES - val)/2 - 1; printf(" "), ++j);
+									printf("]");
+									if (((i + 1) % GLOBALV_BACKPACK_LINES) == 0)
+										printf("\n");
+								};
+								fclose(fp);
+							} else printf("E: can't access \"./data/tmeasures\" on %s.", __FUNCTION__);
+							FLAG = FALSE;
+						} else if (strcmp(string, "salvar") == 0){
+							if (g->grefresh(g))
+								printf("Progresso salvo com sucesso.\n");
+							else
+								printf("Algo deu errado, seu progresso não pôde ser salvo.\n");
 							FLAG = FALSE;
 						};
+					} else {
+						//Now test with local commands
 					};
-						
+				};		
 				free(string);
 			};
 		};
+		if (FLAG)
+			rprintf(g->command->fail_strings, g->command->failnum);
+
 		return TRUE;
+	};
+	err_exit;
+};
+
+static bool load_failstrings(COMMAND *c, char const path[]){
+	if (c != NULL){
+		FILE *fp = fopen(path, "r");
+		if (fp != NULL){
+			char *aux;
+			while (!feof(fp)){
+				aux = get_string(fp);
+				if (aux != NULL){
+					c->fail_strings = realloc(c->fail_strings, sizeof(char *) * (c->failnum + 1));
+					*(c->fail_strings + c->failnum++) = aux;
+					aux = NULL;
+				};
+			};
+			#ifdef DEBUG
+				printf("D: loaded fail strings:\n");
+				for(byte i = c->failnum; i > 0; printf("%hu. \"%s\"\n", i, *(c->fail_strings + i - 1)), --i);
+			#endif
+			fclose(fp);
+			return TRUE;
+			fclose(fp);
+		} else printf("E: can't open \"%s\" on %s.\n", path, __FUNCTION__);
 	};
 	err_exit;
 };
@@ -92,8 +165,8 @@ static bool load_globalCommands(COMMAND *c, char const path[]){
 				fclose(fp);
 				return TRUE;
 			} else printf("E: failed to create global commands.\n");
-		} else printf("E: can't open \"%s\".\n", path);
-		fclose(fp);
+			fclose(fp);
+		} else printf("E: can't open \"%s\" on %s.\n", path, __FUNCTION__);
 	};
 	err_exit;
 };
@@ -212,8 +285,11 @@ COMMAND *cinit(){
 			c->get_string = &get_string;
 			c->cprocess = &cprocess;
 			c->loadglobal = &load_globalCommands;
+			c->loadfails = &load_failstrings;
+			c->fail_strings = NULL;
 			c->gcommands = NULL;
 			c->string = NULL;
+			c->failnum = 0;
 			c->gcnum = 0;
 			return c;
 		};
@@ -235,9 +311,22 @@ bool cdestroy(COMMAND **c){
 					free (*((*c)->gcommands + i - 1));
 			free((*c)->gcommands);
 		};
+		if ((*c)->fail_strings != NULL){
+			for(byte i = (*c)->failnum; i > 0; --i)
+				if (*((*c)->fail_strings + i - 1) != NULL)
+					free (*((*c)->fail_strings + i - 1));
+			free((*c)->fail_strings);
+		};
 		free(*c);
 		(*c) = NULL;
 		return TRUE;
 	};
 	err_exit;
+};
+
+void rprintf(char **s, byte num){
+	if (s != NULL){
+		srand(time(NULL));
+		printf("%s\n", *(s + (rand() % num)));
+	};
 };

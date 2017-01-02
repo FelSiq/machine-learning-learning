@@ -5,19 +5,23 @@
 #define ASCIIA 65
 #define ASCIIZ 90
 #define ASCIIa 97
+#define ASCIIz 122
 #define SPACEBAR 32
 #define ENTER 10
+
+#define GLOBALV_BACKPACK_LINES 3
 
 #include "resources.h"
 #include "structure.h"
 typedef struct commands COMMAND;
 
 struct commands {
-	char *string, **gcommands;
+	char *string, **gcommands, **fail_strings;
 	STACK *memory;
-	byte gcnum;
+	byte gcnum, failnum;
 	
 	bool (*loadglobal)(COMMAND *, char const *);
+	bool (*loadfails)(COMMAND *, char const *);
 	void (*str_tokenizer)(COMMAND *);
 	bool (*get_command)(COMMAND *);
 	bool (*mem_dump)(COMMAND *);
@@ -30,5 +34,8 @@ struct commands {
 COMMAND *cinit();
 bool cdestroy(COMMAND **);
 char *get_string(FILE *);
+void rprintf(char **, byte);
+void string_uppercase(char *);
+void string_lowercase(char *);
 
 #endif

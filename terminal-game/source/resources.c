@@ -209,3 +209,10 @@ void list_print(LIST *l){
 		};
 	};
 };
+
+byte list_count(LIST *l){
+	byte counter = 0;
+	if (l != NULL)
+		for (LNODE *aux = l->hnode->next; aux != l->hnode; aux = aux->next, ++counter);
+	return counter;
+};

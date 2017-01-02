@@ -7,6 +7,8 @@
 #define GLOBALV_MAPW 6
 #define GLOBALV_MAPH 4
 
+#define MAX(A,B) ((A > B) ? A : B)
+
 typedef struct path PATH;
 typedef struct the_game GAME;
 typedef struct the_world WORLD;

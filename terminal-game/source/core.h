@@ -6,5 +6,6 @@
 #define err_exit {printf("E: \"%s\" failed.\n", __FUNCTION__); return FALSE;}
 
 void decodify(byte *);
+void codify(byte *);
 
 #endif

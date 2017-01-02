@@ -6,6 +6,7 @@
 #include <stdio.h>
 #include "controls.h"
 #include <unistd.h>
+#include <string.h>
 
 static bool func_playerGetname(PLAYER *p, FILE *fp){
 	if (p != NULL && fp != NULL){
@@ -15,24 +16,27 @@ static bool func_playerGetname(PLAYER *p, FILE *fp){
 		};
 
 		while((p->name = get_string(fp)) == NULL);
+		*(p->name + strlen(p->name) - 1) = '\0';
 		return TRUE;
 	};
 	err_exit;
 };
 
-static bool func_playerSetup(PLAYER *p){
+static bool func_playerSetup(PLAYER *p, char const path[], char const path2[]){
 	if (p != NULL){
 		//Setting up main player stuff
+		if (p->colectibles != NULL)
+			free(p->colectibles);
 		p->colectibles = malloc(sizeof(byte) * GLOBALV_PINV_STDSIZE);
 		//Cleaning player's invectory up
 		if (p->colectibles != NULL){
-			FILE *fp = fopen("./data/pinv", "r");
+			FILE *fp = fopen(path, "r");
 			byte aux = 0;
 			#ifdef DEBUG
-				if (access("./data/pinv", R_OK) == -1)
-					printf("D: file \"./data/pinv\" not found.\n");
+				if (access(path, R_OK) == -1)
+					printf("D: file \"%s\" not found.\n", path);
 				else
-					printf("D: \"./data/pinv\" found and is readable.\n");
+					printf("D: \"%s\" found and is readable.\n", path);
 			#endif
 			for (byte i = GLOBALV_PINV_STDSIZE; i > 0; --i)
 				if (fp != NULL){
@@ -54,7 +58,30 @@ static bool func_playerSetup(PLAYER *p){
 			if (fp != NULL)
 				fclose(fp);
 
+			//Now colectible labels
+			fp = fopen(path2, "r");
+			if (fp != NULL){
+				#ifdef DEBUG
+					printf("D: opened \"%s\" file.", path2);
+				#endif
+				if (p->colnames != NULL)
+					free(p->colnames); 
+				p->colnames = malloc(sizeof(char *) * GLOBALV_MAXCOLNUM);
+				if (p->colnames != NULL){
+					char *aux;
+					while(!feof(fp)){
+						aux = get_string(fp);
+						if (aux != NULL)
+							*(p->colnames + p->colnamnum++) = aux;
+					};
+					p->colnames = realloc(p->colnames, sizeof(char *) * (p->colnamnum));
+				} else printf("E: failed to malloc on p->colnames on %s.\n", __FUNCTION__);
+				fclose(fp);
+			} else printf("E: can't open \"%s\" on %s.\n", path2, __FUNCTION__);
+			
 			//Now player's note setup
+			if (p->notes != NULL)
+				list_destroy(&p->notes);
 			p->notes = list_init();
 			if (p->notes != NULL)
 				return TRUE;
@@ -75,12 +102,14 @@ PLAYER *pinit(){
 		(*p).psetup = &func_playerSetup;
 		(*p).pgetname = &func_playerGetname;
 		p->tasksdone = 0;
+		p->colnamnum = 0;
 		p->colectibles = NULL;
 		p->enable = TRUE;
 		p->name = NULL;
 		p->notes = NULL;
+		p->colnames = NULL;
 		//Setting player's invectory up
-		if ((*p).psetup(p))
+		if ((*p).psetup(p, "./data/pinv", "./source/colnames"))
 			return p;
 		//At this point something went wrong
 		free(p);

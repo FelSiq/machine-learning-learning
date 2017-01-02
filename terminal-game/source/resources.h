@@ -35,5 +35,6 @@ bool list_clear(LIST *);
 bool list_empty(LIST *);
 bool list_destroy(LIST **);
 void list_print(LIST *);
+byte list_count(LIST *);
 
 #endif

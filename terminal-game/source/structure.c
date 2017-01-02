@@ -7,6 +7,7 @@
 #include <stdio.h>
 #include <stdarg.h>
 #include <unistd.h>
+#include <string.h>
 
 /* World map sketch 
 	10111000 
@@ -20,10 +21,23 @@ static void game_interfacePre(GAME *g, CHAMBER *tvl, FILE **fp){
 	system("tput cols >./data/tmeasures");
 	*fp = fopen("./data/tmeasures", "r");
 	if (fp != NULL && *fp != NULL){
-		byte i, aux;
-		for(fscanf(*fp, "%hhu%*c", &aux), i = aux; i > 0; printf("_"), --i);
-		printf("\nJogando como %s\n", g->player->name);
-		for(i = aux; i > 0; printf("_"), --i);
+		uint i, aux, aux2, val;
+		for(fscanf(*fp, "%u%*c", &aux), aux2 = strlen(g->player->name), val = MAX((aux - 8 - aux2)/2, 0), i = 0, printf("["); 
+			i < val; 
+			printf(" "), ++i);
+
+		printf("%s@tridle", g->player->name);
+		for(i += (aux2 + 8); i < MAX(aux - 1, 0); printf(" "), ++i);
+		
+		printf("]\nCOMANDOS GLOBAIS:");
+		for(i = g->command->gcnum; i > 0; 
+			string_uppercase(*(g->command->gcommands + i - 1)), 
+			printf("    [%s]", *(g->command->gcommands + i - 1)), 
+			string_lowercase(*(g->command->gcommands + i - 1)), 
+			--i);
+		printf("\n");
+		for(i = MAX(aux, 0); i > 0; printf("_"), --i);
+
 	} else printf("E: unable to access \"./data/tmeasures\" in order to print interface in %s.\n", __FUNCTION__);
 	printf("\n");
 };
@@ -33,7 +47,8 @@ static void game_interfacePos(GAME *g, CHAMBER *tvl, FILE **fp){
 		byte i, aux;
 		fseek(*fp, 0, SEEK_SET);
 		for(fscanf(*fp, "%hhu%*c", &aux), i = aux; i > 0; printf("_"), --i);
-		printf("\nLocal: %s\t\tTarefas completas: %hu/%hu\n", tvl->string, g->player->tasksdone, GLOBALV_NUMTASK);
+		printf("\nLocal: %s\t\tTarefas completas: %hu/%hu\t\tTarefas ativas: %hhu\n", 
+			tvl->string, g->player->tasksdone, GLOBALV_NUMTASK, list_count(g->player->notes));
 		for(i = aux; i > 0; printf("_"), --i);
 		printf("\nDigite: ");
 		fclose(*fp);
@@ -42,6 +57,28 @@ static void game_interfacePos(GAME *g, CHAMBER *tvl, FILE **fp){
 
 static bool game_refreshProgress(GAME *g){
 	if (g != NULL){
+		//Player's name
+		FILE *fp = fopen("./data/pname", "w");
+		if (fp != NULL){
+			for (byte i = 0; *(g->player->name + i) != '\0'; codify((byte *) (g->player->name + i++)));
+			fprintf(fp, "%s \n", g->player->name);
+			fclose(fp);
+			#ifdef DEBUG
+				printf("D: write player's name on \"./data/pname\" file.\n");
+			#endif
+		} else printf("E: can't access \"./data/pname\" on %s, PLAYER name can not be saved.\n", __FUNCTION__);
+		//Player's invenctory
+		fp = fopen("./data/pinv", "w");
+		if (fp != NULL){
+			for (byte i = 0; i < GLOBALV_PINV_STDSIZE; 
+				codify((g->player->colectibles + i)), 
+				fprintf(fp, "%hhu ", *(g->player->colectibles + i++)));
+			fclose(fp);
+			#ifdef DEBUG
+				printf("D: write player's invenctory on \"./data/pinv\" file.\n");
+			#endif
+		} else printf("E: can't access \"./data/pinv\" on %s, PLAYER colectibles can not be saved.\n", __FUNCTION__);
+		//End of process
 		return TRUE;
 	};
 	err_exit;

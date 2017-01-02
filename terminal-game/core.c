@@ -15,6 +15,10 @@ void decodify(byte *b){
 
 };
 
+void codify(byte *b){
+
+};
+
 static bool integrity_test(){
 	//ls -F |grep -v / | wc -l
 	return TRUE;
@@ -38,6 +42,8 @@ int main(int argc, char const *argv[]){
 			if(game->world->chsetup(game->world)){
 				//Load global command
 				if(game->command->loadglobal(game->command, "./source/globalc")){
+					if(!game->command->loadfails(game->command, "./source/failstrings"))
+						printf("E: can't load fail strings.\n");
 					//PARALLELS
 					pthread_t *process = malloc(sizeof(pthread_t) * THREAD_NUM);
 					if (process != NULL){
