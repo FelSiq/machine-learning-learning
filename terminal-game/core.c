@@ -83,33 +83,67 @@ int main(int argc, char const *argv[]){
 								CHAMBER *traveller = *(game->world->allchambers + GLOBALV_PLAYER_STDSTART);
 								FILE *fp = stdin;
 
+								#ifndef DEBUG
+									system("clear");
+								#endif
 								//Check if it's the player's first time.
-								if (access("./data/pname", R_OK) == -1)
-									printf("Me parece que este é o seu primeiro acesso. Qual seu nome?\n");
-								else 
-									fp = fopen("./data/pname", "r");
+								if (access("./data/pname", R_OK) == -1){
+									printf("\rSegmentation fault (core dumped)\n");
+									for (uint delay = (1 << (sizeof(uint)*BITS_IN_BYTE - 2)); delay > 0; --delay);
+									printf("Brincadeira!\nMe parece que este é o seu primeiro acesso. Qual seu nome?\n");
+									system("aplay -q ./snd/s1");
+								} else fp = fopen("./data/pname", "r");
 
-								if(game->player->pgetname(game->player, fp))
+								if(game->player->pgetname(game->player, fp)){
 									#ifdef DEBUG
 										printf("D: got a player new name: \"%s\".\n", game->player->name);
 									#endif
-								else printf("E: can't get player's name.\n");
+								} else printf("E: can't get player's name.\n");
+
+								#ifndef DEBUG
+									system("clear");
+								#endif
+								FILE *interface_pointer = NULL;
+								//First things first
+								game->ginterfacePre(game, traveller, &interface_pointer);
+								if(fp != stdin){
+									printf("Bem-vindo de volta, %s!\n", game->player->name);
+									//system("aplay -q ./snd/s2");
+									fclose(fp);
+								} else {
+									FILE *wfile = fopen("./source/wtext", "r");
+									if (wfile != NULL){
+										while(!feof(wfile)){
+											char *wtext = get_string(wfile);
+											if (wtext != NULL){
+												for(uint k = 0; *(wtext + k) != '\0'; decodify((byte *) (wtext + k++)));
+												printf("%s\n\n", wtext);
+												free(wtext);
+											};
+										};
+										fclose(wfile);
+									};
+								};
+								game->ginterfacePos(game, traveller, &interface_pointer);
 
 								//Everyting is set up. Game can now start.
-								FILE *interface_pointer = NULL;
 								while(!game->END_FLAG){
-									if(game->command->get_command(game->command))
-										system("clear");
+									while(!game->command->get_command(game->command));
+									system("clear");
 									game->ginterfacePre(game, traveller, &interface_pointer);
-									game->command->cprocess(game, traveller, game->command->memory);
+									game->command->cprocess(game, &traveller, game->command->memory);
 									game->ginterfacePos(game, traveller, &interface_pointer);
 								};
+								//Finishing the game
+								printf("\n");
+								system("clear");
+								printf("Até logo, %s!\n", game->player->name);
 								// Saves player progress before games end.
-								if(game->grefresh(game))
+								if(game->grefresh(game)){
 									#ifdef DEBUG
 										printf("D: saved player's progress.\n");
 									#endif
-								else printf("E: can't save new game data. Progress maybe is lost.\n");
+								} else printf("E: can't save new game data. Progress maybe is lost.\n");
 							} else printf("E: something went wrong in WORLD setup on \"%s\". abort.\n", __FUNCTION__);
 						} else printf("E: failed to init \"returnvals\" on \"%s\".\n", __FUNCTION__);
 						free(process);

@@ -3,6 +3,51 @@
 #include <stdlib.h>
 #include <stdio.h>
 
+//GENERAL STUFF
+
+static void quicksort_rec(byte *v, short int const start, short int const end){
+	short int i = start, j = end;
+	byte pivot = *(v + (start + end)/2);
+	while(i <= j){
+		while(i <= end && *(v + i) < pivot) 
+			++i;
+		while(j >= start && *(v + j) > pivot) 
+			--j;
+		if (i <= j){
+			SWAP(*(v + i), *(v + j));
+			--j;
+			++i;
+		};
+	};
+	if (i < end) 
+		quicksort_rec(v, i, end);
+	if (j > start)
+		quicksort_rec(v, start, j);
+};
+
+void quicksort(byte *v, byte size){
+	if (v != NULL)
+		quicksort_rec(v, 0, size - 1);
+};
+
+short int binsearch(byte *v, byte size, byte key){
+	if (v != NULL){
+		byte start = 0, end = (size - 1), middle;
+		while(start <= end){
+			middle = (start + end)/2;
+			if (*(v + middle) == key)
+				return middle;
+			else {
+				if (*(v + middle) > key)
+					end = middle - 1;
+				else
+					start = middle + 1;
+			};
+		};
+	};
+	return -1;
+};
+
 //STACK STUFF
 typedef struct stack_node {
 	char *content;
@@ -56,6 +101,8 @@ bool stack_destroy(STACK **s){
 	if (s != NULL && *s != NULL){
 		SNODE *sn = (*s)->top, *aux;
 		while (sn != NULL){
+			if (sn->content != NULL)
+				free(sn->content);
 			aux = sn;
 			sn = sn->prev;
 			free(aux);
@@ -71,10 +118,13 @@ bool stack_clear(STACK *s){
 	if (s != NULL){
 		SNODE *sn = s->top, *aux;
 		while (sn != NULL){
+			if (sn->content != NULL)
+				free(sn->content);
 			aux = sn;
 			sn = sn->prev;
 			free(aux);
 		};
+		s->top = NULL;
 		return TRUE;
 	};
 	err_exit;
@@ -169,6 +219,8 @@ bool list_clear(LIST *l){
 		if (l->hnode != NULL){
 			LNODE *aux = (l->hnode->next), *rem;
 			while(aux != l->hnode){
+				if (aux->string != NULL)
+					free(aux->string);
 				rem = aux;
 				aux = aux->next;
 				free(rem);
@@ -186,6 +238,8 @@ bool list_destroy(LIST **l){
 		if ((*l)->hnode != NULL){
 			LNODE *aux = ((*l)->hnode->next), *rem;
 			while(aux != (*l)->hnode){
+				if (aux->string != NULL)
+					free(aux->string);
 				rem = aux;
 				aux = aux->next;
 				free(rem);

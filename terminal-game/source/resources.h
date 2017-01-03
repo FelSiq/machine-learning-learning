@@ -4,6 +4,7 @@
 #define MODULUS(A) (A < 0) ? -A : A
 #define BITS_IN_BYTE 8
 #define GLOBALV_IACTVNUM 30
+#define SWAP(A,B) {short int C = A; A = B; B = C;}
 
 typedef enum {
 	FALSE,
@@ -12,6 +13,10 @@ typedef enum {
 
 typedef unsigned int uint;
 typedef unsigned char byte; 
+
+//GENERAL STUFF
+void quicksort(byte *, byte);
+short int binsearch(byte *, byte, byte);
 
 //STACK STUFF
 typedef struct stack STACK;

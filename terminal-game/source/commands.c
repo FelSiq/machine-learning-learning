@@ -7,6 +7,14 @@
 #include <stdio.h>
 #include <string.h>
 #include <time.h>
+#include <pthread.h>
+
+typedef struct arg_struct {
+	bool FLAG;
+	char *string;
+	CHAMBER **tvl;
+	GAME *g;
+} arg_struct;
 
 void string_uppercase(char *s){
 	if (s != NULL)
@@ -22,98 +30,271 @@ void string_lowercase(char *s){
 				*(s + i) += MODULUS(ASCIIa - ASCIIA);
 };
 
-static bool cprocess(GAME *g, CHAMBER *tvl, STACK *s){
+static void *cprocess_global(void *vas){
+	arg_struct *as = (arg_struct *) vas;
+	bool *ret = malloc(sizeof(bool));
+	if (ret != NULL && as != NULL){
+		*ret = FALSE;
+		GAME *g = as->g;
+		CHAMBER *tvl = *(as->tvl);
+		char *string = as->string;
+		//Test global commands
+		for(byte i = g->command->gcnum; as->FLAG && !(*ret) && (i > 0); --i){
+			if (strcmp(string, *(g->command->gcommands + i -1)) == 0){
+				(*ret) = TRUE;
+				if (strcmp(string, "sair") == 0){
+					g->END_FLAG = TRUE;
+				} else if (strcmp(string, "observar") == 0){
+					printf("(Você observa ao seu redor, em \"%s\", e consegue notar...)\n", tvl->string);
+					if (tvl->adjchambers != NULL){
+						CHAMBER *aux;
+						for(byte j = tvl->adjnum; j > 0; --j){
+							aux = (*(tvl->adjchambers + j - 1))->a;
+							if (aux == tvl)
+								aux = (*(tvl->adjchambers + j - 1))->b;
+							
+							printf("Caminho para \"%s\"", aux->string);
+
+							if (!(*(tvl->adjchambers + j - 1))->open){
+								if ((*(tvl->adjchambers + j - 1))->string != NULL)
+									printf(" (%s)", (*(tvl->adjchambers + j - 1))->string);
+								else
+									printf(" (interditado)");
+							};
+							printf("\n");
+						};
+					};
+					if (tvl->iactives != NULL){
+						for(byte j = tvl->actnum; j > 0; --j){
+							printf("\"%s\"", (*(tvl->iactives + j - 1))->label);
+							if ((*(tvl->iactives + j - 1))->progress > 0)
+								printf(" [tarefa em progresso...]");
+							printf("\n");
+						};
+					} else printf("e nenhum objeto interessante.\n");
+				} else if (strcmp(string, "notas") == 0){
+					if (!list_empty(g->player->notes)){
+						list_print(g->player->notes);
+					} else printf("Você não possui nenhuma tarefa ativa no momento.\n");
+				} else if (strcmp(string, "mochila") == 0){
+					FILE *fp = fopen("./data/tmeasures", "r");
+					uint aux = 0, val;
+					if (fp != NULL){
+						fscanf(fp, "%u%*c", &aux);
+						printf("(Você olha dentro de sua mochila e...)\n");
+						for(byte i = 0; i < GLOBALV_PINV_STDSIZE; ++i){
+							printf("[");
+							val = strlen(*(g->player->colnames + *(g->player->colectibles + i)));
+							if (val < aux/GLOBALV_BACKPACK_LINES)
+								for(byte j = 0; j < (aux/GLOBALV_BACKPACK_LINES - val + 1)/2 - 1; printf(" "), ++j);
+							if (g->player->colnamnum > *(g->player->colectibles + i))
+								printf("%s", *(g->player->colnames + *(g->player->colectibles + i)));
+							else
+								printf("???");
+							if (val < aux/GLOBALV_BACKPACK_LINES)
+								for(byte j = 0; j < (aux/GLOBALV_BACKPACK_LINES - val)/2 - 1; printf(" "), ++j);
+							printf("]");
+							if (((i + 1) % GLOBALV_BACKPACK_LINES) == 0)
+								printf("\n");
+						};
+						fclose(fp);
+					} else printf("E: can't access \"./data/tmeasures\" on %s.", __FUNCTION__);
+				} else if (strcmp(string, "salvar") == 0){
+					if (g->grefresh(g))
+						printf("Progresso salvo com sucesso.\n");
+					else
+						printf("Algo deu errado, seu progresso não pôde ser salvo.\n");
+				} else if (strcmp(string, "mapa") == 0){
+					byte counter = 0, counter2 = 0;
+					FILE *wfile = fopen("./source/gmap", "r");
+					CHAMBER *chaux = NULL;
+					if (wfile != NULL){
+						while(!feof(wfile)){
+							char *wtext = get_string(wfile);
+							if (wtext != NULL){
+								for(uint k = 0; *(wtext + k) != '\0'; decodify((byte *) (wtext + k++)));
+								
+								while(chaux == NULL && counter < g->world->nused)
+									chaux = (*(g->world->allchambers + counter2++));
+
+								if (chaux != NULL){
+									printf("%s\t%hu. %s", wtext, (counter + 1), chaux->string);
+									if (strcmp(chaux->string, tvl->string) == 0)
+										printf(" (e aqui estamos!)");
+								};
+
+								printf("\n");
+								chaux = NULL;
+								++counter;
+								free(wtext);
+							};
+						};
+					fclose(wfile);
+					};
+				};
+			};
+		};
+		//End of global testing
+	};
+	return ret;
+};
+
+char *string_copy(char *s){
+	uint size = strlen(s);
+	char *ns = malloc(sizeof(char) * (size + 1));
+	if (ns != NULL){
+		*(ns + size) = '\0';
+		while(0 < size--)
+			*(ns + size) = *(s + size);
+	};
+	#ifdef DEBUG
+		printf("D: copied string (strcmp() = %lu):\n\"%s\"\n\"%s\"\n", strcmp(s, ns), s, ns);
+	#endif
+	return ns;
+};
+
+static bool recursive_stackcompare(STACK *a, STACK *b, bool *FLAG){
+	if (FLAG){
+		if (stack_empty(a) && stack_empty(b)){
+			*FLAG = FALSE;
+			return TRUE;
+		};
+		if (stack_empty(a) ^ stack_empty(b))
+			return FALSE;
+		#ifdef DEBUG
+			if(stack_top(a) != NULL)
+				printf("D: stack_top(a): \"%s\".\n", stack_top(a));
+			if(stack_top(b) != NULL)
+				printf("D: stack_top(b): \"%s\".\n", stack_top(b));
+		#endif
+		if (stack_top(a) != NULL && stack_top(b) != NULL && strcmp(stack_top(a), stack_top(b)) == 0){
+			char *sa = stack_pop(a);
+			char *sb = stack_pop(b);
+			bool res = recursive_stackcompare(a, b, FLAG);
+			stack_push(a, sa);
+			stack_push(b, sb);
+			return res;
+		};
+	};
+	return FALSE;
+};
+
+static void *cprocess_local(void *vas){
+	arg_struct *as = (arg_struct *) vas;
+	bool *ret = malloc(sizeof(bool));
+	if (ret != NULL && as != NULL){
+		CHAMBER *tvl = *(as->tvl), *chaux;
+		char *string = as->string; 
+		GAME *g = as->g;
+		(*ret) = FALSE;
+		//Testing local commands
+		for (byte i = tvl->adjnum; as->FLAG && !(*ret) && i > 0; --i){
+			chaux = (*(tvl->adjchambers + i - 1))->a;
+			if (chaux == tvl)
+				chaux = (*(tvl->adjchambers + i - 1))->b;
+			
+			COMMAND *newc = cinit();
+			if (newc != NULL){
+				newc->string = string_copy(chaux->string);
+				size_t val = strlen(newc->string);
+				newc->string = realloc(newc->string, sizeof(char) * (val + 2));
+				*(newc->string + val) = 32;
+				*(newc->string + val + 1) = '\0';
+				newc->str_tokenizer(newc);
+
+				if (strcmp(stack_top(newc->memory), as->string) == 0){
+					free(stack_pop(newc->memory));
+					(*ret) = recursive_stackcompare(newc->memory, g->command->memory, &as->FLAG);
+					if (*ret){
+						stack_clear(g->command->memory);
+						if ((*(tvl->adjchambers + i - 1))->open){
+							if ((*(tvl->adjchambers + i - 1))->string != NULL)
+								printf("%s\n", (*(tvl->adjchambers + i - 1))->string);
+							printf("Chegamos em um novo local: \"%s\".\n", chaux->string);
+							*(as->tvl) = chaux;
+						} else printf("Não é possível prosseguir por ali no momento. Talvez devêssemos tentar mais tarde?!\n");
+					};
+				};
+				cdestroy(&newc);
+			};
+		};
+		//Testing Interactives commands 
+		for (byte i = tvl->actnum; as->FLAG && !(*ret) && i > 0; --i){
+			
+		};
+	};
+	return ret;
+};
+
+static bool cprocess(GAME *g, CHAMBER **tvl, STACK *s){
 	if (g != NULL && g->command != NULL && s != NULL && tvl != NULL){
-		bool FLAG = TRUE;
+		bool FLAG = FALSE;
 		while(!stack_empty(s)){
 			char *string = stack_pop(s);
 			if (string != NULL){
 				#ifdef DEBUG
 					printf("D: will process \"%s\"...\n", string);
 				#endif
-				//Test global commands first
-				for(byte i = g->command->gcnum; FLAG && (i > 0); --i){
-					if (strcmp(string, *(g->command->gcommands + i -1)) == 0){
-						if (strcmp(string, "sair") == 0){
-							g->END_FLAG = TRUE;
-							FLAG = FALSE;
-						} else if (strcmp(string, "observar") == 0){
-							printf("(Você observa ao seu redor, em \"%s\", e consegue notar...)\n", tvl->string);
-							if (tvl->adjchambers != NULL){
-								CHAMBER *aux;
-								for(byte j = tvl->adjnum; j > 0; --j){
-									aux = (*(tvl->adjchambers + j - 1))->a;
+				//PARALLELS
+				pthread_t *process = malloc(sizeof(pthread_t) * GLOBALV_THREADNUM_COMMANDS);
+				if (process != NULL){
+					arg_struct *as = malloc(sizeof(arg_struct));
+					if (as != NULL){
+						as->g = g;
+						as->tvl = tvl;
+						as->string = string;
+						as->FLAG = TRUE;
+						bool **returnvals = malloc(sizeof(bool *) * GLOBALV_THREADNUM_COMMANDS);
+						if (returnvals != NULL){
+							for(byte i = GLOBALV_THREADNUM_COMMANDS; i > 0; *(returnvals + --i) = NULL);
+							#ifdef DEBUG
+								printf("D: will start multithreading (in %s)...\n", __FUNCTION__);
+							#endif
+							byte sum = 0;
+							sum += pthread_create((process + 0), NULL, cprocess_global, (void *) as);
+							sum += pthread_create((process + 1), NULL, cprocess_local, (void *) as);
 
-									if (aux == tvl)
-										aux = (*(tvl->adjchambers + j - 1))->b;
-									
-									printf("Caminho para \"%s\"", aux->string);
+							if (sum == 0){
+								#ifdef DEBUG
+									printf("D: will now join threads...\n");
+								#endif
 
-									if (!(*(tvl->adjchambers + j - 1))->open){
-										if ((*(tvl->adjchambers + j - 1))->string != NULL)
-											printf(" (%s)", (*(tvl->adjchambers + j - 1))->string);
-										else
-											printf(" (interditado)");
+								for(byte i = GLOBALV_THREADNUM_COMMANDS; i > 0; 
+									pthread_join(*(process + i - 1), (void **) (returnvals + i - 1)), --i);
+
+								#ifdef DEBUG
+									printf("D: will now check results...\n");
+								#endif
+
+								for(byte i = GLOBALV_THREADNUM_COMMANDS; i > 0; --i)
+									if (*(returnvals + i - 1) != NULL){
+										if (!FLAG && **(returnvals + i - 1))
+											FLAG = TRUE;
+										free(*(returnvals + i - 1));
 									};
-									printf("\n");
-								};
+							} else {
+								printf("E: error in thread init in %s. abort.\n", __FUNCTION__);
+								for(byte i = GLOBALV_THREADNUM_COMMANDS; i > 0; pthread_cancel(*(process + i - 1)), --i);
 							};
+							free(returnvals);
 
-							if (tvl->iactives != NULL){
-								for(byte j = tvl->actnum; j > 0; --j){
-									printf("\"%s\"", (*(tvl->iactives + j - 1))->label);
-									if ((*(tvl->iactives + j - 1))->progress > 0)
-										printf(" [tarefa em progresso...]");
-									printf("\n");
-								};
-							} else printf("e nenhum objeto interessante.\n");
+							#ifdef DEBUG
+								printf("D: end of parallel processing in %s.\n", __FUNCTION__);
+							#endif
 
-							FLAG = FALSE;
-						} else if (strcmp(string, "notas") == 0){
-							if (!list_empty(g->player->notes)){
-								list_print(g->player->notes);
-							} else printf("Você não possui nenhuma tarefa ativa no momento.\n");
-							FLAG = FALSE;
-						} else if (strcmp(string, "mochila") == 0){
-							FILE *fp = fopen("./data/tmeasures", "r");
-							uint aux = 0, val;
-							if (fp != NULL){
-								fscanf(fp, "%u%*c", &aux);
-								printf("(Você olha dentro de sua mochila e...)\n");
-								for(byte i = 0; i < GLOBALV_PINV_STDSIZE; ++i){
-									printf("[");
-									val = strlen(*(g->player->colnames + *(g->player->colectibles + i)));
-									if (val < aux/GLOBALV_BACKPACK_LINES)
-										for(byte j = 0; j < (aux/GLOBALV_BACKPACK_LINES - val + 1)/2 - 1; printf(" "), ++j);
-									if (g->player->colnamnum > *(g->player->colectibles + i))
-										printf("%s", *(g->player->colnames + *(g->player->colectibles + i)));
-									else
-										printf("???");
-									if (val < aux/GLOBALV_BACKPACK_LINES)
-										for(byte j = 0; j < (aux/GLOBALV_BACKPACK_LINES - val)/2 - 1; printf(" "), ++j);
-									printf("]");
-									if (((i + 1) % GLOBALV_BACKPACK_LINES) == 0)
-										printf("\n");
-								};
-								fclose(fp);
-							} else printf("E: can't access \"./data/tmeasures\" on %s.", __FUNCTION__);
-							FLAG = FALSE;
-						} else if (strcmp(string, "salvar") == 0){
-							if (g->grefresh(g))
-								printf("Progresso salvo com sucesso.\n");
-							else
-								printf("Algo deu errado, seu progresso não pôde ser salvo.\n");
-							FLAG = FALSE;
-						};
-					} else {
-						//Now test with local commands
-					};
-				};		
+						} else printf("E: can't malloc \"returnvals\" on %s.", __FUNCTION__);
+						free(as);
+					} else printf("E: can't create \"arg_struct\" on %s.\n", __FUNCTION__);
+					free(process);
+				} else printf("E: can't init threads on %s.\n", __FUNCTION__);
+
 				free(string);
 			};
 		};
-		if (FLAG)
+		if (!FLAG){
 			rprintf(g->command->fail_strings, g->command->failnum);
+			printf("\n(Comando inválido)\n");
+		};
 
 		return TRUE;
 	};

@@ -49,6 +49,12 @@ static void game_interfacePos(GAME *g, CHAMBER *tvl, FILE **fp){
 		for(fscanf(*fp, "%hhu%*c", &aux), i = aux; i > 0; printf("_"), --i);
 		printf("\nLocal: %s\t\tTarefas completas: %hu/%hu\t\tTarefas ativas: %hhu\n", 
 			tvl->string, g->player->tasksdone, GLOBALV_NUMTASK, list_count(g->player->notes));
+		if (tvl->iactives != NULL){
+			printf("COMANDOS LOCAIS:\n");
+			for(byte i = tvl->actnum; i > 0; 
+				printf("%s %s\n", *((*(tvl->iactives + i - 1))->actions + (*(tvl->iactives + i - 1))->progress), (*(tvl->iactives + i - 1))->label), 
+				--i);
+		};
 		for(i = aux; i > 0; printf("_"), --i);
 		printf("\nDigite: ");
 		fclose(*fp);
@@ -311,10 +317,10 @@ static void *wload(void *vw){
 		//Hardcoded section
 		//First line
 		counter += (*(w->allchambers + 3))->adjch_setup(*(w->allchambers + 3), 2, *(w->allchambers + 2), *(w->allchambers + 4));
-		(*(w->allchambers + 3))->chpath_setup((*(w->allchambers + 3)), TRUE, FALSE);
+		(*(w->allchambers + 3))->chpath_setup((*(w->allchambers + 3)), FALSE, TRUE);
 		//Second line
 		counter += (*(w->allchambers + 6))->adjch_setup(*(w->allchambers + 6), 2, *(w->allchambers + 0), *(w->allchambers + 7));
-		(*(w->allchambers + 6))->chpath_setup((*(w->allchambers + 6)), TRUE, FALSE);
+		(*(w->allchambers + 6))->chpath_setup((*(w->allchambers + 6)), FALSE, TRUE);
 
 		counter += (*(w->allchambers + 8))->adjch_setup(*(w->allchambers + 8), 3, *(w->allchambers + 7), 
 			*(w->allchambers + 2), *(w->allchambers + 14));
@@ -325,13 +331,13 @@ static void *wload(void *vw){
 		(*(w->allchambers + 10))->chpath_setup((*(w->allchambers + 10)), TRUE, TRUE, TRUE);
 		//Third line
 		counter += (*(w->allchambers + 15))->adjch_setup(*(w->allchambers + 15), 2, *(w->allchambers + 14), *(w->allchambers + 16));
-		(*(w->allchambers + 15))->chpath_setup((*(w->allchambers + 15)), FALSE, TRUE);
+		(*(w->allchambers + 15))->chpath_setup((*(w->allchambers + 15)), TRUE, FALSE);
 		//Last line
 		counter += (*(w->allchambers + 18))->adjch_setup(*(w->allchambers + 18), 1, *(w->allchambers + 19));
 		(*(w->allchambers + 18))->chpath_setup((*(w->allchambers + 18)), TRUE);
 		
-		counter += (*(w->allchambers + 20))->adjch_setup(*(w->allchambers + 19), 2, *(w->allchambers + 7), *(w->allchambers + 14));
-		(*(w->allchambers + 20))->chpath_setup((*(w->allchambers + 20)), FALSE);
+		counter += (*(w->allchambers + 20))->adjch_setup(*(w->allchambers + 20), 2, *(w->allchambers + 14), *(w->allchambers + 18));
+		(*(w->allchambers + 20))->chpath_setup((*(w->allchambers + 20)), TRUE, FALSE);
 
 		counter += (*(w->allchambers + 22))->adjch_setup(*(w->allchambers + 22), 1, *(w->allchambers + 16));
 		(*(w->allchambers + 22))->chpath_setup((*(w->allchambers + 22)), FALSE);
@@ -385,11 +391,11 @@ static void *wgetlabels(void *vw){
 };
 
 static IACTV *iload(IACTV *i, char const path[]){
-	if (access(path, R_OK) == 0)
+	if (access(path, R_OK) == 0){
 		#ifdef DEBUG
 			printf("D: file \"%s\" is found and is readable.\n", path);
 		#endif
-	else {
+	} else {
 		printf("E: can't access \"%s\" file.\n", path);
 		free(i);
 		return NULL;
@@ -432,7 +438,7 @@ static IACTV *iload(IACTV *i, char const path[]){
 					};
 
 					if (security_v == 0)
-						printf("W: security_v ran out! (possible non-stopping loop error due to bad extern file)\n");
+						printf("W: security_v ran out in %s! (possible non-stopping loop error due to bad extern file)\n", __FUNCTION__);
 
 					#ifdef DEBUG
 						if (i->label != NULL)
@@ -462,7 +468,8 @@ static void *isetup(void *vw){
 		for(byte n = 0, num = 0; n < (GLOBALV_MAPW * GLOBALV_MAPH); ++n){
 			if (*(w->allchambers + n) != NULL){
 				switch(n){
-					case 0: num = 2; break;
+					case 0: num = 1; break;
+					case 8: num = 1; break;
 					default: num = 0;
 				};
 
@@ -472,8 +479,12 @@ static void *isetup(void *vw){
 				if (i != NULL){
 					switch(n){
 						case 0:
-							(*(w->allchambers + 0))->iactv_setup(*(w->allchambers + 0), num, 
-								(*(i + 0))->iload(*(i + 0), "./iactv/d00"), (*(i + 1))->iload(*(i + 1), "./iactv/d01")); 
+							(*(w->allchambers + n))->iactv_setup(*(w->allchambers + n), num, 
+								(*(i + 0))->iload(*(i + 0), "./iactv/d01")); 
+							break;
+						case 8:
+							(*(w->allchambers + n))->iactv_setup(*(w->allchambers + n), num, 
+								(*(i + 0))->iload(*(i + 0), "./iactv/d00")); 
 							break;
 					};
 				};

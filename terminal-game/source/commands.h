@@ -10,6 +10,7 @@
 #define ENTER 10
 
 #define GLOBALV_BACKPACK_LINES 3
+#define GLOBALV_THREADNUM_COMMANDS 2
 
 #include "resources.h"
 #include "structure.h"
@@ -26,7 +27,7 @@ struct commands {
 	bool (*get_command)(COMMAND *);
 	bool (*mem_dump)(COMMAND *);
 	
-	bool (*cprocess)(GAME *, CHAMBER *, STACK *);
+	bool (*cprocess)(GAME *, CHAMBER **, STACK *);
 	void (*tkn_treatment)(char **);
 	char *(*get_string)();
 };
@@ -37,5 +38,6 @@ char *get_string(FILE *);
 void rprintf(char **, byte);
 void string_uppercase(char *);
 void string_lowercase(char *);
+char *string_copy(char *);
 
 #endif

@@ -8,6 +8,28 @@
 #include <unistd.h>
 #include <string.h>
 
+static bool func_checkfull(PLAYER *p){
+	if (p != NULL && p->colectibles != NULL)
+		return (binsearch(p->colectibles, GLOBALV_PINV_STDSIZE, 0) == -1);
+	return TRUE;
+};
+
+static bool func_playerGetitem(PLAYER *p, byte id){
+	if (p != NULL && p->colectibles != NULL){
+		int k;
+		
+		if (!(k = func_checkfull(p))){
+			*(p->colectibles + k) = id;
+			quicksort(p->colectibles, GLOBALV_PINV_STDSIZE);
+			return TRUE;
+		};
+
+		printf("Sua mochila está cheia!\n");
+		return FALSE;
+	};
+	err_exit;
+};
+
 static bool func_playerGetname(PLAYER *p, FILE *fp){
 	if (p != NULL && fp != NULL){
 		if (p->name != NULL){
@@ -71,8 +93,10 @@ static bool func_playerSetup(PLAYER *p, char const path[], char const path2[]){
 					char *aux;
 					while(!feof(fp)){
 						aux = get_string(fp);
-						if (aux != NULL)
+						if (aux != NULL){
+							for(uint i = 0; *(aux + i) != '\0'; decodify((byte *) (aux + i)), ++i);
 							*(p->colnames + p->colnamnum++) = aux;
+						};
 					};
 					p->colnames = realloc(p->colnames, sizeof(char *) * (p->colnamnum));
 				} else printf("E: failed to malloc on p->colnames on %s.\n", __FUNCTION__);
@@ -101,6 +125,7 @@ PLAYER *pinit(){
 		//Setting player's methods
 		(*p).psetup = &func_playerSetup;
 		(*p).pgetname = &func_playerGetname;
+		(*p).pgetitem = &func_playerGetitem;
 		p->tasksdone = 0;
 		p->colnamnum = 0;
 		p->colectibles = NULL;
@@ -125,6 +150,10 @@ bool pdestroy(PLAYER **p){
 			free((*p)->name);
 		if ((*p)->notes != NULL)
 			list_destroy(&(*p)->notes);
+		if ((*p)->colnames != NULL){
+			for(byte i = (*p)->colnamnum; i > 0; free(*((*p)->colnames + --i)));
+			free((*p)->colnames);
+		};
 		free(*p);
 		(*p) = NULL;
 		return TRUE;
