@@ -419,6 +419,7 @@ static IACTV *iload(IACTV *i, char const path[]){
 						};
 						--security_v;
 					};
+
 					if (aux != NULL && *aux == '#'){
 						free(aux);
 						aux = NULL;
@@ -432,8 +433,57 @@ static IACTV *iload(IACTV *i, char const path[]){
 								};
 								--security_v;
 							};
-							if (aux != NULL && *aux == '#')
-								free(aux);
+						};
+
+						if (aux != NULL && *aux == '#'){
+							free(aux);
+							aux = NULL;
+						};
+					};
+
+					//Item requeriments for quests
+					i->colreq = malloc(sizeof(short int) * i->actnum);
+					if (i->colreq != NULL){
+						for(n = i->actnum; n > 0; *(i->colreq + --n) = -1);
+						short int auxsd[2] = {0, -1};
+						if (!feof(fp)){
+							while(security_v > 0 && *auxsd != -1){
+								fscanf(fp, "%hd", (auxsd));
+								if (*auxsd != -1){
+									fscanf(fp, "%hd", (auxsd + 1));
+									*(i->colreq + *auxsd) = *(auxsd + 1);
+
+									#ifdef DEBUG
+										printf("D: added a new requeriment for \"%s\" command: <%hhu>\n", 
+											*(i->actions + *auxsd),
+											*(auxsd + 1));
+									#endif
+								};
+								--security_v;
+							};
+						};
+					};
+
+					//Extra commands for commands
+					i->extracom = malloc(sizeof(char *) * i->actnum);
+					if (i->extracom != NULL){
+						for(n = i->actnum; n > 0; *(i->extracom + --n) = NULL);
+						short int auxsd = 0;
+						if (!feof(fp)){
+							while(security_v > 0 && auxsd != -1){
+								fscanf(fp, "%hd", &auxsd);
+								if (auxsd != -1){
+									*(i->extracom + auxsd) = get_string(fp);
+									for(byte k = 0; *(*(i->extracom + auxsd) + k) != '\0'; 
+										decodify((byte *) (*(i->extracom + auxsd) + k)), ++k);
+									#ifdef DEBUG
+										printf("D: added a \"ask more command\" for \"%s\" command: (%s).\n", 
+											*(i->actions + auxsd),
+											*(i->extracom + auxsd));
+									#endif
+								};
+								--security_v;
+							};
 						};
 					};
 
@@ -470,7 +520,7 @@ static void *isetup(void *vw){
 				switch(n){
 					case 0: num = 1; break;
 					case 8: num = 1; break;
-					default: num = 0;
+					default: num = 0; break;
 				};
 
 				i = malloc(sizeof(IACTV *) * num);
@@ -568,6 +618,8 @@ IACTV *iinit(){
 		i->script = NULL;
 		i->label = NULL;
 		i->actions = NULL;
+		i->colreq = NULL;
+		i->extracom = NULL;
 		i->progress = 0;
 		i->actnum = 0;
 		i->scpnum = 0;
@@ -585,18 +637,31 @@ bool idestroy(IACTV **i){
 	if (i != NULL && *i != NULL){
 		if ((*i)->label != NULL)
 			free((*i)->label);
+
+		if ((*i)->extracom != NULL){
+			for (byte n = (*i)->actnum; n > 0; --n)
+				if (*((*i)->extracom + n - 1) != NULL)
+					free(*((*i)->extracom + n - 1));
+			free((*i)->extracom);
+		};
+
 		if ((*i)->actions != NULL){
 			while(0 < (*i)->actnum--)
 				if (*((*i)->actions + (*i)->actnum) != NULL)
 					free(*((*i)->actions + (*i)->actnum));
 			free((*i)->actions);
 		};
+
 		if ((*i)->script != NULL){
 			while(0 < (*i)->scpnum--)
 				if (*((*i)->script + (*i)->scpnum) != NULL)
 					free(*((*i)->script + (*i)->scpnum));
 			free((*i)->script);
 		};
+
+		if ((*i)->colreq != NULL)
+			free((*i)->colreq);
+
 		free(*i);
 		(*i) = NULL;
 		#ifdef DEBUG

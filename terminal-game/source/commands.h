@@ -10,7 +10,7 @@
 #define ENTER 10
 
 #define GLOBALV_BACKPACK_LINES 3
-#define GLOBALV_THREADNUM_COMMANDS 2
+#define GLOBALV_THREADNUM_COMMANDS 3
 
 #include "resources.h"
 #include "structure.h"

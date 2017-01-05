@@ -44,9 +44,9 @@ struct the_world {
 struct interactives {
 	IACTV *(*iload)(IACTV *, char const *); 
 
-	char **script, *label, **actions;
-	byte progress;
-	byte scpnum, actnum;
+	char **script, *label, **actions, **extracom;
+	byte progress, scpnum, actnum;
+	short int *colreq;
 };
 
 struct map_chamber {

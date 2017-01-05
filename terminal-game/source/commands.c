@@ -148,18 +148,18 @@ char *string_copy(char *s){
 			*(ns + size) = *(s + size);
 	};
 	#ifdef DEBUG
-		printf("D: copied string (strcmp() = %lu):\n\"%s\"\n\"%s\"\n", strcmp(s, ns), s, ns);
+		printf("D: copied string (strcmp() = %d):\n\"%s\"\n\"%s\"\n", strcmp(s, ns), s, ns);
 	#endif
 	return ns;
 };
 
 static bool recursive_stackcompare(STACK *a, STACK *b, bool *FLAG){
 	if (FLAG){
-		if (stack_empty(a) && stack_empty(b)){
+		if (stack_empty(a)/* && stack_empty(b)*/){
 			*FLAG = FALSE;
 			return TRUE;
 		};
-		if (stack_empty(a) ^ stack_empty(b))
+		if (/*stack_empty(a) ^ */stack_empty(b))
 			return FALSE;
 		#ifdef DEBUG
 			if(stack_top(a) != NULL)
@@ -171,37 +171,164 @@ static bool recursive_stackcompare(STACK *a, STACK *b, bool *FLAG){
 			char *sa = stack_pop(a);
 			char *sb = stack_pop(b);
 			bool res = recursive_stackcompare(a, b, FLAG);
-			stack_push(a, sa);
-			stack_push(b, sb);
+
+			if (!res){
+				stack_push(a, sa);
+				stack_push(b, sb);
+			} else {
+				free(sa);
+				free(sb);
+			};
+			
 			return res;
 		};
 	};
 	return FALSE;
 };
 
-static void *cprocess_local(void *vas){
+static COMMAND *command_aux_init(char *s){
+	if (s != NULL){
+		COMMAND *newc = cinit();
+		if (newc != NULL){
+			newc->string = string_copy(s);
+			size_t val = strlen(newc->string);
+			newc->string = realloc(newc->string, sizeof(char) * (val + 2));
+			*(newc->string + val) = 32;
+			*(newc->string + val + 1) = '\0';
+			newc->str_tokenizer(newc);
+		};
+		return newc;
+	};
+	return NULL;
+};
+
+static void *cprocess_local_iactv(void *vas){
+	arg_struct *as = (arg_struct *) vas;
+	bool *ret = malloc(sizeof(bool));
+	if (ret != NULL && as != NULL){
+		CHAMBER *tvl = *(as->tvl);
+		GAME *g = as->g;
+		(*ret) = FALSE;
+		bool auxret, junk;
+		short int index;
+		//This is, by far, the slowest function in command recognition.
+		for (byte i = tvl->actnum; as->FLAG && !(*ret) && i > 0; --i){
+			COMMAND *newc = command_aux_init((*(tvl->iactives + i - 1))->label);
+			if (newc != NULL){
+				if (strcmp(stack_top((newc)->memory), as->string) == 0){
+					free(stack_pop((newc)->memory));
+					auxret = recursive_stackcompare((newc)->memory, g->command->memory, &as->FLAG);
+					if (auxret){
+						//Interactive name recognized, proceed.
+						#ifdef DEBUG
+							printf("D: recognized \"%s\" interactive in %s function.\n", 
+								(*(tvl->iactives + i - 1))->label, __FUNCTION__);
+						#endif
+
+						if (!stack_empty(g->command->memory)){
+							//There's additional command, verify if it exists.
+							for (byte j = (*(tvl->iactives + i - 1))->actnum; j > 0; --j){
+								COMMAND *auxc = command_aux_init(*((*(tvl->iactives + i - 1))->actions + j - 1));
+								if (auxc != NULL){
+									auxret = recursive_stackcompare((auxc)->memory, g->command->memory, &junk);
+									if (auxret){
+										#ifdef DEBUG
+											printf("D: recognized command.\n");
+										#endif
+										//Verify if recognized command has some requeriments
+										index = 0;
+										if (*((*(tvl->iactives + i - 1))->colreq + j - 1) != -1){
+											//Have requeriments
+											index = binsearch(g->player->colectibles, GLOBALV_PINV_STDSIZE,
+												*((*(tvl->iactives + i - 1))->colreq + j - 1));
+											if (index != -1){
+												printf("(\"%s\" foi removido da sua mochila.)\n", 
+													*(g->player->colnames + *((*(tvl->iactives + i - 1))->colreq + j - 1)));
+												*(g->player->colectibles + index) = 0;
+											};
+										};
+
+										if (index != -1){
+											//Requeriments meet, now check for "ask more command"
+											if (*((*(tvl->iactives + i - 1))->extracom + j - 1) == NULL){
+												//No "ask more command", proceed quest
+												printf("%s\n", *((*(tvl->iactives + i - 1))->script + (*(tvl->iactives + i - 1))->progress + 1));
+												if ((*(tvl->iactives + i - 1))->progress < ((*(tvl->iactives + i - 1))->actnum - 1)){
+													//Quest still in progress
+													++(*(tvl->iactives + i - 1))->progress;
+													if ((*(tvl->iactives + i - 1))->progress == ((*(tvl->iactives + i - 1))->actnum - 1)){
+														system("aplay -q ./snd/s0");
+														++g->player->tasksdone;
+														#ifdef DEBUG
+															printf("D: a quest is completed!\n");
+														#endif
+													};
+												};
+											} else {
+												//"ask more command" confirmed, get it.
+												printf("Interagindo com %s, o que fazer agora?\n", (*(tvl->iactives + i - 1))->label);
+												char *extracommand = get_string(stdin);
+												if (extracommand != NULL){
+													if (strcmp(extracommand, *((*(tvl->iactives + i - 1))->extracom + j - 1)) == 0){
+														++(*(tvl->iactives + i - 1))->progress;
+														printf("%s\n", *((*(tvl->iactives + i - 1))->script + (*(tvl->iactives + i - 1))->progress));
+														if ((*(tvl->iactives + i - 1))->progress == ((*(tvl->iactives + i - 1))->actnum - 1)){
+															system("aplay -q ./snd/s0");
+															++g->player->tasksdone;
+															#ifdef DEBUG
+																printf("D: a quest is completed!\n");
+															#endif
+														};
+													} else {
+														printf("Não funcionou.\n");
+													};
+													free(extracommand);
+												};
+											};
+										} else {
+											//Requeriments not meet.
+											printf("Requer \"%s\" para isto.\n", 
+												*(g->player->colnames + *((*(tvl->iactives + i - 1))->colreq + j - 1)));
+										};
+									};
+								};
+								cdestroy(&auxc);
+							};
+						} else {
+							//There's no additional command, just examine then.
+							printf("(Paramos por um momento e examinamos %s...)\n%s\n", 
+								(*(tvl->iactives + i - 1))->label,
+								*((*(tvl->iactives + i - 1))->script));
+						};
+						
+						//Final stuff
+						stack_clear(g->command->memory);
+						(*ret) = TRUE;
+					};
+				};
+				cdestroy(&newc);
+			};
+		};
+	};
+	return ret;
+};
+
+static void *cprocess_local_path(void *vas){
 	arg_struct *as = (arg_struct *) vas;
 	bool *ret = malloc(sizeof(bool));
 	if (ret != NULL && as != NULL){
 		CHAMBER *tvl = *(as->tvl), *chaux;
-		char *string = as->string; 
 		GAME *g = as->g;
 		(*ret) = FALSE;
 		//Testing local commands
 		for (byte i = tvl->adjnum; as->FLAG && !(*ret) && i > 0; --i){
+			//Getting the correct "other" chamber
 			chaux = (*(tvl->adjchambers + i - 1))->a;
 			if (chaux == tvl)
 				chaux = (*(tvl->adjchambers + i - 1))->b;
 			
-			COMMAND *newc = cinit();
+			COMMAND *newc = command_aux_init(chaux->string);
 			if (newc != NULL){
-				newc->string = string_copy(chaux->string);
-				size_t val = strlen(newc->string);
-				newc->string = realloc(newc->string, sizeof(char) * (val + 2));
-				*(newc->string + val) = 32;
-				*(newc->string + val + 1) = '\0';
-				newc->str_tokenizer(newc);
-
 				if (strcmp(stack_top(newc->memory), as->string) == 0){
 					free(stack_pop(newc->memory));
 					(*ret) = recursive_stackcompare(newc->memory, g->command->memory, &as->FLAG);
@@ -217,10 +344,6 @@ static void *cprocess_local(void *vas){
 				};
 				cdestroy(&newc);
 			};
-		};
-		//Testing Interactives commands 
-		for (byte i = tvl->actnum; as->FLAG && !(*ret) && i > 0; --i){
-			
 		};
 	};
 	return ret;
@@ -252,7 +375,8 @@ static bool cprocess(GAME *g, CHAMBER **tvl, STACK *s){
 							#endif
 							byte sum = 0;
 							sum += pthread_create((process + 0), NULL, cprocess_global, (void *) as);
-							sum += pthread_create((process + 1), NULL, cprocess_local, (void *) as);
+							sum += pthread_create((process + 1), NULL, cprocess_local_path, (void *) as);
+							sum += pthread_create((process + 2), NULL, cprocess_local_iactv, (void *) as);
 
 							if (sum == 0){
 								#ifdef DEBUG
@@ -276,6 +400,7 @@ static bool cprocess(GAME *g, CHAMBER **tvl, STACK *s){
 								printf("E: error in thread init in %s. abort.\n", __FUNCTION__);
 								for(byte i = GLOBALV_THREADNUM_COMMANDS; i > 0; pthread_cancel(*(process + i - 1)), --i);
 							};
+
 							free(returnvals);
 
 							#ifdef DEBUG
