@@ -487,6 +487,29 @@ static IACTV *iload(IACTV *i, char const path[]){
 						};
 					};
 
+					//Item rewards by quests
+					i->rewards = malloc(sizeof(short int) * i->actnum);
+					if (i->rewards != NULL){
+						for(n = i->actnum; n > 0; *(i->rewards + --n) = -1);
+						short int auxsd[2] = {0, -1};
+						if (!feof(fp)){
+							while(security_v > 0 && *auxsd != -1){
+								fscanf(fp, "%hd", (auxsd));
+								if (*auxsd != -1){
+									fscanf(fp, "%hd", (auxsd + 1));
+									*(i->rewards + *auxsd) = *(auxsd + 1);
+
+									#ifdef DEBUG
+										printf("D: added a new reward for \"%s\" command: <%hhu>\n", 
+											*(i->actions + *auxsd),
+											*(auxsd + 1));
+									#endif
+								};
+								--security_v;
+							};
+						};
+					};
+
 					if (security_v == 0)
 						printf("W: security_v ran out in %s! (possible non-stopping loop error due to bad extern file)\n", __FUNCTION__);
 
@@ -620,6 +643,7 @@ IACTV *iinit(){
 		i->actions = NULL;
 		i->colreq = NULL;
 		i->extracom = NULL;
+		i->rewards = NULL;
 		i->progress = 0;
 		i->actnum = 0;
 		i->scpnum = 0;
@@ -661,6 +685,9 @@ bool idestroy(IACTV **i){
 
 		if ((*i)->colreq != NULL)
 			free((*i)->colreq);
+
+		if ((*i)->rewards != NULL)
+			free((*i)->rewards);
 
 		free(*i);
 		(*i) = NULL;

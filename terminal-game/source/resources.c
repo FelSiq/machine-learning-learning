@@ -4,7 +4,6 @@
 #include <stdio.h>
 
 //GENERAL STUFF
-
 static void quicksort_rec(byte *v, short int const start, short int const end){
 	short int i = start, j = end;
 	byte pivot = *(v + (start + end)/2);
@@ -32,13 +31,13 @@ void quicksort(byte *v, byte size){
 
 short int binsearch(byte *v, byte size, byte key){
 	if (v != NULL){
-		byte start = 0, end = (size - 1), middle;
+		short int start = 0, end = (size - 1), middle;
 		while(start <= end){
 			middle = (start + end)/2;
 			if (*(v + middle) == key)
 				return middle;
 			else {
-				if (*(v + middle) > key)
+				if (*(v + middle) < key)
 					end = middle - 1;
 				else
 					start = middle + 1;
@@ -269,4 +268,225 @@ byte list_count(LIST *l){
 	if (l != NULL)
 		for (LNODE *aux = l->hnode->next; aux != l->hnode; aux = aux->next, ++counter);
 	return counter;
+};
+
+
+//DYNAMIC HEAP STUFF
+typedef struct tnode {
+	unsigned int key; 
+	struct tnode *sonl, *sonr; 
+	char *string;
+} TNODE;
+
+struct heapd {
+	TNODE *root;
+	unsigned int nodenum;
+};
+
+static TNODE *tnode_init(char *const s, unsigned int k, 
+	TNODE *sl, TNODE *sr){
+	TNODE *tn = malloc(sizeof(TNODE));
+	if (tn != NULL){
+		tn->string = s;
+		tn->key = k;
+		tn->sonr = sr;
+		tn->sonl = sl;
+	};
+	return tn;
+};
+
+static void heapd_travel_rec(TNODE *r, void (*funcp)(TNODE *)){
+	if(r != NULL){
+		heapd_travel_rec(r->sonl, funcp);
+		heapd_travel_rec(r->sonr, funcp);
+		funcp(r);
+	};
+};
+
+static void heapd_print_rec(TNODE *r){
+	printf("[key: %u]\t\"%s\"\n", r->key, r->string);
+};
+
+static bool heapd_insert_rec(TNODE *tn, TNODE *newnode, unsigned int bitmap){
+	if (tn != NULL){
+		if (bitmap & 1){
+			if(heapd_insert_rec(tn->sonr, newnode, bitmap >> 1))
+				tn->sonr = newnode;
+			if(tn->sonr->key > tn->key){
+				SWAP_VEC(tn->sonr->string, tn->string);
+				SWAP_INT(tn->sonr->key, tn->key);
+			};
+		} else {
+			if(heapd_insert_rec(tn->sonl, newnode, bitmap >> 1))
+				tn->sonl = newnode;
+			if(tn->sonl->key > tn->key){
+				SWAP_VEC(tn->sonl->string, tn->string);
+				SWAP_INT(tn->sonl->key, tn->key);
+			};
+		};
+	} else return TRUE;
+	return FALSE;
+};
+
+static unsigned int reverse_bits(unsigned int i, unsigned int *num){
+	unsigned int res = 0, aux = i, maska = 1, maskb = 1;
+	while(0 < (aux/= 2)){
+		maska <<= 1;
+		if (num != NULL)
+			++(*num);
+	};
+	while (0 < maska){
+		if (i & maska)
+			res |= maskb;
+		maskb <<= 1;
+		maska >>= 1;
+	};
+	return res;
+};
+
+static void tnode_destroy(TNODE *tn){
+	if (tn != NULL){
+		if (tn->string != NULL)
+			free(tn->string);
+		free(tn);
+	};
+};
+
+static void heapd_printlist_rec(TNODE *r, unsigned int l){
+	if (r != NULL){
+		for(unsigned int i = l; i > 0; printf(" "), --i);
+		printf("%u\n", r->key);
+		heapd_printlist_rec(r->sonl, 1 + l);
+		heapd_printlist_rec(r->sonr, 1 + l);
+	};
+};
+
+HEAPD *heapd_init(){
+	HEAPD *hd = malloc(sizeof(HEAPD));
+	if (hd != NULL){
+		hd->root = NULL;
+		hd->nodenum = 0;
+	};
+	return hd;
+};
+
+bool heapd_destroy(HEAPD **hd){
+	if (hd != NULL && *hd != NULL){
+		heapd_travel_rec((*hd)->root, &tnode_destroy);
+		free(*hd);
+		(*hd) = NULL;
+		return TRUE;
+	};
+	return FALSE;
+};
+
+bool heapd_clear(HEAPD *hd){
+	if(hd != NULL){
+		heapd_travel_rec(hd->root, &tnode_destroy);
+		hd->root = NULL;
+		return TRUE;
+	};
+	return FALSE;
+};
+
+bool heapd_insert(HEAPD *hd, char *s, unsigned int k){
+	if (hd != NULL && s != NULL){
+		TNODE *newnode;
+		if ((newnode = tnode_init(s, k, NULL, NULL)) != NULL){
+			if (hd->root != NULL)
+				heapd_insert_rec(hd->root, newnode, (reverse_bits(1 + hd->nodenum, NULL) >> 1));
+			else 
+				hd->root = newnode;
+			++hd->nodenum;
+			return TRUE;
+		};
+	};
+	return FALSE;
+};
+
+char *heapd_remove(HEAPD *hd, unsigned int pos){
+	if (hd != NULL && pos > 0 && pos <= hd->nodenum){
+		char *s = NULL;
+		if (hd->nodenum > 1){
+			//get the last position and its father.
+			TNODE *flastpos = hd->root, *lastpos = hd->root;
+			unsigned int size[2] = {0, 0}, fnbitmap = ((reverse_bits(FATHER(hd->nodenum), size)) >> 1); 
+
+			//Get last pos father (follow bitmap)
+			while(0 < (*size)--){
+				if (fnbitmap & 1)
+					flastpos = flastpos->sonr;
+				else
+					flastpos = flastpos->sonl;
+				fnbitmap >>= 1;
+			};
+
+			//Get last pos itself, and take it off the heap
+			lastpos = flastpos->sonr;
+			if (lastpos == NULL){
+				lastpos = flastpos->sonl;
+				flastpos->sonl = NULL;
+			} else flastpos->sonr = NULL;
+
+			//Check if we don't want to remove the last pos itself
+			if (pos != hd->nodenum){
+				//Now get the position (follow bitmap)
+				TNODE *thepos = hd->root;
+				unsigned int pbitmap = ((reverse_bits(pos, (size + 1))) >> 1);
+
+				while(0 < (*(size + 1))--){
+					if (pbitmap & 1)
+						thepos = thepos->sonr;
+					else
+						thepos = thepos->sonl;
+					pbitmap >>= 1;
+				};
+				//Now the trade between nodes
+				SWAP_INT(lastpos->key, thepos->key);
+				SWAP_VEC(lastpos->string, thepos->string);
+
+				//Now fixdown
+				TNODE *auxnode;
+				do {
+					auxnode = NULL;
+					if(thepos->sonl != NULL && thepos->key < thepos->sonl->key)
+						auxnode = thepos->sonl;
+					if(thepos->sonr != NULL && thepos->key < thepos->sonr->key)
+						if (auxnode == NULL || (auxnode->key < thepos->sonr->key))
+							auxnode = thepos->sonr;
+					if (auxnode != NULL){
+						SWAP_INT(auxnode->key, thepos->key);
+						SWAP_VEC(auxnode->string, thepos->string);
+					};
+					thepos = auxnode;
+				} while (thepos != NULL);
+			};
+			s = lastpos->string;
+			free(lastpos);
+			--hd->nodenum;
+		} else {
+			s = hd->root->string;
+			free(hd->root);
+			hd->root = NULL;
+			--hd->nodenum;
+		};
+		return s;
+	};
+	return NULL;
+};
+
+bool heapd_print(HEAPD *hd){
+	if (hd != NULL){
+		heapd_travel_rec(hd->root, &heapd_print_rec);
+		return TRUE;
+	};
+	return FALSE;
+};
+
+bool heapd_printlist(HEAPD *hd){
+	if (hd != NULL){
+		heapd_printlist_rec(hd->root, 0);
+		return TRUE;
+	};
+	return FALSE;
 };

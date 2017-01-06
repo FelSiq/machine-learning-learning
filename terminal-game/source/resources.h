@@ -5,6 +5,9 @@
 #define BITS_IN_BYTE 8
 #define GLOBALV_IACTVNUM 30
 #define SWAP(A,B) {short int C = A; A = B; B = C;}
+#define SWAP_INT(A,B) {int C = A; A = B; B = C;}
+#define SWAP_VEC(A,B) {void *C = A; A = B; B = C;}
+#define FATHER(A) (A/2)
 
 typedef enum {
 	FALSE,
@@ -41,5 +44,16 @@ bool list_empty(LIST *);
 bool list_destroy(LIST **);
 void list_print(LIST *);
 byte list_count(LIST *);
+
+//DYNAMIC HEAP STUFF
+typedef struct heapd HEAPD;
+
+HEAPD *heapd_init();
+char *heapd_remove(HEAPD *, unsigned int);
+bool heapd_insert(HEAPD *, char *, unsigned int);
+bool heapd_destroy(HEAPD **);
+bool heapd_clear(HEAPD *);
+bool heapd_print(HEAPD *);
+bool heapd_printlist(HEAPD *);
 
 #endif

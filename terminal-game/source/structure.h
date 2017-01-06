@@ -46,7 +46,7 @@ struct interactives {
 
 	char **script, *label, **actions, **extracom;
 	byte progress, scpnum, actnum;
-	short int *colreq;
+	short int *colreq, *rewards;
 };
 
 struct map_chamber {

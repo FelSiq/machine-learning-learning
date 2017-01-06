@@ -252,8 +252,17 @@ static void *cprocess_local_iactv(void *vas){
 											//Requeriments meet, now check for "ask more command"
 											if (*((*(tvl->iactives + i - 1))->extracom + j - 1) == NULL){
 												//No "ask more command", proceed quest
+
 												printf("%s\n", *((*(tvl->iactives + i - 1))->script + (*(tvl->iactives + i - 1))->progress + 1));
 												if ((*(tvl->iactives + i - 1))->progress < ((*(tvl->iactives + i - 1))->actnum - 1)){
+													//Check if this command has a reward
+													if (*((*(tvl->iactives + i - 1))->rewards + (*(tvl->iactives + i - 1))->progress) != -1){
+														g->player->pgetitem(g->player, 
+															*((*(tvl->iactives + i - 1))->rewards + (*(tvl->iactives + i - 1))->progress));
+														printf("(\"%s\" adicionado á mochila.)\n", 
+															*(g->player->colnames + (*(tvl->iactives + i - 1))->progress));
+													};
+
 													//Quest still in progress
 													++(*(tvl->iactives + i - 1))->progress;
 													if ((*(tvl->iactives + i - 1))->progress == ((*(tvl->iactives + i - 1))->actnum - 1)){
@@ -270,14 +279,25 @@ static void *cprocess_local_iactv(void *vas){
 												char *extracommand = get_string(stdin);
 												if (extracommand != NULL){
 													if (strcmp(extracommand, *((*(tvl->iactives + i - 1))->extracom + j - 1)) == 0){
-														++(*(tvl->iactives + i - 1))->progress;
-														printf("%s\n", *((*(tvl->iactives + i - 1))->script + (*(tvl->iactives + i - 1))->progress));
-														if ((*(tvl->iactives + i - 1))->progress == ((*(tvl->iactives + i - 1))->actnum - 1)){
-															system("aplay -q ./snd/s0");
-															++g->player->tasksdone;
-															#ifdef DEBUG
-																printf("D: a quest is completed!\n");
-															#endif
+														printf("%s\n", *((*(tvl->iactives + i - 1))->script + (*(tvl->iactives + i - 1))->progress + 1));
+														if ((*(tvl->iactives + i - 1))->progress < ((*(tvl->iactives + i - 1))->actnum - 1)){
+															//Check if this command has a reward
+															if (*((*(tvl->iactives + i - 1))->rewards + (*(tvl->iactives + i - 1))->progress) != -1){
+																g->player->pgetitem(g->player, 
+																	*((*(tvl->iactives + i - 1))->rewards + (*(tvl->iactives + i - 1))->progress));
+																printf("(\"%s\" adicionado á mochila.)\n", 
+																	*(g->player->colnames + (*(tvl->iactives + i - 1))->progress));
+															};
+
+															//Quest still in progress
+															++(*(tvl->iactives + i - 1))->progress;
+															if ((*(tvl->iactives + i - 1))->progress == ((*(tvl->iactives + i - 1))->actnum - 1)){
+																system("aplay -q ./snd/s0");
+																++g->player->tasksdone;
+																#ifdef DEBUG
+																	printf("D: a quest is completed!\n");
+																#endif
+															};
 														};
 													} else {
 														printf("Não funcionou.\n");
