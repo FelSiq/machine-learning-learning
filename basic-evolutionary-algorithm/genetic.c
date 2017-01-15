@@ -78,9 +78,9 @@ void crossover (int const *polcoefs, int order, double *results, int popnum, int
 			*(newgen + counter++) = (*(results + i) + *(results + j)) * 0.5;
 			//Add mutation
 			if (counter % (popnum/2))
-				*(newgen + counter - 1) += ((rand() % (2*(mutval + 1))) - multval) * proportion;
+				*(newgen + counter - 1) += ((rand() % (2*(mutval + 1))) - mutval) * proportion;
 			else 
-				*(newgen + counter - 1) += ((rand() % (2*(mutval + 1))) - multval);
+				*(newgen + counter - 1) += ((rand() % (2*(mutval + 1))) - mutval);
 		};
 	};
 	//The best result of previous generation is considered aswell (elitism).
