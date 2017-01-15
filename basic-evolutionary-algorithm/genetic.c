@@ -78,9 +78,9 @@ void crossover (int const *polcoefs, int order, double *results, int popnum, int
 			*(newgen + counter++) = (*(results + i) + *(results + j)) * 0.5;
 			//Add mutation
 			if (counter % (popnum/2))
-				*(newgen + counter - 1) += pow(-1, counter - 1) * ((rand() % (mutval + 1))) * proportion;
+				*(newgen + counter - 1) += ((rand() % (2*(mutval + 1))) - multval) * proportion;
 			else 
-				*(newgen + counter - 1) += pow(-1, counter - 1) * ((rand() % (mutval + 1)));
+				*(newgen + counter - 1) += ((rand() % (2*(mutval + 1))) - multval);
 		};
 	};
 	//The best result of previous generation is considered aswell (elitism).
@@ -107,8 +107,8 @@ void crossover (int const *polcoefs, int order, double *results, int popnum, int
 	for(register int i = 0; i < popnum; 
 		*(results + i) = *(newgen + i), ++i);
 
-	//Randomize the most umpobrably asnwer
-	*(results + popnum - 1) = pow(-1, rand() % 2) * ((rand() % 3000) - 1500);
+	//Randomize the most unprobably answer
+	*(results + popnum - 1) = ((rand() % 100) - 50);
 
 	free(newresults);
 	free(newgen);
