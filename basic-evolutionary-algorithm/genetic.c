@@ -157,8 +157,10 @@ int main(int argc, char const *argv[]){
 	//Loop learning
 
 	for(size_t k = 0; k < gennum; k++){
+		printf("\rgeneration: (%lu/%d)", (k + 1), gennum);
 		crossover(polcoefs, order, results, popnum, mutval, (1 - k/(1.0 * gennum)));
 	};
+	printf("\nDone.\n");
 
 	//Show result
 	printvec(results, popnum, order);
