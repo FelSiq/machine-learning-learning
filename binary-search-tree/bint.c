@@ -22,6 +22,20 @@ binT *btInit(){
 	return bt;
 };
 
+//F. auxiliar da btCount
+static unsigned int btCount_rec(NODE *root){
+	if (root != NULL)
+		return btCount_rec(root->sonLeft) + btCount_rec(root->sonRight) + 1;
+	return 0;
+};
+
+//Conta quantos nós a árvore possui
+unsigned int btCount(binT *bt){
+	if (bt != NULL)
+		return btCount_rec(bt->root);
+	return 0;
+};
+
 //Função recursiva auxiliar da f. de inserção
 //Note que não há tratamento explícito para chaves repetidas
 static void btInsert_rec(NODE *root, NODE *node){
@@ -256,19 +270,25 @@ int main(int argc, char const *argv[]){
 		srand(time(NULL));
 		int k;
 		int myVector[15];
-		for (k = 0; k < 15; ++k){
+
+		for (k = 0; k < 15; k++){
 			myVector[k] = rand() % 1000;
 			btInsert(bt, myVector[k], NULL);
 		}
 		btPrint(bt);
 
-		for(k = 15; k > 0; --k){
+		int t;
+		for(k = 15; k > 0; k--){
 			btPrint(bt);
-			btRemove(bt, myVector[(rand() % k)]);
+			do t = (rand() % 15);
+			while (myVector[t] < 0);
+			printf("Key to remove: %d\tnodes on this tree: %u\n", myVector[t], btCount(bt));
+			btRemove(bt, myVector[t]);
+			myVector[t] = -1;
 		}
 
 		btPrint(bt);
-
+		printf("nodes remaining: %u\n", btCount(bt));
 		btPurge(bt);
 	}	
 	return 0;

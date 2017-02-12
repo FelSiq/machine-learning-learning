@@ -15,5 +15,6 @@ void btPrint(binT *);
 ITEM *btSearch(binT *, unsigned int);
 ITEM *btRemove(binT *, unsigned int);
 void btPurge(binT *);
+unsigned int btCount(binT *);
 
 #endif
