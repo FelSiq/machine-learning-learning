@@ -186,7 +186,7 @@ static NODE *btRemoveSubs(NODE *root){
 			//desalocar a memória do antigo nó.
 			root->item = traveller->item;
 			root->key = traveller->key;
-			//free(traveller);
+			free(traveller);
 		}
 		
 		return newNode;
@@ -265,6 +265,8 @@ void btPurge(binT *bt){
 	};
 };
 
+#define TEST_SIZE 1900
+
 int main(int argc, char const *argv[]){
 	//TESTES DAS FUNÇÕES IMPLEMENTADAS
 	binT *bt = btInit();
@@ -272,20 +274,20 @@ int main(int argc, char const *argv[]){
 		//Gerar uma seed "aleatória"
 		srand(time(NULL));
 		int k;
-		int myVector[15];
+		int myVector[TEST_SIZE];
 
-		for (k = 0; k < 15; k++){
-			myVector[k] = rand() % 1000;
+		for (k = 0; k < TEST_SIZE; k++){
+			myVector[k] = rand() % 999999999;
 			btInsert(bt, myVector[k], NULL);
 		}
 		btPrint(bt);
 
 		int t;
-		for(k = 15; k > 0; k--){
-			btPrint(bt);
-			do t = (rand() % 15);
+		for(k = TEST_SIZE; k > 0; k--){
+			//btPrint(bt);
+			do t = (rand() % TEST_SIZE);
 			while (myVector[t] < 0);
-			printf("Key to remove: %d\tnodes on this tree: %u\n", myVector[t], btCount(bt));
+			printf("Key to remove: %d\n", myVector[t]);
 			btRemove(bt, myVector[t]);
 			myVector[t] = -1;
 		}
