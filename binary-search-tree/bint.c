@@ -141,54 +141,57 @@ ITEM *btSearch(binT *bt, unsigned int key){
 static NODE *btRemoveSubs(NODE *root){
 	//Primeiro tentar obter o "maior dos menores", e, caso não seja possível,
 	//tentar o "menor dos maiores".
-	NODE *newNode = NULL, *traveller = NULL, *prevNode = NULL;
+	if (root != NULL){
+		NODE *newNode = NULL, *traveller = NULL, *prevNode = NULL;
 
-	//Se uma das condições abaixo for satisfeita, retornar o próprio root ao final
-	if (root->sonLeft != NULL) {
-		newNode = root;
+		//Se uma das condições abaixo for satisfeita, retornar o próprio root ao final
+		if (root->sonLeft != NULL) {
+			newNode = root;
 
-		prevNode = NULL;
-		traveller = root->sonLeft;
+			prevNode = NULL;
+			traveller = root->sonLeft;
 
-		while(traveller->sonRight != NULL){
-			prevNode = traveller;
-			traveller = traveller->sonRight;
+			while(traveller->sonRight != NULL){
+				prevNode = traveller;
+				traveller = traveller->sonRight;
+			}
+
+			if (prevNode != NULL)
+				prevNode->sonRight = btRemoveSubs(traveller->sonLeft);
+			else 
+				root->sonLeft = traveller->sonLeft;
+
+		} else if (root->sonRight != NULL) {
+			newNode = root;
+
+			prevNode = NULL;
+			traveller = root->sonRight;
+
+			while(traveller->sonLeft != NULL){
+				prevNode = traveller;
+				traveller = traveller->sonLeft;
+			}
+
+			if (prevNode != NULL)
+				prevNode->sonLeft = btRemoveSubs(traveller->sonRight);
+			else 
+				root->sonRight = traveller->sonRight;
 		}
 
-		if (prevNode != NULL)
-			prevNode->sonRight = traveller->sonLeft;
-		else 
-			root->sonLeft = traveller->sonLeft;
-
-	} else if (root->sonRight != NULL) {
-		newNode = root;
-
-		prevNode = NULL;
-		traveller = root->sonRight;
-
-		while(traveller->sonLeft != NULL){
-			prevNode = traveller;
-			traveller = traveller->sonLeft;
+		if (newNode == NULL){
+			//Neste caso, o nó é uma raíz. Desalocar sua memória e retornar NULL.
+			free(root);
+		} else {
+			//Se não, encontramos um candidato. Atualizar os dados de root e
+			//desalocar a memória do antigo nó.
+			root->item = traveller->item;
+			root->key = traveller->key;
+			//free(traveller);
 		}
-
-		if (prevNode != NULL)
-			prevNode->sonLeft = traveller->sonRight;
-		else 
-			root->sonRight = traveller->sonRight;
+		
+		return newNode;
 	}
-
-	if (newNode == NULL){
-		//Neste caso, o nó é uma raíz. Desalocar sua memória e retornar NULL.
-		free(root);
-	} else {
-		//Se não, encontramos um candidato. Atualizar os dados de root e
-		//desalocar a memória do antigo nó.
-		root->item = traveller->item;
-		root->key = traveller->key;
-		free(traveller);
-	}
-	
-	return newNode;
+	return NULL;
 };
 
 static ITEM *btRemove_rec(NODE *root, unsigned int key, char *FLAG){
