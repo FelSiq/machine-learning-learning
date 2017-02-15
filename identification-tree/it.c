@@ -31,6 +31,11 @@ byte **dataGet(FILE *ftrain, lbyte *colNum, lbyte *examplesNum){
 		if (ftell(ftrain) > 0)
 			++(*colNum);
 		fseek(ftrain, 0, SEEK_SET);
+
+		#ifdef DEBUG
+			printf("d: number of parameters on each sample: %hu (include label)\n", *colNum);
+		#endif
+
 		if (*colNum > 0){
 			while(!feof(ftrain)){
 				data = realloc(data, sizeof(byte *) * (1 + *examplesNum));
@@ -40,6 +45,15 @@ byte **dataGet(FILE *ftrain, lbyte *colNum, lbyte *examplesNum){
 				++(*examplesNum);
 			}
 		}
+
+		#ifdef DEBUG
+			printf("d: dataset height: %hu\nd: will print out head of dataset:\n", *examplesNum);
+			register byte i, j;
+			for(i = 0; i < MIN(HEADSIZE, *examplesNum); printf("\n"), ++i)
+				for(j = 0; j < *colNum; 
+					printf("%c ", *(*(data + i) + j)),
+					++j);
+		#endif
 	}
 	return data;
 };
@@ -86,8 +100,7 @@ static ITM *itInit(){
 	
 	1. begin loop til every dead-end node on tree == leaf, var i:
 		need the total score of each tree, stored on a double vector named TS_vector, with size k - i.
-		2. loop two: For each st
-		ill unused col:
+		2. loop two: For each still unused col:
 			- Get the number of possible labels, l;
 			- create two vectors with size l, clean then up,
 				one is positives vector and the other, negative vector;
@@ -111,12 +124,128 @@ static ITM *itInit(){
 	//Median is the threshold. If element smaller than threshold, positive. If smaller, negative.
 	//Same process then.
 
-ITM *itModel(byte **data, lbyte colNum, lbyte examplesNum){
-	ITM *model = itInit();
-	if (model != NULL){
+ITM *itModel(byte **data, lbyte const colNum, lbyte const examplesNum){
+	if (colNum > 1 && examplesNum > 0){
+		ITM *model = itInit();
+		if (model != NULL){
+			byte FLAG = 1, k = (colNum - 1);
+			////Vectors
+			//vector of total Score (disorder coefficient), and for entropy on each parameter
+			double *totalScore = NULL, *entropyCoef = NULL;
+			//boolean vector of FLAGs to keep track of used parameters
+			byte *vecUsed = malloc(sizeof(byte) * k);
+			//Get all possible unique values from all parameters;
+			//The first column of each row (index 0) is reserved for row size
+			byte **uniqueOut = malloc(sizeof(byte *) * k);
+			//POSITIVE and NEGATIVE vectors;
+			//These vectors are used to entropy (disorder coefficient) calculation
+			lbyte *vecPos = NULL;
+			
+			//Clean up vecUsed and set up uniqueOut
+			register byte j, n, i;
+			for (i = 0; i < k; *(vecUsed + i) = 1, ++i){
+				*(uniqueOut + i) = malloc(sizeof(byte));
+				**(uniqueOut + i) = 0;
+				//Get unique outcomes
+				for (j = 0; j < examplesNum; ++j){
+					for (n = 0; 
+						n < **(uniqueOut + i) && 
+						(*(*(data + j) + i) != *(*(uniqueOut + i) + n + 1)); 
+						++n);
+							
 
+					if (n == **(uniqueOut + i)){
+						*(uniqueOut + i) = realloc(*(uniqueOut + i), 
+							sizeof(byte *) * (1 + (**(uniqueOut + i))));
+						*(*(uniqueOut + i) + **(uniqueOut + i) + 1) = *(*(data + j) + i);
+						++(**(uniqueOut + i));
+					}
+				}
+			}
+
+			#ifdef DEBUG
+				//DEBUG - Print unique outcomes
+				printf("d: will now print UNIQUE outcomes:\n");
+				for (j = 0; j < k; printf("\n"), ++j)
+					for (n = 0; n < **(uniqueOut + j); 
+						printf("%c ", *(*(uniqueOut + j) + n + 1)),
+						++n);
+			#endif
+
+			//Loop to construct the tree itself
+			do {
+				totalScore = realloc(totalScore, sizeof(double) * (colNum - 1));
+				for(j = 0; j < (colNum - 1); ++j){
+					if (*(vecUsed + j)){
+						#ifdef DEBUG
+							printf("d: starting a new iteration on %hhu# argument.\n", j);
+						#endif
+						//Set up entropy vector for this parameter on this iteration
+						entropyCoef = malloc(sizeof(double) * **(uniqueOut + j));
+						//Set up pos/neg vectors
+						vecPos = malloc(sizeof(lbyte) * **(uniqueOut + j));
+						//clean then up
+						for (n = 0; n < **(uniqueOut + j); ++n)
+							*(vecPos + n) = 0;
+
+						//Fill up neg/pos vectors
+						for(n = 0; n < examplesNum; ++n){
+							if (*(*(data + n) + colNum) != MARKED){
+								for (i = 0; 
+									i < **(uniqueOut + j) && 
+									*(*(uniqueOut + j) + i + 1) != *(*(data + n) + j);
+									++i);
+								printf("TEST (i): %hhu\t(LABEL): %clean\n", i, *(*(data + n) + colNum - 1));
+								*(vecPos + i) += (lbyte) MIN(1, (*(*(data + n) + colNum - 1) - 48)); 
+							}
+						}
+						#ifdef DEBUG
+							printf("d: positive vector on this iteration:\n");
+							for(i = 0; i < **(uniqueOut + j); 
+								printf("%hu ", *(vecPos + i)),
+								++i);
+							printf("\n");
+						#endif
+						//Caculate the totalScore for this argument on this iteration
+						//First, clean totalScore from (previous iteration)/junk
+						*(totalScore + j) = 0;
+
+						//free pos/neg vectors for the next iteration
+						free(vecPos);
+
+						//Set up the new nodes on the tree
+
+						//demark the promoved parameter on the vecUsed.
+
+						//Verify if all new "leaf" nodes are a leaf indeed.
+						//Use the entropyCoef vector to this job
+						//If TRUE, turn FLAG off. if not, MARK all data used on this iteration.
+
+						//free entropy vector for the next iteration
+						free(entropyCoef);
+						#ifdef DEBUG
+							printf("d: end of iteration.\n");
+						#endif
+					}
+				}
+				//"k" is a security counter, which keep track
+				//if all arguments are used for the tree construction.
+				//if true, force proccess end.
+				--k;
+			} while (FLAG && k > 0);
+
+			//Freeing used memory
+			if (uniqueOut != NULL)
+				dataPurge(uniqueOut, (colNum - 1));
+			if (totalScore != NULL)
+				free(totalScore);
+			if (vecUsed != NULL)
+				free(vecUsed);
+		}
+		return model;
 	}
-	return model;
+	printf("e: no samples or parameters found on \"%s\" function.\n", __FUNCTION__);
+	return NULL;
 };
 
 void itPredict(ITM *model, FILE *finput){
@@ -149,7 +278,7 @@ void itPurge(ITM **model){
 };
 
 int main(int argc, char const *argv[]){
-	if (argc != NUMARGS){
+	if (argc == NUMARGS){
 		FILE *ftrain = fopen(*(argv + TRAINPATH), "r");
 		if (ftrain != NULL){
 			FILE *finput = fopen(*(argv + INPUTPATH), "r");
@@ -157,11 +286,20 @@ int main(int argc, char const *argv[]){
 				lbyte colNum = 0, examplesNum = 0;
 				byte **data = dataGet(ftrain, &colNum, &examplesNum);
 				if (data != NULL){
+					#ifdef DEBUG
+						printf("d: will now construct ID tree model...\n");
+					#endif
 					ITM *model = itModel(data, colNum, examplesNum);
+					#ifdef DEBUG
+						printf("d: will start training and labelling process...\n");
+					#endif
 					if (model != NULL){
 						itPredict(model, finput);
 						itPurge(&model);
 					}
+					#ifdef DEBUG
+						printf("d: now going to free used memory...\n");
+					#endif
 					dataPurge(data, examplesNum);
 					fclose(ftrain);
 					fclose(finput);
