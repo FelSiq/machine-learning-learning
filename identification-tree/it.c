@@ -87,12 +87,11 @@ static ITM *itInit(){
 	return model;
 };
 
-
 //Work out these two functions belown
 
 /*
 
-	Data disorder (dd): -(Positives/Total)*log2(Positives/Total) -(Negatives/Total)*log2(Negatives/Total)
+	Data disorder/entropy (dd): -(Positives/Total)*log2(Positives/Total) -(Negatives/Total)*log2(Negatives/Total)
 	To select a good subtree (ts): sum (dd(node) * (Elements inside node/Total of elements on the subtree))
 
 	Has data with n rows and k columns (tests).
@@ -131,7 +130,7 @@ ITM *itModel(byte **data, lbyte const colNum, lbyte const examplesNum){
 			byte FLAG = 1, k = (colNum - 1);
 			////Vectors
 			//vector of total Score (disorder coefficient), and for entropy on each parameter
-			double *totalScore = NULL, *entropyCoef = NULL;
+			double *totalScore = NULL, *entropyCoef = NULL, aux0, aux1;
 			//boolean vector of FLAGs to keep track of used parameters
 			byte *vecUsed = malloc(sizeof(byte) * k);
 			//Get all possible unique values from all parameters;
@@ -140,6 +139,8 @@ ITM *itModel(byte **data, lbyte const colNum, lbyte const examplesNum){
 			//POSITIVE and NEGATIVE vectors;
 			//These vectors are used to entropy (disorder coefficient) calculation
 			lbyte *vecPos = NULL;
+			//counter Vector, to store a information necessary on entropy calculus
+			lbyte *vecCounter = NULL;
 			
 			//Clean up vecUsed and set up uniqueOut
 			register byte j, n, i;
@@ -175,18 +176,25 @@ ITM *itModel(byte **data, lbyte const colNum, lbyte const examplesNum){
 			//Loop to construct the tree itself
 			do {
 				totalScore = realloc(totalScore, sizeof(double) * (colNum - 1));
+				#ifdef DEBUG
+					printf("d: just started a new iteration...\n");
+				#endif
 				for(j = 0; j < (colNum - 1); ++j){
 					if (*(vecUsed + j)){
 						#ifdef DEBUG
-							printf("d: starting a new iteration on %hhu# argument.\n", j);
+							printf("d: started working on #%hhu argument.\n", j);
 						#endif
 						//Set up entropy vector for this parameter on this iteration
 						entropyCoef = malloc(sizeof(double) * **(uniqueOut + j));
 						//Set up pos/neg vectors
 						vecPos = malloc(sizeof(lbyte) * **(uniqueOut + j));
-						//clean then up
-						for (n = 0; n < **(uniqueOut + j); ++n)
+						//Same with counter vector
+						vecCounter = malloc(sizeof(lbyte) * **(uniqueOut + j));
+						//clean both least vectors up
+						for (n = 0; n < **(uniqueOut + j); ++n){
 							*(vecPos + n) = 0;
+							*(vecCounter + n) = 0;
+						}
 
 						//Fill up neg/pos vectors
 						for(n = 0; n < examplesNum; ++n){
@@ -195,25 +203,52 @@ ITM *itModel(byte **data, lbyte const colNum, lbyte const examplesNum){
 									i < **(uniqueOut + j) && 
 									*(*(uniqueOut + j) + i + 1) != *(*(data + n) + j);
 									++i);
-								printf("TEST (i): %hhu\t(LABEL): %clean\n", i, *(*(data + n) + colNum - 1));
 								*(vecPos + i) += (lbyte) MIN(1, (*(*(data + n) + colNum - 1) - 48)); 
+								++(*(vecCounter + i));
 							}
 						}
 						#ifdef DEBUG
-							printf("d: positive vector on this iteration:\n");
+							printf("d: positive vector on this iteration: [");
 							for(i = 0; i < **(uniqueOut + j); 
 								printf("%hu ", *(vecPos + i)),
 								++i);
-							printf("\n");
+							printf("\b]\n");
 						#endif
+
 						//Caculate the totalScore for this argument on this iteration
 						//First, clean totalScore from (previous iteration)/junk
 						*(totalScore + j) = 0;
+						//Its necessary to keep track of every coefficient,
+						//to known if this verifycation leads to a LEAF.
+						//Entropy = -(Positives/Total)*log2(Positives/Total) -(Negatives/Total)*log2(Negatives/Total)
+						#ifdef DEBUG
+							printf("d: (entropy calculus) ");
+						#endif
+						for (i = 0; i < **(uniqueOut + j); ++i){
+							aux0 = *(vecPos + i)/(1.0 * *(vecCounter + i));
+							aux1 = (*(vecCounter + i) - *(vecPos + i))/(1.0 * (*(vecCounter + i)));
+							
+							*(entropyCoef + i) = 0;
+							if (aux0 > 0 && aux1 > 0)
+								*(entropyCoef + i) = - (aux0)*log2(aux0) - (aux1)*log2(aux1);
+							
+							*(totalScore + j) += *(entropyCoef + i);
 
-						//free pos/neg vectors for the next iteration
+							#ifdef DEBUG
+								printf("%lf ", *(entropyCoef + i));
+							#endif
+						}
+						#ifdef DEBUG
+							printf("- total: %lf\n", *(totalScore + j));
+						#endif
+
+						//free positive vector and vecCounter for the next iteration
 						free(vecPos);
+						free(vecCounter);
 
+						//Work from here
 						//Set up the new nodes on the tree
+						//The promoted node will be the one who have the smallest entropy
 
 						//demark the promoved parameter on the vecUsed.
 
@@ -224,7 +259,7 @@ ITM *itModel(byte **data, lbyte const colNum, lbyte const examplesNum){
 						//free entropy vector for the next iteration
 						free(entropyCoef);
 						#ifdef DEBUG
-							printf("d: end of iteration.\n");
+							printf("d: end of this argument.\n**************\n");
 						#endif
 					}
 				}
@@ -232,6 +267,9 @@ ITM *itModel(byte **data, lbyte const colNum, lbyte const examplesNum){
 				//if all arguments are used for the tree construction.
 				//if true, force proccess end.
 				--k;
+				#ifdef DEBUG
+					printf("d: end of iteration.\n###########################\n");
+				#endif
 			} while (FLAG && k > 0);
 
 			//Freeing used memory
