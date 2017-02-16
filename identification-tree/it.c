@@ -8,7 +8,11 @@ typedef struct node {
 	//Param stands for parameter to be check on this node, to
 	//select the son that the input must follow in order to be identified.
 	//Args stand for the values to be check.
-	//This values must cover all the possibilities.
+	//This values should cover all the possibilities.
+	//If not, the deeper sub-tree will be default selected.
+	double entropy;
+	//Entropy will store the accuracy of node, if it is a leaf,
+	//to show up in the print function.
 	char output;
 	//This value is used only on leaf nodes. It represents the
 	//input identification.
@@ -66,11 +70,20 @@ void dataPurge(byte **data, lbyte examplesNum){
 	}
 };
 
+void datalPurge(lbyte **data, lbyte examplesNum){
+	if (data != NULL){
+		while(0 < examplesNum--)
+			free(*(data + examplesNum));
+		free(data);
+	}
+};
+
 static NODE *nodeInit(){
 	NODE *node = malloc(sizeof(NODE));
 	if (node != NULL){
 		node->args = NULL;
 		node->sons = NULL;
+		node->entropy = -1;
 		node->output = -1;
 		node->numSons = 0;
 		node->argNum = 0;
@@ -84,6 +97,7 @@ static ITM *itInit(){
 	if (model != NULL){
 		model->root = NULL;
 		model->numNodes = 0;
+		model->argNum = 0;
 	}
 	return model;
 };
@@ -129,15 +143,15 @@ ITM *itModel(byte **data, lbyte const colNum, lbyte const examplesNum){
 		ITM *model = itInit();
 		if (model != NULL){
 			//This is the max value generalized, for a worst-case scenario, of entropy in every parameter
-			double const entropyInit = (1.0 * examplesNum) + 0.1;
-			NODE *newNode;
-			byte newNodeIndex;
+			double const entropyInit = 1.1;//(1.0 * examplesNum) + 0.1;
+			NODE *newNode = NULL;
+			byte newNodeIndex = 0, newLeafIndex = 0;
 			byte FLAG = 1, k = (colNum - 1);
 			////Vectors
 			//vector of total Score (disorder coefficient), and for entropy on each parameter
 			double *totalScore = malloc(sizeof(double) * k), 
 			**entropyCoef = malloc(sizeof(double *) * k), 
-			aux0, aux1;
+			aux0 = 0, aux1 = 0, aux2 = 0;
 			//boolean vector of FLAGs to keep track of used parameters
 			byte *vecUsed = malloc(sizeof(byte) * k);
 			//Get all possible unique values from all parameters;
@@ -150,8 +164,8 @@ ITM *itModel(byte **data, lbyte const colNum, lbyte const examplesNum){
 			lbyte **vecCounter = malloc(sizeof(lbyte *) * k);
 			
 			//Clean up vecUsed and set up uniqueOut
-			register byte j, n, i;
-			register lbyte m;
+			register byte j = 0, n = 0, i = 0;
+			lbyte m;
 			for (i = 0; i < k; *(vecUsed + i) = 1, ++i){
 				*(uniqueOut + i) = malloc(sizeof(byte));
 				**(uniqueOut + i) = 0;
@@ -197,20 +211,21 @@ ITM *itModel(byte **data, lbyte const colNum, lbyte const examplesNum){
 						*(vecPos + j) = malloc(sizeof(lbyte) * **(uniqueOut + j));
 						//Same with counter vector
 						*(vecCounter + j) = malloc(sizeof(lbyte) * **(uniqueOut + j));
-						//clean both least vectors up
+						//clean vectors up
 						for (n = 0; n < **(uniqueOut + j); ++n){
 							*(*(vecPos + j) + n) = 0;
 							*(*(vecCounter + j) + n) = 0;
+							*(*(entropyCoef + j) + n) = 0;
 						}
 
 						//Fill up neg/pos vectors
 						for(m = 0; m < examplesNum; ++m){
-							if (*(*(data + m) + colNum) != MARKED){
+							if (*(*(data + m) + colNum - 1) != MARKED){
 								for (i = 0; 
 									i < **(uniqueOut + j) && 
 									*(*(uniqueOut + j) + i + 1) != *(*(data + m) + j);
 									++i);
-								*(*(vecPos + j) + i) += (lbyte) MIN(1, (*(*(data + m) + colNum - 1) - 48)); 
+								*(*(vecPos + j) + i) += (lbyte) MIN(1, (*(*(data + m) + colNum - 1) - ASCII0)); 
 								++(*(*(vecCounter + j) + i));
 							}
 						}
@@ -231,13 +246,20 @@ ITM *itModel(byte **data, lbyte const colNum, lbyte const examplesNum){
 						#ifdef DEBUG
 							printf("d: (entropy calculus) ");
 						#endif
+						//Sum up the total amount of information on this node
+						lbyte totalInfo = 0;
+						for (i = 0; i < **(uniqueOut + j); 
+							totalInfo += *(*(vecCounter + j) + i),
+							++i); 
+
 						for (i = 0; i < **(uniqueOut + j); ++i){
 							aux0 = *(*(vecPos + j) + i)/(1.0 * *(*(vecCounter + j) + i));
 							aux1 = (*(*(vecCounter + j) + i) - *(*(vecPos + j) + i))/(1.0 * (*(*(vecCounter + j) + i)));
+							aux2 = (*(*(vecCounter + j) + i))/(1.0 * totalInfo);
 							
 							*(*(entropyCoef + j) + i) = 0;
 							if (aux0 > 0 && aux1 > 0)
-								*(*(entropyCoef + j) + i) = - (aux0)*log2(aux0) - (aux1)*log2(aux1);
+								*(*(entropyCoef + j) + i) = (-(aux0)*log2(aux0) - (aux1)*log2(aux1)) * (aux2);
 							
 							*(totalScore + j) += *(*(entropyCoef + j) + i);
 
@@ -251,7 +273,7 @@ ITM *itModel(byte **data, lbyte const colNum, lbyte const examplesNum){
 						#endif
 					}
 				}
-				//Work from here
+				
 				//Set up the new nodes on the tree
 				//The promoted node will be the one who have the smallest entropy
 				aux0 = entropyInit;//Entropy image is in [0,1].
@@ -261,28 +283,52 @@ ITM *itModel(byte **data, lbyte const colNum, lbyte const examplesNum){
 						newNodeIndex = i;
 					}
 				}
-
 				//Verify if this is not the first iteration
 				//if TRUE, set the newNode the new son of previous newNode. 
 				if (newNode != NULL){
 					*(newNode->sons + newNode->numSons - 1) = nodeInit();
 					newNode = *(newNode->sons + newNode->numSons - 1);
-				} else newNode = nodeInit();
+				} else {
+					model->root = nodeInit();
+					newNode = model->root;
+				}
+				
+				//First, verify if it is not the last possible iteration.
+				//If false, ignore this section.
+				if (k > 1){
+					//If true,
+					//Select the most messet up subtree.
+					//It will be the only one to be not a new leaf, except
+					//if its entropy are small enought.
+					aux0 = entropyInit;
+					for (i = 0; i < **(uniqueOut + newNodeIndex); ++i){
+						if (aux0 < *(*(entropyCoef + newNodeIndex) + i)){
+							aux0 = *(*(entropyCoef + newNodeIndex) + i);
+							newLeafIndex = i;
+						}
+					}
+					//
+					if (*(*(entropyCoef + newNodeIndex) + newLeafIndex) < DELTA)
+						newLeafIndex = MARKED;
+				} else newLeafIndex = MARKED;
 
 				//Set up the terminal/leaf nodes
 				for (i = 0; i < **(uniqueOut + newNodeIndex); ++i){
-					if (*(*(entropyCoef + newNodeIndex) + i) < DELTA){
+					//if (*(*(entropyCoef + newNodeIndex) + i) < DELTA){
+					if (i != newLeafIndex){
 						newNode->sons = realloc(newNode->sons, 
 							sizeof(NODE *) * (newNode->numSons + 1));
 						*(newNode->sons + newNode->numSons) = nodeInit();
 						//get the "most common label" correspondent of this node
 						(*(newNode->sons + newNode->numSons))->output = ASCII0 + 
 							(*(*(vecPos + newNodeIndex) + i) >= (*(*(vecCounter + newNodeIndex) + i) * 0.5));
+						(*(newNode->sons + newNode->numSons))->entropy = *(*(entropyCoef + newNodeIndex) + i);
 						++(newNode->numSons);
 
 						#ifdef DEBUG
-							printf("d: generated a new output node, with label value of %c.\n", 
-								(*(newNode->sons + newNode->numSons - 1))->output);
+							printf("d: generated a new output node:\n\t- label value of %c.\n\t- entropy: %lf\n", 
+								(*(newNode->sons + newNode->numSons - 1))->output,
+								(*(newNode->sons + newNode->numSons - 1))->entropy);
 						#endif
 					}
 				}
@@ -293,8 +339,15 @@ ITM *itModel(byte **data, lbyte const colNum, lbyte const examplesNum){
 				newNode->argNum = **(uniqueOut + newNodeIndex);
 				newNode->param = newNodeIndex;
 				newNode->args = malloc(sizeof(byte) * newNode->argNum);
+				newNode->entropy = *(totalScore + newNodeIndex);
 				for(i = 0; i < newNode->argNum; ++i)
 					*(newNode->args + i) = *(*(uniqueOut + newNode->param) + 1 + i);
+				#ifdef DEBUG
+					printf("d: stabilished a new tree node:\n\t- # of sons: %hu\n\t- total entropy: %lf\n",
+						newNode->argNum,
+						newNode->entropy);
+				#endif
+
 				//Verify if all new "leaf" nodes are a leaf indeed.
 				//If TRUE, turn FLAG off. if not, MARK all data used on this iteration,
 				//and incresease the size of sons of the newNode by one.
@@ -305,11 +358,31 @@ ITM *itModel(byte **data, lbyte const colNum, lbyte const examplesNum){
 					*(newNode->sons + newNode->numSons) = NULL;
 					++newNode->numSons;
 					//Mark all used data
+					//Remember that the deeper subtree will be in the (newNode->argnum - 1) index;
 					for(m = 0; m < examplesNum; ++m){
-						//WORK HERE
+						for (i = 0; i < (newNode->argNum - 1); ++i){
+							if (*(*(data + m) + newNode->param) == *(newNode->args + i)){
+								*(*(data + m) + colNum - 1) = MARKED;
+								break;
+							}
+						}
 					}
-				} else FLAG = 0;
-
+				} else {
+					#ifdef DEBUG
+						printf("d: < reached the deepest leaf node on the tree! >\n");
+					#endif
+					FLAG = 0;
+				}
+				
+				//Free memory from value tables for the next iteration
+				for(i = 0; i < (colNum - 1); ++i){
+					free(*(entropyCoef + i));
+					free(*(vecCounter + i));
+					free(*(vecPos + i));
+					*(entropyCoef + i) = NULL;
+					*(vecCounter + i) = NULL;
+					*(vecPos + i) = NULL;
+				}
 				//"k" is a security lever, which keep track
 				//if all arguments are used for the tree construction.
 				//if true, force proccess end.
@@ -320,12 +393,12 @@ ITM *itModel(byte **data, lbyte const colNum, lbyte const examplesNum){
 			} while (FLAG && k > 0);
 
 			//Freeing used memory
-			if (entropyCoef != NULL){
-				for(i = 0; i < (colNum - 1); ++i)
-					if (*(entropyCoef + i) != NULL)
-						free(*(entropyCoef + i));
+			if (entropyCoef != NULL)
 				free(entropyCoef);
-			}
+			if (vecCounter != NULL)
+				free(vecCounter);
+			if (vecPos != NULL)
+				free(vecPos);
 			if (uniqueOut != NULL)
 				dataPurge(uniqueOut, (colNum - 1));
 			if (totalScore != NULL)
@@ -366,6 +439,27 @@ void itPurge(ITM **model){
 	}
 };
 
+static void itPrint_rec(NODE *root, lbyte offset){
+	if (root != NULL){
+		for (lbyte i = 0; i < offset; 
+			printf(" "), ++i);
+		if (root->numSons > 0){
+			printf("x\n");
+			for (lbyte i = 0; i < root->numSons; ++i)
+				itPrint_rec(*(root->sons + i), offset + 1);
+		} else {
+			printf("-> label: %c (entropy: %lf)\n", 
+				root->output,
+				root->entropy);
+		}
+	}
+};
+
+void itPrint(ITM *model){
+	if (model != NULL)
+		itPrint_rec(model->root, 0);
+};
+
 int main(int argc, char const *argv[]){
 	if (argc == NUMARGS){
 		FILE *ftrain = fopen(*(argv + TRAINPATH), "r");
@@ -380,6 +474,8 @@ int main(int argc, char const *argv[]){
 					#endif
 					ITM *model = itModel(data, colNum, examplesNum);
 					#ifdef DEBUG
+						printf("d: model complete. result:\n");
+						itPrint(model);
 						printf("d: will start predict process...\n");
 					#endif
 					if (model != NULL){

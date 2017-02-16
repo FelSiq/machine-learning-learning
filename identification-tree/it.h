@@ -23,5 +23,6 @@ byte **dataGet(FILE *, lbyte *, lbyte *);
 void dataPurge(byte **, lbyte);
 void itPredict(ITM *, FILE *);
 void itPurge(ITM **);
+void itPrint(ITM *);
 
 #endif
