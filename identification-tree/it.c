@@ -41,11 +41,14 @@ byte **dataGet(FILE *ftrain, lbyte *colNum, lbyte *examplesNum){
 		#endif
 
 		if (*colNum > 0){
+			int aux;
 			while(!feof(ftrain)){
 				data = realloc(data, sizeof(byte *) * (1 + *examplesNum));
 				*(data + *examplesNum) = malloc(sizeof(byte) * *colNum);
-				for(lbyte i = 0; i < *colNum; ++i)
-					fscanf(ftrain, "%c%*c", (*(data + *examplesNum) + i));
+				for(lbyte i = 0; i < *colNum; ++i){
+					fscanf(ftrain, "%d%*c", &aux);
+					*(*(data + *examplesNum) + i) = (byte) aux;
+				}
 				++(*examplesNum);
 			}
 		}
@@ -55,7 +58,7 @@ byte **dataGet(FILE *ftrain, lbyte *colNum, lbyte *examplesNum){
 			register byte i, j;
 			for(i = 0; i < MIN(HEADSIZE, *examplesNum); printf("\n"), ++i)
 				for(j = 0; j < *colNum; 
-					printf("%c ", *(*(data + i) + j)),
+					printf("%d ", *(*(data + i) + j)),
 					++j);
 		#endif
 	}
@@ -100,6 +103,22 @@ static ITM *itInit(){
 		model->argNum = 0;
 	}
 	return model;
+};
+
+inline static byte binSearch(byte *vector, byte key, lbyte size){
+	int i = 1, j = ((int) size), middle;
+	while (j >= i){
+		middle = (i + j)/2;
+		if (*(vector + middle) == key)
+			return FALSE;
+		else {
+			if (*(vector + middle) > key)
+				j = middle - 1;
+			else
+				i = middle + 1;
+		}
+	}
+	return TRUE;
 };
 
 //Work out these two functions belown
@@ -171,17 +190,25 @@ ITM *itModel(byte **data, lbyte const colNum, lbyte const examplesNum){
 				**(uniqueOut + i) = 0;
 				//Get unique outcomes
 				for (j = 0; j < examplesNum; ++j){
-					for (n = 0; 
+					/*for (n = 0; 
 						n < **(uniqueOut + i) && 
 						(*(*(data + j) + i) != *(*(uniqueOut + i) + n + 1)); 
 						++n);
 							
 
-					if (n == **(uniqueOut + i)){
+					if (n == **(uniqueOut + i)){*/
+					if (binSearch(*(uniqueOut + i), *(*(data + j) + i), **(uniqueOut + i))){
 						*(uniqueOut + i) = realloc(*(uniqueOut + i), 
 							sizeof(byte *) * (1 + (**(uniqueOut + i))));
 						*(*(uniqueOut + i) + **(uniqueOut + i) + 1) = *(*(data + j) + i);
 						++(**(uniqueOut + i));
+
+						//Insert on the sorted position
+						for(n = **(uniqueOut + i); 
+							n > 1 && (*(*(uniqueOut + i) + n) < *(*(uniqueOut + i) + n - 1)); 
+							--n)
+							SWAP(*(*(uniqueOut + i) + n), *(*(uniqueOut + i) + n - 1));
+
 					}
 				}
 			}
@@ -191,7 +218,7 @@ ITM *itModel(byte **data, lbyte const colNum, lbyte const examplesNum){
 				printf("d: will now print UNIQUE outcomes:\n");
 				for (j = 0; j < k; printf("\n"), ++j)
 					for (n = 0; n < **(uniqueOut + j); 
-						printf("%c ", *(*(uniqueOut + j) + n + 1)),
+						printf("%d ", *(*(uniqueOut + j) + n + 1)),
 						++n);
 			#endif
 
@@ -202,17 +229,18 @@ ITM *itModel(byte **data, lbyte const colNum, lbyte const examplesNum){
 				#endif
 				for(j = 0; j < (colNum - 1); ++j){
 					if (*(vecUsed + j)){
+						byte const register cache_uniqueOut_j = **(uniqueOut + j);
 						#ifdef DEBUG
 							printf("d: started working on #%hhu argument.\n", j);
 						#endif
 						//Set up entropy vector for this parameter on this iteration
-						*(entropyCoef + j) = malloc(sizeof(double) * **(uniqueOut + j));
+						*(entropyCoef + j) = malloc(sizeof(double) * cache_uniqueOut_j);
 						//Set up pos/neg vectors
-						*(vecPos + j) = malloc(sizeof(lbyte) * **(uniqueOut + j));
+						*(vecPos + j) = malloc(sizeof(lbyte) * cache_uniqueOut_j);
 						//Same with counter vector
-						*(vecCounter + j) = malloc(sizeof(lbyte) * **(uniqueOut + j));
+						*(vecCounter + j) = malloc(sizeof(lbyte) * cache_uniqueOut_j);
 						//clean vectors up
-						for (n = 0; n < **(uniqueOut + j); ++n){
+						for (n = 0; n < cache_uniqueOut_j; ++n){
 							*(*(vecPos + j) + n) = 0;
 							*(*(vecCounter + j) + n) = 0;
 							*(*(entropyCoef + j) + n) = 0;
@@ -222,16 +250,16 @@ ITM *itModel(byte **data, lbyte const colNum, lbyte const examplesNum){
 						for(m = 0; m < examplesNum; ++m){
 							if (*(*(data + m) + colNum - 1) != MARKED){
 								for (i = 0; 
-									i < **(uniqueOut + j) && 
+									i < cache_uniqueOut_j && 
 									*(*(uniqueOut + j) + i + 1) != *(*(data + m) + j);
 									++i);
-								*(*(vecPos + j) + i) += (lbyte) MIN(1, (*(*(data + m) + colNum - 1) - ASCII0)); 
+								*(*(vecPos + j) + i) += (lbyte) MIN(1, (*(*(data + m) + colNum - 1) - ADJUST)); 
 								++(*(*(vecCounter + j) + i));
 							}
 						}
 						#ifdef DEBUG
 							printf("d: positive vector on this iteration: [");
-							for(i = 0; i < **(uniqueOut + j); 
+							for(i = 0; i < cache_uniqueOut_j; 
 								printf("%hu ", *(*(vecPos + j) + i)),
 								++i);
 							printf("\b]\n");
@@ -248,11 +276,11 @@ ITM *itModel(byte **data, lbyte const colNum, lbyte const examplesNum){
 						#endif
 						//Sum up the total amount of information on this node
 						lbyte totalInfo = 0;
-						for (i = 0; i < **(uniqueOut + j); 
+						for (i = 0; i < cache_uniqueOut_j; 
 							totalInfo += *(*(vecCounter + j) + i),
 							++i); 
 
-						for (i = 0; i < **(uniqueOut + j); ++i){
+						for (i = 0; i < cache_uniqueOut_j; ++i){
 							aux0 = *(*(vecPos + j) + i)/(1.0 * *(*(vecCounter + j) + i));
 							aux1 = (*(*(vecCounter + j) + i) - *(*(vecPos + j) + i))/(1.0 * (*(*(vecCounter + j) + i)));
 							aux2 = (*(*(vecCounter + j) + i))/(1.0 * totalInfo);
@@ -295,13 +323,14 @@ ITM *itModel(byte **data, lbyte const colNum, lbyte const examplesNum){
 				
 				//First, verify if it is not the last possible iteration.
 				//If false, ignore this section.
+				byte const register cache_uniqueOut_nni = **(uniqueOut + newNodeIndex);
 				if (k > 1){
 					//If true,
 					//Select the most messet up subtree.
 					//It will be the only one to be not a new leaf, except
 					//if its entropy are small enought.
 					aux0 = entropyInit;
-					for (i = 0; i < **(uniqueOut + newNodeIndex); ++i){
+					for (i = 0; i < cache_uniqueOut_nni; ++i){
 						if (aux0 < *(*(entropyCoef + newNodeIndex) + i)){
 							aux0 = *(*(entropyCoef + newNodeIndex) + i);
 							newLeafIndex = i;
@@ -313,20 +342,20 @@ ITM *itModel(byte **data, lbyte const colNum, lbyte const examplesNum){
 				} else newLeafIndex = MARKED;
 
 				//Set up the terminal/leaf nodes
-				for (i = 0; i < **(uniqueOut + newNodeIndex); ++i){
+				for (i = 0; i < cache_uniqueOut_nni; ++i){
 					//if (*(*(entropyCoef + newNodeIndex) + i) < DELTA){
 					if (i != newLeafIndex){
 						newNode->sons = realloc(newNode->sons, 
 							sizeof(NODE *) * (newNode->numSons + 1));
 						*(newNode->sons + newNode->numSons) = nodeInit();
 						//get the "most common label" correspondent of this node
-						(*(newNode->sons + newNode->numSons))->output = ASCII0 + 
+						(*(newNode->sons + newNode->numSons))->output = ADJUST + 
 							(*(*(vecPos + newNodeIndex) + i) >= (*(*(vecCounter + newNodeIndex) + i) * 0.5));
 						(*(newNode->sons + newNode->numSons))->entropy = *(*(entropyCoef + newNodeIndex) + i);
 						++(newNode->numSons);
 
 						#ifdef DEBUG
-							printf("d: generated a new output node:\n\t- label value of %c.\n\t- entropy: %lf\n", 
+							printf("d: generated a new output node:\n\t- label value of %d.\n\t- entropy: %lf\n", 
 								(*(newNode->sons + newNode->numSons - 1))->output,
 								(*(newNode->sons + newNode->numSons - 1))->entropy);
 						#endif
@@ -336,7 +365,7 @@ ITM *itModel(byte **data, lbyte const colNum, lbyte const examplesNum){
 				*(vecUsed + newNodeIndex) = 0;
 
 				//Set up all necessary parameters of this new node.
-				newNode->argNum = **(uniqueOut + newNodeIndex);
+				newNode->argNum = cache_uniqueOut_nni;
 				newNode->param = newNodeIndex;
 				newNode->args = malloc(sizeof(byte) * newNode->argNum);
 				newNode->entropy = *(totalScore + newNodeIndex);
@@ -351,7 +380,11 @@ ITM *itModel(byte **data, lbyte const colNum, lbyte const examplesNum){
 				//Verify if all new "leaf" nodes are a leaf indeed.
 				//If TRUE, turn FLAG off. if not, MARK all data used on this iteration,
 				//and incresease the size of sons of the newNode by one.
+
 				if (newNode->argNum != newNode->numSons){
+					#ifdef DEBUG
+						printf("d: this is not the last iteration. Will mark used data.\n");
+					#endif
 					//Open space to the node of next iteration
 					newNode->sons = realloc(newNode->sons,
 						sizeof(NODE *) * (newNode->numSons + 1));
@@ -441,14 +474,20 @@ void itPurge(ITM **model){
 
 static void itPrint_rec(NODE *root, lbyte offset){
 	if (root != NULL){
-		for (lbyte i = 0; i < offset; 
-			printf(" "), ++i);
 		if (root->numSons > 0){
-			printf("x\n");
-			for (lbyte i = 0; i < root->numSons; ++i)
-				itPrint_rec(*(root->sons + i), offset + 1);
+			printf("<path node> # of sons: %hu (entropy: %lf)\n", 
+				root->numSons,
+				root->entropy);
+			for (lbyte i = 0; i < root->numSons; ++i){
+				for (lbyte i = 0; i < offset + STD_OFFSET; 
+					printf(" "), ++i);
+				printf("-> (#%hhu col = %d) ",
+					root->param + 1,
+					*(root->args + i));
+				itPrint_rec(*(root->sons + i), offset + STD_OFFSET);
+			}
 		} else {
-			printf("-> label: %c (entropy: %lf)\n", 
+			printf("<leaf> label: %d (entropy: %lf)\n", 
 				root->output,
 				root->entropy);
 		}
@@ -456,8 +495,12 @@ static void itPrint_rec(NODE *root, lbyte offset){
 };
 
 void itPrint(ITM *model){
-	if (model != NULL)
-		itPrint_rec(model->root, 0);
+	if (model != NULL){
+		if (model->root != NULL){
+			printf("-> ");
+			itPrint_rec(model->root, 0);
+		} else printf("-> this model is empty.\n");
+	}
 };
 
 int main(int argc, char const *argv[]){

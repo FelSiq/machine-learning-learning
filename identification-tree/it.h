@@ -6,10 +6,14 @@ typedef unsigned char byte;
 typedef unsigned short int lbyte;
 
 #define MIN(X,Y) ((X) < (Y) ? (X) : (Y))
+#define SWAP(X,Y) {byte Z = (X); (X) = (Y); (Y) = Z;}
 #define DELTA 0.1
 #define MARKED 255
 #define HEADSIZE 10
-#define ASCII0 48
+#define ADJUST 0 //48
+#define STD_OFFSET 3
+#define TRUE 1
+#define FALSE 0
 
 enum {
 	PROGNAME,
