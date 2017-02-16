@@ -7,13 +7,11 @@ typedef unsigned short int lbyte;
 
 #define MIN(X,Y) ((X) < (Y) ? (X) : (Y))
 #define SWAP(X,Y) {byte Z = (X); (X) = (Y); (Y) = Z;}
-#define DELTA 0.1
+#define DELTA 0.05
 #define MARKED 255
 #define HEADSIZE 10
-#define ADJUST 0 //48
+#define ADJUST 0
 #define STD_OFFSET 3
-#define TRUE 1
-#define FALSE 0
 
 enum {
 	PROGNAME,
@@ -22,9 +20,9 @@ enum {
 	NUMARGS
 };
 
-ITM *itModel(byte **, lbyte, lbyte);
-byte **dataGet(FILE *, lbyte *, lbyte *);
-void dataPurge(byte **, lbyte);
+ITM *itModel(byte **, size_t, size_t);
+byte **dataGet(FILE *, size_t *, size_t *);
+void dataPurge(byte **, size_t);
 void itPredict(ITM *, FILE *);
 void itPurge(ITM **);
 void itPrint(ITM *);
