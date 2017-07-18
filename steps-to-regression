@@ -1,0 +1,11 @@
+# Data preprocessing templace:
+# 1. Import the libraries
+# 2. Import the dataset
+# 3. Check for missing values
+# 4. Encode discrete (categorical) values
+# 5. CHeck if feature scaling is necessary
+# 6. Split the dataset in training set and test set
+# 7. Build a model
+# 8. Make predictions
+# 9. Plot the data on both train and test sets
+# 10. Validate de prediction
