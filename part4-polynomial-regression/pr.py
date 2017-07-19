@@ -23,29 +23,35 @@ from sklearn.preprocessing import PolynomialFeatures as sklp_pf
 from sklearn.linear_model import LinearRegression as skllm_lr
 
 # Plot a polynomial prediction curve ========
-def plot_polcurve(ind_param, dep_param, color = 'red', degree = 2):
+def plot_polcurve(ind_param, dep_param, color = 'red', degree = 2, show = False):
 	"""
 	Crucial explanations:
+		- poly_transform = transform the dataset to the polynomial shape of the same dataset
 		- new_dataset = dataset of the independent variables with n polynomial x's
 		- poly_regressor = linear polynomial model to the "degree", fitted to the n degree
 	"""
 	# Build the Polynomial Linear Regression Model
-	new_dataset = sklp_pf(degree = degree).fit_transform(ind_param)
+	poly_transform = sklp_pf(degree = degree)
+	new_dataset = poly_transform.fit_transform(ind_param)
 	poly_regressor = skllm_lr()
 	poly_regressor.fit(new_dataset, dep_param)
-	plt.plot(ind_param, poly_regressor.predict(new_dataset), color = color)
+	# High definition plotting
+	ind_param_grid = np.asmatrix(np.arange(min(ind_param)[0, 0], max(ind_param)[0, 0] + 0.1, 0.1)).T
+	plt.plot(ind_param_grid, poly_regressor.predict(poly_transform.fit_transform(ind_param_grid)), color = color)
+	
+	# Show plot, if asked
+	if (show):
+		plt.show()
 
 # Results ===================================
 import matplotlib.pyplot as plt
-# 	Visualise the univariate linear regressor results
-# + Visualise the polynomial linear regressor reuslts
+# 	Visualise the prediction results
 plt.scatter(np.asarray(ind_param), dep_param, color = 'blue')
-# plt.plot(ind_param, lin_reg.predict(ind_param), color = 'red')
 
 plot_polcurve(ind_param, dep_param, 'red', 1) # Linear = Univariate Regression
-plot_polcurve(ind_param, dep_param, 'green', 2)
-plot_polcurve(ind_param, dep_param, 'green', 4)
-plot_polcurve(ind_param, dep_param, 'green', 8)
+plot_polcurve(ind_param, dep_param, 'cyan', 2) # Better, but not good
+plot_polcurve(ind_param, dep_param, 'magenta', 4) # Good!
+plot_polcurve(ind_param, dep_param, 'green', 8) # Excellent?! Beware overfitting!
 
 plt.title('Univariate vs Polynomial Linear Regression')
 plt.xlabel('Level')
