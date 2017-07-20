@@ -38,22 +38,28 @@ def plot_polcurve(ind_param, dep_param, color = 'red', degree = 2, show = False)
 	# High definition plotting
 	ind_param_grid = np.asmatrix(np.arange(min(ind_param)[0, 0], max(ind_param)[0, 0] + 0.1, 0.1)).T
 	plt.plot(ind_param_grid, poly_regressor.predict(poly_transform.fit_transform(ind_param_grid)), color = color)
-	
 	# Show plot, if asked
 	if (show):
 		plt.show()
+	# Return the regressor model
+	return (poly_regressor)
 
 # Results ===================================
 import matplotlib.pyplot as plt
-# 	Visualise the prediction results
+# Visualise the prediction results
 plt.scatter(np.asarray(ind_param), dep_param, color = 'blue')
 
-plot_polcurve(ind_param, dep_param, 'red', 1) # Linear = Univariate Regression
-plot_polcurve(ind_param, dep_param, 'cyan', 2) # Better, but not good
-plot_polcurve(ind_param, dep_param, 'magenta', 4) # Good!
-plot_polcurve(ind_param, dep_param, 'green', 8) # Excellent?! Beware overfitting!
+model_list = []
+model_list.append(plot_polcurve(ind_param, dep_param, 'red', 1)) # Linear = Univariate Regression
+model_list.append(plot_polcurve(ind_param, dep_param, 'cyan', 2)) # Better, but not good
+model_list.append(plot_polcurve(ind_param, dep_param, 'magenta', 4)) # Good!
+model_list.append(plot_polcurve(ind_param, dep_param, 'green', 8)) # Excellent?! Beware overfitting!
 
 plt.title('Univariate vs Polynomial Linear Regression')
 plt.xlabel('Level')
 plt.ylabel('Salary')
 plt.show()
+
+# Predict new values
+for i in range(0, 4):
+	print model_list[i].predict(sklp_pf(degree = pow(2, i)).fit_transform(6.5))
