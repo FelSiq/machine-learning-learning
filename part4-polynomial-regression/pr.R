@@ -15,8 +15,12 @@ dataset$Level2 <- dataset$Level ^ 2
 pol_reg_degree2 <- lm(formula = Salary ~ ., data = dataset)
 summary(pol_reg_degree2) # Better!
 
-# -		Model degree: 4
+# -		Model degree: 3
 dataset$Level3 <- dataset$Level ^ 3
+pol_reg_degree3 <- lm(formula = Salary ~ ., data = dataset)
+summary(pol_reg_degree3) # Getting good...
+
+# -		Model degree: 4
 dataset$Level4 <- dataset$Level ^ 4
 pol_reg_degree4 <- lm(formula = Salary ~ ., data = dataset)
 summary(pol_reg_degree4) # Even Better!
@@ -47,3 +51,5 @@ ggplot() +
 	ylab('Salary')
 
 # Predict new values =====================================
+predict(object = lin_reg, newdata = data.frame(Level = 6.5))
+predict(object = pol_reg_degree4, newdata = data.frame(Level = 6.5, Level2 = 6.5^2, Level3 = 6.5^3, Level4 = 6.5^4))
