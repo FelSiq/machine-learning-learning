@@ -5,6 +5,10 @@ dataset = pd.read_csv('/home/felipe/Documentos/Machine Learning A-Z/Part 2' +
 	' - Regression/Section 7 - Support Vector Regression (SVR)/Position_Salaries.csv')
 # ======================================================
 # Create a outlier test sample
+# This outlier sample will be ignored automatically on the SVR model,
+# because it will be considered an outlier (non-representative) sample.
+# If it is not included on the dataset, then the 'CEO' sample would be 
+# the outlier itself, damaging the SVR model prediction power.
 test_dataframe = pd.DataFrame({
 	'Position':	['Outlier'],
 	'Level':	[11],
