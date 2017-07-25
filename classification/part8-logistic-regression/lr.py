@@ -11,8 +11,11 @@ dep_var = dataset.iloc[:,  -1].values
 # Check for categorical/hierarchical parameters
 # Column #0 is useless and #1 is categorical.
 from sklearn.preprocessing import LabelEncoder as skl_le 
-ind_var = ind_var[:, 1:-1]
+ind_var = ind_var[:, 1:(ind_var.shape[1] + 1)]
 ind_var[:, 0] = skl_le().fit_transform(ind_var[:, 0])
+
+# Discussion: are the 'Gender' parameter relevant? How to evaluate this correctly?
+ind_var = ind_var[:, 1:(ind_var.shape[1] + 1)]
 
 # Feature scaling?
 from sklearn.preprocessing import StandardScaler as skl_ss
