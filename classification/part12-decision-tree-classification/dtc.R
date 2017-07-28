@@ -6,7 +6,7 @@ dataset <- dataset[3:ncol(dataset)]
 dataset$Purchased <- as.factor(dataset$Purchased) # Needed to rpart work correctly
 
 # Feature scaling? No need with the classification tree
-# dataset[, -ncol(dataset)] <- scale(apply(dataset[, -ncol(dataset)], 2, as.numeric))
+dataset[, -ncol(dataset)] <- scale(apply(dataset[, -ncol(dataset)], 2, as.numeric))
 
 # Split the dataset into test set and train set
 library(caTools)
