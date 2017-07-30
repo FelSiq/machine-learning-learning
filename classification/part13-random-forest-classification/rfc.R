@@ -5,7 +5,7 @@ dataset <- read.csv('/home/felipe/Documentos/Machine Learning A-Z/Part 3 - Class
 dataset <- dataset[3:ncol(dataset)]
 dataset$Purchased <- as.factor(dataset$Purchased) # Just to be sure that the model will work correctly
 
-# Feature scaling?
+# Feature scaling? Just for plotting. Random Forest is not distance-based, so fs does not affect it.
 dataset[, -ncol(dataset)] <- scale(apply(dataset[, -ncol(dataset)], 2, as.numeric))
 
 # Split the dataset into test set and train set
@@ -16,10 +16,18 @@ test_set <- subset(dataset, !datasplit)
 
 # Fit the model
 library(randomForest)
+set.seed(1234)
+classifier <- randomForest(
+ 	formula = Purchased ~.,
+ 	ntree = 100,
+ 	data = train_set,
+ 	importance = TRUE)
+
 classifier <- randomForest(
 	formula = Purchased ~.,
 	ntree = 100,
-	data = train_set,
+	x = train_set[-ncol(train_set)],
+	y = train_set$Purchased,
 	importance = TRUE)
 
 # Predict the test set
@@ -27,6 +35,10 @@ prediction <- predict(object = classifier, newdata = test_set)
 
 # Confusion matrix
 table(test_set$Purchased, prediction)
+
+which(test_set$Purchased != prediction) # w/ x and y: 54 69 73 76 77 91 93 96
+										# w/ data 	: 54 69 73 76 77 91 93
+										# what's that?!
 
 # =============================================
 # Disclaimer: All the plotting code below is not mine.
