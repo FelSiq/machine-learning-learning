@@ -1,0 +1,13 @@
+0. INSTRUÇÕES:
+	A) make
+	B) ./tridle
+	C) boa sorte! :]
+
+1. COMANDOS GLOBAIS (IN-GAME):
+	A) SAIR (o jogo será salvo automaticamente)
+	B) NOTAS (relembra quais tarefas você está resolvendo no momento)
+	C) OBSERVAR (exibe uma lista de objetos interativos e caminhos na sala atual)
+	D) MOCHILA (exibe a lista de itens dentro da mochila)
+
+2. DETALHES IMPORTANTES:
+	Todos os comandos são case-insensitive.
