@@ -9,56 +9,70 @@ import random
 import math
 
 class mlp:
-	def __init__(self, stepSize = 0.2, maxError = 1.0e-05, maxIteration = 300, classThreshold = 0.5):
-		self.stepSize = 0.2
-		self.maxError = 1.0e-05
-		self.maxIteration = 300
-		self.classThreshold = 0.5
+	def __init__(self, stepSize = 0.2, maxError = 1.0e-5, maxIteration = 300, classThreshold = 0.5):
+		self.stepSize = stepSize
+		self.maxError = maxError
+		self.maxIteration = maxIteration
+		self.classThreshold = classThreshold
 		self.wHidden = np.array([])
 		self.wOutput = np.array([])
 		self.outputLayerSize = 0
 		self.hiddenLayerSize = 0
 		self.inputLayerSize = 0
+		self.hiddenLayerOutput = None
+		self.predictOutput = None
 
+	"""
+	"""
 	def _sigmoid(self, x, Lambda = 1.0):
 		return (1.0 + math.e**(-Lambda * x))**(-1.0)
+	def _d_sigmoid(self, x):
+		return self._sigmoid(x) * (1.0 - self._sigmoid(x))
 
+	"""
+	Backward/backpropagation step
+	"""
 	def _adjustWeights(self, x, y):
-		# Output layer
 		predict = self.predict(x)
+		error = y - predict
+
+		delta_o = error * self._d_sigmoid(predict)
+		delta_h = self._d_sigmoid() * ?
+
+		self.wOutput += self.stepSize * delta_o * np.concatenate((self.hiddenLayerOutput, [1.0]))
+		self.wHidden += self.stepSize * delta_h * np.concatenate((x, [1.0]))
+
+		return np.sum(np.power(y - predict, 2.0))
+
+	"""
+	Foward step
+	"""
+	def predict(self, query, Lambda = 1.0):
+		self.hiddenLayerOutput = np.array([0.0] * self.hiddenLayerSize)
 		for i in range(self.hiddenLayerSize):
-			w[1, i] += self.stepSize * (y - predict) * predict * (1.0 - predict) * ???
+			hiddenNet = np.sum(self.wHidden[i] * np.concatenate((query, [1.0])))
+			self.hiddenLayerOutput[i] = self._sigmoid(hiddenNet, Lambda)
 
-		# Hidden layer
-		for i in range(self.outputLayerSize):
-
-	def predict(self, query):
-		hiddenLayerOutput = np.array([0] * self.hiddenLayerSize)
-		for i in range(self.hiddenLayerSize):
-			hiddenNet = np.sum(self.wHidden[i] * np.concatenate((query, 1.0)))
-			hiddenLayerOutput[i] = this._sigmoid(hiddenNet)
-
-		finalOutput = np.array([0] * self.outputLayerSize)
+		self.predictOutput = np.array([0.0] * self.outputLayerSize)
 		for k in range(self.outputLayerSize):
-			outputNet = np.sum(self.wOutput[i] * np.concatenate((hiddenLayerOutput[i], 1.0)))
-			finalOutput[k] = self._sigmoid(outputNet)
+			outputNet = np.sum(self.wOutput[k] * np.concatenate((self.hiddenLayerOutput, [1.0])))
+			self.predictOutput[k] = self._sigmoid(outputNet, Lambda)
 
-		return finalOutput
+		return self.predictOutput
 
+	"""
+	"""
 	def _initWeights(self):
-		for i in range(self.hiddenLayerSize):
-			self.wHidden[i] = [random.random() - 0.5 for j in range(self.inputLayerSize)]
-		for i in range(self.outputLayerSize):
-			self.wOutput[i] = [random.random() - 0.5 for j in range(self.hiddenLayerSize)]
-
-	def fit(self, dataset, hiddenLayerSize = 2):
+		self.wHidden = [[random.random() - 0.5 for __ in range(self.inputLayerSize + 1)] for _ in range(self.hiddenLayerSize)]
+		self.wOutput = [[random.random() - 0.5 for __ in range(self.hiddenLayerSize + 1)] for _ in range(self.outputLayerSize)]
+	
+	"""
+	"""
+	def fit(self, x, y, hiddenLayerSize = 2):
 		n = dataset.shape[0]
-		x = dataset.iloc[:,:-1].values
-		y = dataset.iloc[:, -1].values
-
-		self.outputLayerSize = math.ceil(math.log(len(set(y)), 2))
+		self.inputLayerSize = x.shape[1]
 		self.hiddenLayerSize = hiddenLayerSize
-		self.inputLayerSize = dataset.shape[1]
+		self.outputLayerSize = y.shape[1]
 
 		self._initWeights()
 
@@ -69,17 +83,18 @@ class mlp:
 			meanSqrError = 0.0
 
 			for i in range(n):
-				curPrediction = self.predict(x[i], y[i])
-				meanSqrError += self._adjustWeights(y, curPrediction)
+				meanSqrError += self._adjustWeights(x[i], y[i])
 			meanSqrError /= n
+
+			if (curIteration == self.maxIteration):
+				print('Warning: reached max iteration number.')
 
 
 # Program driver
-in __name__ == '__main__':
+if __name__ == '__main__':
 	dataset = pd.read_csv('./dataset/XOR.dat', sep = ' ')
-	mlp = mlp()
-	mlp.fit(dataset)
-
+	mlp = mlp(stepSize = 0.05, maxIteration = 1000)
+	mlp.fit(x = dataset.iloc[:, :2].values, y = dataset.iloc[:, 2:].values)
 	XORQueries = np.array([
 			[1, 0],
 			[0, 0],
