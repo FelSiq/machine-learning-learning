@@ -39,7 +39,7 @@ class mlp:
 
 		delta_o = []
 		for k in range(self.outputLayerSize):
-			delta_o.append(error * self._d_sigmoid(self.outputNet[k], Lambda))
+			delta_o.append(error[k] * self._d_sigmoid(self.outputNet[k], Lambda))
 
 		delta_h = []
 		for j in range(self.hiddenLayerSize):
@@ -100,10 +100,12 @@ class mlp:
 				print('Warning: reached max iteration number (' + str(maxIteration) + ').')
 
 
+import colorama
 # Program driver
 if __name__ == '__main__':
 	mlp = mlp()
 
+	# -------- XOR DATASET ---------------------------------------------
 	"""	dataset = pd.read_csv('./dataset/XOR.dat', sep = ' ')
 	mlp.fit(x = dataset.iloc[:, :2].values, y = dataset.iloc[:, 2:].values)
 	
@@ -118,16 +120,42 @@ if __name__ == '__main__':
 		print('query:', q, 'result:', mlp.predict(q))
 	"""
 
-	dataset = pd.read_csv('./dataset/wine.data', sep = ',', header = 0, names = ['Class'] + ['X' + str(i) for i in range(13)])
+	# ------- WINE UCI DATASET -----------------------------------------
+	dataset = pd.read_csv('./dataset/wine.data', sep = ',', 
+		header = 0, names = ['Class'] + ['X' + str(i) for i in range(13)])
+
+	fullSet = {i for i in range(dataset.shape[0])}
+	trainSet = random.sample(fullSet, round(dataset.shape[0] * 0.6))
+	testSet = list(fullSet - set(trainSet))
 
 	x = dataset.iloc[:, 1:]
-	scaledDataset = (x - x.mean())/x.std()
+	normalizedDataset = (x - x.max())/(x.max() - x.min())
 
-	mlp.fit(x = scaledDataset.values, y = pd.get_dummies(dataset['Class']).values, showError = True)
+	trainData = normalizedDataset.iloc[trainSet].values
+	testData = normalizedDataset.iloc[testSet].values
+
+	mlp.fit(
+		x = trainData, 
+		y = pd.get_dummies(dataset.iloc[trainSet]['Class']).values, 
+		hiddenLayerSize = 3,
+		showError = True,
+		maxError = 1.0e-3)
 	
-	wineQuery = [13.24,2.59,2.87,21,118,2.8,2.69,.39,1.82,4.32,1.04,2.93,735]
+	correctResults = 0
+	trueLabels = pd.get_dummies(dataset.iloc[testSet]['Class']).values
+	for i in range(len(testData)):
+		wineQuery = testData[i]
+		prediction = np.round(mlp.predict(wineQuery))
 
-	print('query:', wineQuery, 'result:', mlp.predict(wineQuery))
+		checkResult = int(np.sum(prediction - trueLabels[i]) == 0)
+
+		print(colorama.Fore.GREEN if checkResult else colorama.Fore.RED, 
+			'query ID:', i, 
+			'predict:', prediction,
+			'trueLabel:', trueLabels[i],
+			colorama.Fore.RESET)
+
+		correctResults += checkResult
 
 
-
+	print('Accuracy:', correctResults/len(testData))
