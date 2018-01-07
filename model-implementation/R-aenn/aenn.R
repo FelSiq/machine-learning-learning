@@ -6,9 +6,11 @@
 # if the majority of the k-nearest neighbors for each instance have different classes.
 # ----------------------------------------------
 
-ENN <- function(data, k = 3) {
-	x <- data[-which(colnames(data) == 'Class')]
-	y <- data$Class
+ENN <- function(data, k = 5, classColumn = ncol(data), scale = TRUE) {
+	x <- data[-classColumn]
+	y <- data[[classColumn]]
+
+	if (scale) x <- scale(x)
 
 	possibleNoises <- vector()
 
@@ -39,10 +41,16 @@ ENN <- function(data, k = 3) {
 # all instances considered noise for any i.
 # ----------------------------------------------
 
-AENN <- function(data, k = 3) {
+AENN <- function(data, k = 5, classColumn = ncol(data), scale = TRUE) {
 	noises <- vector()
-	for (i in 1:k) {
-		noises <- c(noises, ENN(data, i))
+	n <- min(k, nrow(data) - 1)
+	for (i in 1:n) {
+		noises <- c(noises, ENN(data, i, classColumn, scale))
 	}
-	return(data[-noises,])
+
+	newData <- list()
+	newData$remIdx <- sort(unique(noises))
+	newData$cleanData <- data[-noises,] 
+
+	return(newData)
 }
