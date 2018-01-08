@@ -8,7 +8,6 @@ import numpy as np
 import random
 import math
 
-
 class mlp:
 	def __init__(self):
 		self.wHidden = np.array([])
@@ -76,13 +75,16 @@ class mlp:
 	
 	"""
 	"""
-	def fit(self, x, y, hiddenLayerSize = 2, showError = False, stepSize = 0.2, maxError = 1.0e-2, maxIteration = 20000, Lambda = 1.0):
+	def fit(self, x, y, hiddenLayerSize = 2, showError = False, stepSize = 0.2, 
+		maxError = 1.0e-2, maxIteration = 1000, Lambda = 1.0, returnMSEDelta = False):
 		n = x.shape[0]
 		self.inputLayerSize = x.shape[1]
 		self.hiddenLayerSize = hiddenLayerSize
 		self.outputLayerSize = y.shape[1]
 
 		self._initWeights()
+
+		MSEdelta = []
 
 		meanSqrError = maxError * 2.0
 		curIteration = 0
@@ -94,11 +96,38 @@ class mlp:
 				meanSqrError += self._adjustWeights(x[i], y[i], stepSize, Lambda)
 			meanSqrError /= n
 
+			MSEdelta.append(meanSqrError)
+
 			if (showError):
 				print('I:','{value:<{fill}}'.format(value = curIteration, fill = 15), 'MSE:', meanSqrError)
 			if (curIteration == maxIteration):
 				print('Warning: reached max iteration number (' + str(maxIteration) + ').')
 
+		# This vector has the differente of MSE of iteration (t + 1) and t.
+		# Its good for plotting.
+		if returnMSEDelta:
+			for i in range(1, len(MSEdelta)):
+				MSEdelta[i - 1] -= MSEdelta[i]
+			return MSEdelta[:-1]
+		return None
+
+
+def scale(x):
+	colNum = len(x[0])
+	minCol = np.array([ math.inf] * colNum)
+	maxCol = np.array([-math.inf] * colNum)
+
+	for sample in x:
+		minCol = np.array([min(minCol[i], sample[i]) for i in range(colNum)])
+		maxCol = np.array([max(maxCol[i], sample[i]) for i in range(colNum)])
+
+	scaledData = np.array([0,0,0,0])
+	scaleFactor = 1.0/(maxCol - minCol)
+
+	for sample in x:
+		scaledData = np.vstack([scaledData, (sample - minCol) * scaleFactor])
+
+	return scaledData[1:]
 
 import colorama
 # Program driver
@@ -106,8 +135,13 @@ if __name__ == '__main__':
 	mlp = mlp()
 
 	# -------- XOR DATASET ---------------------------------------------
-	"""	dataset = pd.read_csv('./dataset/XOR.dat', sep = ' ')
-	mlp.fit(x = dataset.iloc[:, :2].values, y = dataset.iloc[:, 2:].values)
+	"""
+	dataset = pd.read_csv('./dataset/XOR.dat', sep = ' ')
+	deltaVec = mlp.fit(
+		x = dataset.iloc[:, :2].values, 
+		y = dataset.iloc[:, 2:].values, 
+		showError = True, 
+		returnMSEDelta = True)
 	
 	XORQueries = np.array([
 			[1, 0],
@@ -118,9 +152,14 @@ if __name__ == '__main__':
 
 	for q in XORQueries:
 		print('query:', q, 'result:', mlp.predict(q))
+
+
+	print(deltaVec)
+
 	"""
 
 	# ------- WINE UCI DATASET -----------------------------------------
+	"""	
 	dataset = pd.read_csv('./dataset/wine.data', sep = ',', 
 		header = 0, names = ['Class'] + ['X' + str(i) for i in range(13)])
 
@@ -134,12 +173,13 @@ if __name__ == '__main__':
 	trainData = normalizedDataset.iloc[trainSet].values
 	testData = normalizedDataset.iloc[testSet].values
 
-	mlp.fit(
+	deltaVec = mlp.fit(
 		x = trainData, 
 		y = pd.get_dummies(dataset.iloc[trainSet]['Class']).values, 
 		hiddenLayerSize = 3,
 		showError = True,
-		maxError = 1.0e-3)
+		returnMSEDelta = True,
+		maxIteration = 300)
 	
 	correctResults = 0
 	trueLabels = pd.get_dummies(dataset.iloc[testSet]['Class']).values
@@ -159,3 +199,53 @@ if __name__ == '__main__':
 
 
 	print('Accuracy:', correctResults/len(testData))
+
+	print(deltaVec)
+
+	"""
+
+	# ------ IRIS DATASET -------------------------------------
+	#"""
+	from sklearn import datasets
+	iris = datasets.load_iris()
+
+	fullSet = {i for i in range(len(iris.target))}
+	trainSet = random.sample(fullSet, round(len(iris.target) * 0.6))
+	testSet = list(fullSet - set(trainSet))
+
+	x = scale(iris.data)
+
+	trainData = x[trainSet]
+	testData = x[testSet]
+
+	print(pd.get_dummies(iris.target[trainSet]))
+
+	errorVec = mlp.fit(
+		x = trainData, 
+		y = pd.get_dummies(iris.target[trainSet]).values, 
+		hiddenLayerSize = 4,
+		showError = True,
+		maxError = 0.04,
+		returnMSEDelta = False)
+	
+	correctResults = 0
+	trueLabels = pd.get_dummies(iris.target).values
+	for i in range(len(testData)):
+		irisQuery = testData[i]
+		prediction = np.round(mlp.predict(irisQuery))
+
+		checkResult = int(np.sum(prediction - trueLabels[i]) == 0)
+
+		print(colorama.Fore.GREEN if checkResult else colorama.Fore.RED, 
+			'query ID:', i, 
+			'predict:', prediction,
+			'trueLabel:', trueLabels[i],
+			colorama.Fore.RESET)
+
+		correctResults += checkResult
+
+
+	print('Accuracy:', correctResults/len(testData))
+
+	# print(errorVec)
+	#"""
