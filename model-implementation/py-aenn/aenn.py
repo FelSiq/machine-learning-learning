@@ -53,11 +53,11 @@ class AENN:
 	def aenn(self, x, y, k = 5, scale = False):
 
 		if (scale):
-			x = self._scale(x)
+			scaledData = self._scale(x)
 
 		for i in range(k):
 			self.removedIndexes = self.removedIndexes.union(self.enn(
-				x = x,
+				x = scaledData if scale else x,
 				y = y,
 				k = i + 1))
 
