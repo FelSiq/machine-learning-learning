@@ -32,13 +32,16 @@ class naiveBayes:
 		return self
 
 	def predict(self, query, crisp=True, normalizeProb=True):
-		self.queryPropClass = {key : self.classProbs[key] for key in self.classes}
+		self.queryPropClass = {key : np.log(self.classProbs[key]) for key in self.classes}
 
 		# Compute probability using Naive Bayes Theorem for every class
 		for c in self.classes:
 			for i in range(len(query)):
 				queryVal = query[i]
-				self.queryPropClass[c] *= self.colProbs[c][i][queryVal]
+				if queryVal in self.colProbs[c][i].keys():
+					self.queryPropClass[c] += np.log(self.colProbs[c][i][queryVal])
+
+		self.queryPropClass = {key: np.exp(val) for key, val in self.queryPropClass.items()}
 
 		# Probability normalization
 		if (normalizeProb):
@@ -57,4 +60,6 @@ if __name__ == '__main__':
 
 	model = naiveBayes().fit(x = dataset.iloc[:,1:-1].values, y = dataset.iloc[:,-1].values)
 
-	print(model.predict(['ensolarado', 'fria', 'alta', 'forte']))
+	print(model.predict(['ensolarado', 'fria', 'alta', 'forte'], crisp=False))
+	print(model.predict(['?', 'quente', 'alta', '?'], crisp=False))
+	print(model.predict(['?', 'quente', 'alta', 'medio'], crisp=False))
