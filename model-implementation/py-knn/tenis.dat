@@ -1,0 +1,15 @@
+dia,panorama,temperatura,umidade,vento,joga
+d1,ensolarado,quente,alta,fraco,não
+d2,ensolarado,quente,alta,forte,não
+d3,nublado,quente,alta,fraco,sim
+d4,chuvoso,intermediária,alta,fraco,sim
+d5,chuvoso,fria,normal,fraco,sim
+d6,chuvoso,fria,normal,forte,não
+d7,nublado,fria,normal,forte,sim
+d8,ensolarado,intermediária,alta,fraco,não
+d9,ensolarado,fria,normal,fraco,sim
+d10,chuvoso,intermediária,normal,fraco,sim
+d11,ensolarado,intermediária,normal,forte,sim
+d12,nublado,intermediária,alta,forte,sim
+d13,nublado,quente,normal,fraco,sim
+d14,chuvoso,intermediária,alta,forte,não
