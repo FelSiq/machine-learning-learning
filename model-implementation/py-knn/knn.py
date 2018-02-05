@@ -1,4 +1,6 @@
+import matplotlib.pyplot as plt
 from sklearn import datasets
+import matplotlib.cm
 import numpy as np
 import colorama
 import random
@@ -21,7 +23,7 @@ class knn:
 	def _manhattanDist(self, a, b):
 		return sum([abs(a[i] - b[i]) for i in range(min(len(a), len(b)))])
 
-	def _euclidianDist(self, a, b):
+	def _euclideanDist(self, a, b):
 		return sum([(a[i] - b[i])**2.0 for i in range(min(len(a), len(b)))])**0.5
 
 	def _calculateDist(self, a, b, distance=1):
@@ -40,7 +42,7 @@ class knn:
 			# Atributes with more variance is weighted more.
 			return self._mahalanobisDist(a, b, self._sInv)
 		else: # Euclidian
-			return self._euclidianDist(a, b)
+			return self._euclideanDist(a, b)
 
 	def predict(self, x, y, query, k=3, distance=1):
 		self._sInv = None
@@ -59,12 +61,48 @@ class knn:
 
 		return max(freqs, key = lambda k : freqs[k])
 
+	def plot(self, x, y, k=3, distance=1, dim=250):
+		if x.shape[1] > 2:
+			print('E: can\'t  plot a dataset on a higher dimension than two.')
+			return
+
+		xCoords = []
+		yCoords = []
+		for s in x:
+			xCoords.append(s[0])
+			yCoords.append(s[1])
+
+		plt.scatter(xCoords, yCoords)
+
+		xdim = plt.axes().get_xlim()
+		ydim = plt.axes().get_ylim()
+
+		xdiff = (xdim[1] * 1.1 - xdim[0] * 1.1)/dim
+		ydiff = (ydim[1] * 1.1 - ydim[0] * 1.1)/dim
+		xpoints = [i * xdiff for i in range(dim)]
+		ypoints = [i * ydiff for i in range(dim)]
+
+		classes = np.unique(y)
+		classesColors = {key : (random.random(), random.random(), random.random()) for key in classes}
+		markerColors = {key : (random.random(), random.random(), random.random()) for key in classes}
+
+		matpoints = [[i, j] for j in ypoints for i in xpoints]
+		classifications = []
+		for sample in matpoints:
+			classifications.append(classesColors[self.predict(x, y, sample, k, distance)])
+
+		xpoints = [m[0] for m in matpoints]
+		ypoints = [m[1] for m in matpoints]
+		plt.scatter(xpoints, ypoints, c=classifications, s=1.0, marker='.')
+		plt.scatter(xCoords, yCoords, c=[markerColors[s] for s in y])
+		plt.show()
+
 import pandas as pd
 import numpy as np
 if __name__ == '__main__':
+	"""
 	from sklearn import datasets
 	iris = datasets.load_iris()
-
 	fullSetIndexes = {i for i in range(len(iris.target))}
 	trainSetIndexes = random.sample(fullSetIndexes, round(len(iris.target) * 0.75))
 	testSetIndexes = list(fullSetIndexes - set(trainSetIndexes))
@@ -83,3 +121,7 @@ if __name__ == '__main__':
 		correctResults += checkResult
 
 	print('Accuracy:', correctResults/len(testSetIndexes))
+
+	"""
+	dataset = pd.read_csv('1.in')
+	knn().plot(dataset.iloc[:,:-1].values, dataset.iloc[:,-1].values, k=1, distance=1)
