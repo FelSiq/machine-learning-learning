@@ -1,6 +1,7 @@
+import matplotlib.pyplot as plt
 from sklearn import datasets
 import numpy as np
-import pandas
+import pandas as pd
 import math
 import copy
 import random
@@ -37,7 +38,7 @@ class idtree:
 			return {
 				'ID': ID,
 				'Instances': Instances,
-				'Attr:': Attr, # Just for non-leaf nodes
+				'Attr': Attr, # Just for non-leaf nodes
 				'Threshold': Threshold, # Just for continuous data
 				'ClassLabel': ClassLabel,
 				'Deep': Deep}
@@ -45,10 +46,20 @@ class idtree:
 			return {
 				'ID': ID,
 				'Instances': Instances,
-				'Attr:': Attr, # Just for non-leaf nodes
+				'Attr': Attr, # Just for non-leaf nodes
 				'ChildrenValues': ChildrenValues, # Just for discrete data
 				'ClassLabel': ClassLabel, 
 				'Deep': Deep}
+
+	def _checkPred(self, curNode, target, predVec):
+		found = False
+
+		while not found and curNode != -1:
+			print(curNode)
+			found = curNode == target
+			curNode = predVec[curNode]
+
+		return found
 
 	def fit(self, x, y, base=2, maxEntropy=0.1, precision=3, maxDeep=5, showError=False):
 
@@ -59,7 +70,11 @@ class idtree:
 
 		if not continuousData:
 			# Discrete data
-			attribValues = None #something??
+			predVec = {0 : -1}
+			attribValues = [set() for i in range(attrNum)]
+			for inst in x:
+				for i in range(attrNum):
+					attribValues[i].add(inst[i])
 
 		# Don't necessarily has to be a stack. Any data structure 
 		# works, even if unstable (like a heap) or a random sorted array.
@@ -85,7 +100,10 @@ class idtree:
 
 			if curEntropy > maxEntropy and curNode['Deep'] <= maxDeep:
 				# Not a leaf node
-				minCombEntropy = {'value': math.inf, 'comb': (-1,-1),  'instSet': []}
+				if continuousData:
+					minCombEntropy = {'value': math.inf, 'comb': (-1,-1), 'instSet': []}
+				else:
+					minAttrEntropy = {'value': math.inf, 'Attr': -1, 'instSet': []}
 
 				for attr in range(attrNum):
 					if continuousData:
@@ -99,16 +117,26 @@ class idtree:
 								for instIndex in curNode['Instances']:
 									instSet[x[instIndex][attr] >= curThresholdValue].append(instIndex) 
 
-								if len(instSet[0]) and len(instSet[1]):
-									curCombEntropy = self._setEntropy(instSet, y, base)
-									if curCombEntropy < minCombEntropy['value']:
-										minCombEntropy['value'] = curCombEntropy
-										minCombEntropy['comb'] = (attr, thrs)
-										minCombEntropy['instSet'] = copy.deepcopy(instSet)
+								curCombEntropy = self._setEntropy(instSet, y, base)
+								if curCombEntropy < minCombEntropy['value']:
+									minCombEntropy['value'] = curCombEntropy
+									minCombEntropy['comb'] = (attr, thrs)
+									minCombEntropy['instSet'] = copy.deepcopy(instSet)
 					else:
 						# Discrete data approach
-						instSet = None #something??
-						setEntropies[attr] = self._setEntropy(instSet, y, base)
+						# I need to keep track of every path on the tree, because it's
+						# possible to reuse the same attribute, but not on the same path.
+						if not self._checkPred(curNode['Attr'], attr, predVec): 
+							instSet = {key : [] for key in attribValues[attr]}
+
+							for instIndex in curNode['Instances']:
+								instSet[x[instIndex][attr]].append(instIndex)
+
+							curAttrEntropy = self._setEntropy([instSet[key] for key in instSet], y, base)
+							if curAttrEntropy < minAttrEntropy['value']:
+								minAttrEntropy['value'] = curAttrEntropy
+								minAttrEntropy['Attr'] = attr
+								minAttrEntropy['instSet'] = copy.deepcopy(instSet)
 
 				if continuousData:
 					# Continuous data approach
@@ -133,10 +161,17 @@ class idtree:
 				else:
 					# Discrete data approach
 					# Get min entropy set
-					None #something??
+					curNode['Attr'] = minAttrEntropy['Attr']
 					# Generate children nodes
 					# Each Discrete data tree node has one children for each attribute different value 
-					None #something??
+					childrens = {}
+					for key in attribValues[curNode['Attr']]:
+						nodeID += 1
+						predVec[nodeID] = curNode['Attr']
+						childrens[key] = nodeID
+						stack.append(self._initNode(ID=nodeID, Instances=minAttrEntropy['instSet'][key], Deep=curNode['Deep']+1))
+
+					self.tree[curNode['ID']] = {'node': curNode, 'childrens': childrens}
 
 			else:
 				# New leaf node
@@ -149,16 +184,23 @@ class idtree:
 	def predict(self, query):
 		curNode = 0
 		while self.tree[curNode]['node']['ClassLabel'] == '':
-			if query[self.tree[curNode]['node']['Attr']] < self.tree[curNode]['node']['Threshold']:
-				curNode = self.tree[curNode]['lThan']
+			if self.type == 'continuous':
+				if query[self.tree[curNode]['node']['Attr']] < self.tree[curNode]['node']['Threshold']:
+					curNode = self.tree[curNode]['lThan']
+				else:
+					curNode = self.tree[curNode]['goeThan']
 			else:
-				curNode = self.tree[curNode]['goeThan']
+				for value in self.tree[curNode]['childrens']: 
+					if query[self.tree[curNode]['node']['Attr']] == value:
+						curNode = self.tree[curNode]['childrens'][value]
 		return self.tree[curNode]['node']['ClassLabel']
 
 	def plot(self):
 		None
 
 if __name__ == '__main__':
+	# IRIS TESTING
+	"""	
 	iris = datasets.load_iris()
 
 	cvfolds = 10
@@ -181,4 +223,30 @@ if __name__ == '__main__':
 	print('CV accuracy: ', np.mean(accuracies))
 
 	model = idtree().fit(iris.data, iris.target, maxDeep=3)
+	"""
+
+	# TENIS DATASET
+	dataset = pd.read_csv('tenis.dat')
+
+	# LOOCV
+	cvfolds = dataset.shape[0]
+	folds = np.array([i for i in range(cvfolds)])
+
+	accuracies = [0.0] * cvfolds
+	for f in range(cvfolds):
+		model = idtree(type='discrete').fit(dataset.iloc[folds!=f,1:-1].values, dataset.iloc[folds!=f, -1].values, maxDeep=10)
+		correctResults = 0
+
+		testData = dataset.iloc[folds==f,1:-1].values
+		testLabels = dataset.iloc[folds==f, -1].values
+
+		if len(testLabels):
+			for i in range(len(testData)):
+				label = model.predict(testData[i])
+				correctResults += label == testLabels[i]
+
+			accuracies[f] = correctResults/len(testLabels)
+
+	print('CV accuracy: ', np.mean(accuracies))
+
 	model.plot()
