@@ -19,7 +19,7 @@ class idtree:
 	def _subsetEntropy(self, subset, base=2):
 		classes, absFreqs = np.unique(subset, return_counts=True)
 		probs = absFreqs/len(subset)
-		return -sum([probs[i] * math.log(probs[i], base) for i in range(len(probs))])
+		return -sum([(probs[i] * math.log(probs[i], base) if 0.0 < probs[i] < 1.0 else 0.0) for i in range(len(probs))])
 
 	def _setEntropy(self, instSet, classLabels, base=2):
 		if len(instSet):
@@ -29,7 +29,8 @@ class idtree:
 			
 			totalDisorder = 0.0
 			for subset in instSet:
-				totalDisorder += self._subsetEntropy(classLabels[subset], base) * (len(subset)/totalSetLen)
+				if len(subset):
+					totalDisorder += self._subsetEntropy(classLabels[subset], base) * (len(subset)/totalSetLen)
 
 			return totalDisorder
 		return math.inf
