@@ -53,7 +53,7 @@ class knn:
 		for i in range(len(x)):
 			dist.append((self._calculateDist(query, x[i], distance), y[i]))
 
-		nearestLabels = [inst[1] for inst in sorted(dist)[:k]]
+		nearestLabels = [inst[1] for inst in sorted(dist, key= lambda k : k[0])[:k]]
 
 		freqs = {key : 0 for key in set(y)}
 		for n in nearestLabels:
@@ -77,10 +77,10 @@ class knn:
 		xdim = plt.axes().get_xlim()
 		ydim = plt.axes().get_ylim()
 
-		xdiff = (xdim[1] * 1.1 - xdim[0] * 1.1)/dim
-		ydiff = (ydim[1] * 1.1 - ydim[0] * 1.1)/dim
-		xpoints = [i * xdiff for i in range(dim)]
-		ypoints = [i * ydiff for i in range(dim)]
+		xdiff = (xdim[1] * 1.1 - xdim[0] * 1.1)/dim  
+		ydiff = (ydim[1] * 1.1 - ydim[0] * 1.1)/dim  
+		xpoints = [i * xdiff + xdim[0] * 1.1 for i in range(dim)]
+		ypoints = [i * ydiff + ydim[0] * 1.1 for i in range(dim)]
 
 		classes = np.unique(y)
 		classesColors = {key : (random.random(), random.random(), random.random()) for key in classes}
@@ -99,6 +99,7 @@ class knn:
 
 import pandas as pd
 import numpy as np
+import colorama
 if __name__ == '__main__':
 	"""
 	from sklearn import datasets
@@ -123,5 +124,22 @@ if __name__ == '__main__':
 	print('Accuracy:', correctResults/len(testSetIndexes))
 
 	"""
-	dataset = pd.read_csv('1.in')
-	knn().plot(dataset.iloc[:,:-1].values, dataset.iloc[:,-1].values, k=1, distance=1)
+
+	# Example from MIT Artifial Intelligence Course 2010 Final Exam (Quiz 3, Problem 1) 
+	# In this example, the data must be normalized or else the decision boundary will not work as expected
+	dataset = pd.read_csv('datasets/2.in')
+	dataset=dataset.sort_values(by=['ID'])
+	normalized_attr = (dataset.iloc[:,1:-1] - dataset.mean(numeric_only=True, 
+		axis=0))/(dataset.max(numeric_only=True, axis=0) - dataset.min(numeric_only=True, axis=0))
+	knn().plot(normalized_attr.values, dataset.iloc[:,-1].values, k=1, distance=1)
+
+	n = normalized_attr.shape[0]
+	inst = [True] * n
+	for i in range(n):
+		inst[i] = False
+		label = knn().predict(x=normalized_attr.iloc[inst].values, 
+			y=dataset.iloc[inst,-1].values, query=normalized_attr.iloc[i].values, k=1, distance=1)
+		inst[i] = True
+		trueLabel = dataset.iloc[i,-1]
+		print(colorama.Fore.RED if label != trueLabel else colorama.Fore.GREEN, 
+			dataset.iloc[i, 0], ': predict:', label, 'true:', trueLabel, colorama.Fore.RESET)
