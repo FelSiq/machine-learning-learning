@@ -101,7 +101,7 @@ import pandas as pd
 import numpy as np
 import colorama
 if __name__ == '__main__':
-	"""
+	#"""
 	from sklearn import datasets
 	iris = datasets.load_iris()
 	fullSetIndexes = {i for i in range(len(iris.target))}
@@ -110,7 +110,7 @@ if __name__ == '__main__':
 
 	correctResults = 0
 	for i in testSetIndexes:
-		prediction = knn().predict(iris.data[trainSetIndexes], iris.target[trainSetIndexes], iris.data[i], distance=5)
+		prediction = knn().predict(iris.data[trainSetIndexes], iris.target[trainSetIndexes], iris.data[i], distance=1)
 		checkResult = int((prediction - iris.target[i]) == 0)
 
 		print(colorama.Fore.GREEN if checkResult else colorama.Fore.RED, 
@@ -123,10 +123,11 @@ if __name__ == '__main__':
 
 	print('Accuracy:', correctResults/len(testSetIndexes))
 
-	"""
+	#"""
 
 	# Example from MIT Artifial Intelligence Course 2010 Final Exam (Quiz 3, Problem 1) 
 	# In this example, the data must be normalized or else the decision boundary will not work as expected
+	"""
 	dataset = pd.read_csv('datasets/2.in')
 	dataset=dataset.sort_values(by=['ID'])
 	normalized_attr = (dataset.iloc[:,1:-1] - dataset.mean(numeric_only=True, 
@@ -143,3 +144,4 @@ if __name__ == '__main__':
 		trueLabel = dataset.iloc[i,-1]
 		print(colorama.Fore.RED if label != trueLabel else colorama.Fore.GREEN, 
 			dataset.iloc[i, 0], ': predict:', label, 'true:', trueLabel, colorama.Fore.RESET)
+	"""
