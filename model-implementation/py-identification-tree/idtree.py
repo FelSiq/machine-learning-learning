@@ -36,7 +36,7 @@ class idtree:
 		return math.inf
 
 	def _initNode(self, ID=0, Instances=list(), Attr=-1, Threshold=-1.0, 
-		ClassLabel='', ChildrenValues=[], Deep=0):
+		ClassLabel='', ChildrenValues=[], Deep=0, Disorder=0):
 		if self.type == 'continuous':
 			return {
 				'ID': ID,
@@ -44,14 +44,16 @@ class idtree:
 				'Attr': Attr, # Just for non-leaf nodes
 				'Threshold': Threshold, # Just for continuous data
 				'ClassLabel': ClassLabel,
-				'Deep': Deep}
+				'Deep': Deep,
+				'Disorder': Disorder}
 		else:
 			return {
 				'ID': ID,
 				'Instances': Instances,
 				'Attr': Attr, # Just for non-leaf nodes
 				'ClassLabel': ClassLabel, 
-				'Deep': Deep}
+				'Deep': Deep,
+				'Disorder': Disorder}
 
 	def _checkPred(self, curNode, target, predVec):
 		found = False
@@ -93,7 +95,7 @@ class idtree:
 				maxAttribVals = np.max(x[curNode['Instances']], axis=0)
 				minAttribVals = np.min(x[curNode['Instances']], axis=0)
 				attribThresholds = np.around([[minAttribVals[j] + i * (maxAttribVals[j] - minAttribVals[j])/(self.thresholds + 2) 
-					for i in range(self.thresholds + 2)][1:-1] 
+					for i in range(self.thresholds + 2)][0:-1] 
 					for j in range(len(minAttribVals))], precision)
 
 			curEntropy = self._subsetEntropy(y[curNode['Instances']])
@@ -145,6 +147,7 @@ class idtree:
 					# Continuous data approach
 					# Get min entropy set
 					curNode['Attr'] = minCombEntropy['comb'][0]
+					curNode['Disorder'] = minCombEntropy['value']
 					thrsIndex = minCombEntropy['comb'][1]
 					instSet = minCombEntropy['instSet']
 
@@ -165,6 +168,7 @@ class idtree:
 					# Discrete data approach
 					# Get min entropy set
 					curNode['Attr'] = minAttrEntropy['Attr']
+					curNode['Disorder'] = minAttrEntropy['value']
 
 					if curNode['Attr'] != -1:
 						# Generate children nodes
@@ -223,8 +227,62 @@ class idtree:
 							return 'Unknown'
 		return self.tree[curNode]['Node']['ClassLabel']
 
-	def plot(self):
-		None
+	def plot(self, x, y, dim=250):
+		if x.shape[1] > 2:
+			print('E: can\'t  plot a dataset on a higher dimension than two.')
+			return
+
+		xCoords = []
+		yCoords = []
+		for s in x:
+			xCoords.append(s[0])
+			yCoords.append(s[1])
+
+		plt.scatter(xCoords, yCoords)
+
+		xdim = plt.axes().get_xlim()
+		ydim = plt.axes().get_ylim()
+
+		xdiff = (xdim[1] * 1.1 - xdim[0] * 1.1)/dim  
+		ydiff = (ydim[1] * 1.1 - ydim[0] * 1.1)/dim  
+		xpoints = [i * xdiff + xdim[0] * 1.1 for i in range(dim)]
+		ypoints = [i * ydiff + ydim[0] * 1.1 for i in range(dim)]
+
+		classes = np.unique(y)
+		classesColors = {key : (random.random(), random.random(), random.random()) for key in classes}
+		markerColors = {key : (random.random(), random.random(), random.random()) for key in classes}
+
+		matpoints = [[i, j] for j in ypoints for i in xpoints]
+		classifications = []
+		for sample in matpoints:
+			classifications.append(classesColors[self.predict(sample)])
+
+		xpoints = [m[0] for m in matpoints]
+		ypoints = [m[1] for m in matpoints]
+		plt.scatter(xpoints, ypoints, c=classifications, s=1.0, marker='.')
+		plt.scatter(xCoords, yCoords, c=[markerColors[s] for s in y])
+		plt.show()
+
+	def _print(self, curNode, offset):
+		levelOffset = ' ' * offset + str(offset) + '. '
+		currentNode = self.tree[curNode]['Node']
+		if currentNode['ClassLabel'] != '':
+			print(levelOffset, 'Class:', currentNode['ClassLabel'], 
+				'(with disorder of', str(currentNode['Disorder']) + ')')
+		else:
+			if self.type == 'discrete':
+				None
+			else:
+				print(levelOffset, 'Test on attribute', currentNode['Attr'], 
+					'with Threshold:', currentNode['Threshold'])
+				print(levelOffset, 'if <  :')
+				self._print(self.tree[curNode]['lThan'], offset + 1)
+				print(levelOffset, 'if >= :')
+				self._print(self.tree[curNode]['goeThan'], offset + 1)
+
+	def print(self):
+		self._print(0, 0)
+
 
 def kfcv(size, k=10):
 	FLAG = True
@@ -271,7 +329,7 @@ if __name__ == '__main__':
 
 	# TENIS DATASET
 	"""
-	dataset = pd.read_csv('tenis.dat')
+	dataset = pd.read_csv('datasets/tenis.dat')
 
 	# LOOCV
 	cvfolds = dataset.shape[0]
@@ -297,8 +355,8 @@ if __name__ == '__main__':
 	"""
 
 	# CAR EVALUATION (UCI)
-	#"""
-	dataset = pd.read_csv('car.data')
+	"""
+	dataset = pd.read_csv('datasets/car.data')
 
 	cvfolds = 50
 	folds = kfcv(size=dataset.shape[0], k=cvfolds)
@@ -321,4 +379,12 @@ if __name__ == '__main__':
 			print('fold accuracy: ', accuracies[f])
 
 	print('CV accuracy: ', np.mean(accuracies))
-	#"""
+	"""
+
+	# MIT AI Course Final Exam (Quiz 3, Problem 1)
+	dataset = pd.read_csv('datasets/2.in')
+	attr = dataset.iloc[:,1:-1].values
+	labels = dataset.iloc[:,-1].values
+	model = idtree(thresholds=20).fit(attr, labels)
+	model.print()
+	model.plot(attr, labels)
