@@ -3,6 +3,7 @@ Information:
 
 
 """
+import matplotlib.pyplot as plt 
 import pandas as pd
 import numpy as np
 import random
@@ -111,6 +112,41 @@ class mlp:
 			return MSEdelta[:-1]
 		return None
 
+	def plot(self, x, y, dim=250):
+		if x.shape[1] > 2:
+			print('E: can\'t  plot a dataset on a higher dimension than two.')
+			return
+
+		xCoords = []
+		yCoords = []
+		for s in x:
+			xCoords.append(s[0])
+			yCoords.append(s[1])
+
+		plt.scatter(xCoords, yCoords)
+
+		xdim = plt.axes().get_xlim()
+		ydim = plt.axes().get_ylim()
+
+		xdiff = (xdim[1] * 1.1 - xdim[0] * 1.1)/dim  
+		ydiff = (ydim[1] * 1.1 - ydim[0] * 1.1)/dim  
+		xpoints = [i * xdiff + xdim[0] * 1.1 for i in range(dim)]
+		ypoints = [i * ydiff + ydim[0] * 1.1 for i in range(dim)]
+
+		classes = np.unique(y)
+		classesColors = {key : (random.random(), random.random(), random.random()) for key in classes}
+		markerColors = {key : (random.random(), random.random(), random.random()) for key in classes}
+
+		matpoints = [[i, j] for j in ypoints for i in xpoints]
+		classifications = []
+		for sample in matpoints:
+			classifications.append(classesColors[int(self.predict(sample) >= 0.5)])
+
+		xpoints = [m[0] for m in matpoints]
+		ypoints = [m[1] for m in matpoints]
+		plt.scatter(xpoints, ypoints, c=classifications, s=1.0, marker='.')
+		plt.scatter(xCoords, yCoords, c=[markerColors[s] for s in y])
+		plt.show()
 
 def scale(x):
 	colNum = len(x[0])
@@ -135,13 +171,14 @@ if __name__ == '__main__':
 	mlp = mlp()
 
 	# -------- XOR DATASET ---------------------------------------------
-	"""
+	#"""
 	dataset = pd.read_csv('./dataset/XOR.dat', sep = ' ')
 	deltaVec = mlp.fit(
 		x = dataset.iloc[:, :2].values, 
 		y = dataset.iloc[:, 2:].values, 
-		showError = True, 
-		returnMSEDelta = True)
+		showError = True,
+		maxIteration=10000,
+		stepSize=0.2)
 	
 	XORQueries = np.array([
 			[1, 0],
@@ -153,10 +190,9 @@ if __name__ == '__main__':
 	for q in XORQueries:
 		print('query:', q, 'result:', mlp.predict(q))
 
+	mlp.plot(dataset.iloc[:, :2].values, dataset.iloc[:, -1].values)
 
-	print(deltaVec)
-
-	"""
+	#"""
 
 	# ------- WINE UCI DATASET -----------------------------------------
 	"""	
@@ -205,7 +241,7 @@ if __name__ == '__main__':
 	"""
 
 	# ------ IRIS DATASET -------------------------------------
-	#"""
+	"""
 	from sklearn import datasets
 	iris = datasets.load_iris()
 
@@ -248,4 +284,11 @@ if __name__ == '__main__':
 	print('Accuracy:', correctResults/len(testData))
 
 	# print(errorVec)
-	#"""
+	"""
+
+	# MIT AI 2010 Final Exam tests
+	"""
+	dataset = pd.read_csv('dataset/5.in')
+	mlp.fit(x=dataset.iloc[:, :2].values, y=dataset.iloc[:, 2:].values,showError=True,maxIteration=10000, hiddenLayerSize=3, stepSize=0.25)
+	mlp.plot(dataset.iloc[:, :2].values, dataset.iloc[:, -1].values, dim=300)
+	"""
