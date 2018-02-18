@@ -14,7 +14,7 @@ class adaboost:
 	def _updateWeight(self, weight, error, misclassified, ep=1.0e-7):
 		return weight * 0.5/(ep + (error if misclassified else (1.0 - error)))
 
-	def emsemble(self, instNum, misclassified, maxIteration=10, verbose=False):
+	def ensemble(self, instNum, misclassified, maxIteration=10, verbose=False):
 		weights = np.array([1.0/instNum] * instNum)
 
 		alphas = {classifier : 0.0 for classifier in misclassified}
@@ -49,5 +49,5 @@ if __name__ == '__main__':
 	instNum = 10
 	misclassified = {'A': [1,5,6], 'B': [3,4], 'C': [0,4,6], 'E': [2,3,6]}
 	# misclassified = {'B': [0,4,5,8], 'D': [0,3,6,7], 'F': [1,6], 'I': [1,2,7,9]}
-	strongerClassifier = adaboost().emsemble(instNum, misclassified, verbose=True, maxIteration=10)
+	strongerClassifier = adaboost().ensemble(instNum, misclassified, verbose=True, maxIteration=10)
 	print(strongerClassifier)
