@@ -101,7 +101,7 @@ import pandas as pd
 import numpy as np
 import colorama
 if __name__ == '__main__':
-	#"""
+	"""
 	from sklearn import datasets
 	iris = datasets.load_iris()
 	fullSetIndexes = {i for i in range(len(iris.target))}
@@ -123,9 +123,9 @@ if __name__ == '__main__':
 
 	print('Accuracy:', correctResults/len(testSetIndexes))
 
-	#"""
+	"""
 
-	# Example from MIT Artifial Intelligence Course 2010 Final Exam (Quiz 3, Problem 1) 
+	# Example from MIT Artificial Intelligence Course 2010 Final Exam (Quiz 3, Problem 1) 
 	# In this example, the data must be normalized or else the decision boundary will not work as expected
 	"""
 	dataset = pd.read_csv('datasets/2.in')
@@ -145,3 +145,14 @@ if __name__ == '__main__':
 		print(colorama.Fore.RED if label != trueLabel else colorama.Fore.GREEN, 
 			dataset.iloc[i, 0], ': predict:', label, 'true:', trueLabel, colorama.Fore.RESET)
 	"""
+
+	"""
+	# Example from MIT Artificial Intelligence Course 2008 Quiz 3, Problem 1
+	"""
+	dataset = pd.read_csv('datasets/3.in')
+	knn().plot(dataset.iloc[:,:-1].values, dataset.iloc[:,-1].values, k=1, distance=1)
+	print(knn().predict(dataset.iloc[:,:-1].values, dataset.iloc[:,-1].values, query=np.array([2.0, 1.0]), k=1))
+	print(knn().predict(dataset.iloc[:,:-1].values, dataset.iloc[:,-1].values, query=np.array([4.0, 1.0]), k=1))
+	knn().plot(dataset.iloc[:,:-1].values, dataset.iloc[:,-1].values, k=3, distance=1)
+	print(knn().predict(dataset.iloc[:,:-1].values, dataset.iloc[:,-1].values, query=np.array([2.0, 1.0]), k=3))
+	print(knn().predict(dataset.iloc[:,:-1].values, dataset.iloc[:,-1].values, query=np.array([4.0, 1.0]), k=3))
