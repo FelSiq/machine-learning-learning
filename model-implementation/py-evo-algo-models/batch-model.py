@@ -16,7 +16,15 @@ import copy
 class Batch:
 	"""
 		Model charactetistics:
-		-
+		- For each generation
+			-> choice K random parents
+			-> Each parent produce a children via mutation
+			-> Keep each children in a separated population
+			-> for each produced children, select a random instance
+				from its parent population
+			-> keep the fittest instance
+		- Repeat
+
 		- Mutation: random process is selected, then its core is switched
 	"""
 
@@ -103,19 +111,22 @@ class Batch:
 """
 if __name__ == '__main__':
 	m=Batch()
-	#costs=[10.0, 50.0, 5, 70.5, 20.0, 20.0, 15, 105, 25]
 	costs=np.random.random(100) * 400 + 100
-	sol1, stats1=m.run(25, costs, generation_num=75000, pop_size=1000, ret_stats=True)
-	sol2, stats2=m.run(25, costs, generation_num=75000, pop_size=1000, ret_stats=True, random_choice=True)
+	sol1, stats1=m.run(25, costs, generation_num=1000, pop_size=10000, ret_stats=True)
+	sol2, stats2=m.run(25, costs, generation_num=1000, pop_size=10000, ret_stats=True, random_choice=True)
 
 	print('best solution:', sol1, '(fitness:', m.fitness(sol1, costs), ')')
 
+	plt.suptitle("Batch model")
 	plt.subplot(1, 2, 1)
 	plt.xlabel("Average Fitness")
-	plt.plot(stats1['fitness'])
-	plt.plot(stats2['fitness'])
+	plt.plot(stats1["fitness"], label="Fittest-choice avg fitness")
+	plt.plot(stats2["fitness"], label="Random-choice avg fitness")
+	plt.legend(loc="upper left")
 	plt.subplot(1, 2, 2)	
 	plt.xlabel("Average Deviation")
-	plt.plot(stats1['deviation'])
-	plt.plot(stats2['deviation'])
+	plt.plot(stats1["deviation"], label="Fittest-choice avg deviation")
+	plt.plot(stats2["deviation"], label="Random-choice avg deviation")
+	plt.legend(loc="upper right")
 	plt.show()
+
