@@ -15,21 +15,25 @@ import copy
 
 class Genetic:
 	"""
-		Model charactetistics:
+		Model characteristics:
+		- Choice two parents with a probability proportional of its fitness
+		- Produce two children with Crossover operator
+		- Keep only childrens to the next generation
+		- Each children has a probability of mutation of its own
+
 		- Terminology: chromosome = instance
-		- Crossover
 		- Mutation with probability p: a random process 
 			is selected, then its core is switched
 	"""
 
-	def fitness(self, inst, costs, inverse=False, epsilon=1.0e-16):
+	def fitness(self, inst, costs, epsilon=1.0e-16):
 		core_workload=[0.0]*len(costs)
 
 		for i in range(len(costs)):
 			core_workload[inst[i]]+=costs[i]
 
 		max_cost=max(core_workload)
-		return 1.0/(epsilon+max_cost) if inverse else -max_cost
+		return 1.0/(epsilon+max_cost)
 		
 
 	def mutation(self, inst, cores_num):
@@ -40,11 +44,15 @@ class Genetic:
 	
 	def crossover(self, chro_a, chro_b):
 		# One point crossover
-		n=len(chro_a)//2	
-		return np.concatenate((chro_a[:n], chro_b[n:]))
+		# Supposing chro_a and chro_b has equals even lengths
+		cut_point=len(chro_a)//2	
+		new_chro_a=np.concatenate((chro_a[:cut_point], chro_b[cut_point:]))
+		new_chro_b=np.concatenate((chro_b[:cut_point], chro_a[cut_point:]))
+		return new_chro_a, new_chro_b
+		
 
 	def run(self, cores_num, costs, generation_num=1e+4, pop_size=1000, 
-		mutation_prob=0.05, ret_stats=False, print_stats=True):
+		mutation_prob=0.05, weighted_choice=True, ret_stats=False, print_stats=True):
 
 		if not isinstance(costs, collections.Iterable):
 			raise ValueError("Costs parameter should be a real number iterable")
@@ -53,9 +61,13 @@ class Genetic:
 			raise ValueError("Mutation_prob parameter is a probability," +\
 				" should be in [0, 1] interval.")
 
-		if len(costs) % 2:
+		if len(costs) == 0 or len(costs) % 2:
 			raise ValueError("This algorithm uses one-point crossover, which needs" +\
-				"an cost vector with even length.")
+				"an cost vector with positive even length.")
+
+		if pop_size <= 0 or pop_size % 2:
+			raise ValueError("This algorithm uses sexual reproduction, which needs" +\
+				"a pop_size parameter with an positive even value.")
 
 		process_num=len(costs)
 		# Generate a random population of size pop_size, each
@@ -73,18 +85,31 @@ class Genetic:
 		while gen_id < generation_num:
 			chromosomes=[]
 			chromosomes_fitness=[]
-			for i in range(pop_size):
+		
+			# Probability of each parent be selected to reproduce
+			if weighted_choice:
+				prob_vector=fitness/sum(fitness)
+			else:
+				prob_vector=[1.0/pop_size] * pop_size
+
+			for i in range(pop_size//2):
 				# Select two random parents and produce a chromosome
-				# with crossover operator
-				p_a_id, p_b_id=np.random.randint(pop_size, size=2)
-				new_chromosome=self.crossover(pop[p_a_id], pop[p_b_id])
+				# with crossover operator. The probability to choose
+				# each chromosome is proportional of its fitness.
+				p_a_id, p_b_id=np.random.choice(pop_size, size=2, p=prob_vector)
+				new_chro_a, new_chro_b=self.crossover(pop[p_a_id], pop[p_b_id])
 			
 				# Each chromosome has a probability of mutation
 				if np.random.random() <= mutation_prob:	
-					new_chromosome=self.mutation(new_chromosome, cores_num)
+					new_chro_a=self.mutation(new_chro_a, cores_num)
+				if np.random.random() <= mutation_prob:	
+					new_chro_b=self.mutation(new_chro_b, cores_num)
 
-				chromosomes.append(new_chromosome)
-				chromosomes_fitness.append(self.fitness(new_chromosome, costs))
+				chromosomes.append(new_chro_a)
+				chromosomes_fitness.append(self.fitness(new_chro_a, costs))
+
+				chromosomes.append(new_chro_b)
+				chromosomes_fitness.append(self.fitness(new_chro_b, costs))
 
 			# Keep only the new population to the next generation
 			pop=np.array(chromosomes)
@@ -112,16 +137,21 @@ class Genetic:
 """
 if __name__ == '__main__':
 	m=Genetic()
-	#costs=[10.0, 50.0, 5, 70.5, 20.0, 20.0, 15, 105, 25]
 	costs=np.random.random(100) * 400 + 100
-	sol, stats=m.run(25, costs, generation_num=250, pop_size=1000, ret_stats=True)
+	sol1, stats1=m.run(25, costs, generation_num=200, pop_size=1000, ret_stats=True)
+	sol2, stats2=m.run(25, costs, generation_num=200, pop_size=1000, ret_stats=True, weighted_choice=False)
 
-	print('best solution:', sol, '(fitness:', m.fitness(sol, costs), ')')
+	print("best solution:", sol1, "(fitness:", m.fitness(sol1, costs), ")")
 
+	plt.suptitle("Genetic algorithm")
 	plt.subplot(1, 2, 1)
 	plt.xlabel("Average Fitness")
-	plt.plot(stats['fitness'])
+	plt.plot(stats1["fitness"], label="Weighted-prob avg fitness")
+	plt.plot(stats2["fitness"], label="Random-choice avg fitness")
+	plt.legend(loc="upper left")
 	plt.subplot(1, 2, 2)	
 	plt.xlabel("Average Deviation")
-	plt.plot(stats['deviation'])
+	plt.plot(stats1["deviation"], label="Weighted-prob avg deviation")
+	plt.plot(stats2["deviation"], label="Random-choice avg deviation")
+	plt.legend(loc="lower left")
 	plt.show()
