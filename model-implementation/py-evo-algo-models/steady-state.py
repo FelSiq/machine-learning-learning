@@ -13,7 +13,7 @@ import copy
 	Scheduling problem
 """
 
-class Model1:
+class Steady:
 	"""
 		Model charactetistics:
 		- Each generation: 
@@ -40,7 +40,9 @@ class Model1:
 		mutated[np.random.randint(len(mutated))]=np.random.randint(cores_num)
 		return mutated
 
-	def run(self, cores_num, costs, generation_num=1e+4, pop_size=1000, ret_stats=False, print_stats=True):
+	def run(self, cores_num, costs, generation_num=1e+4, pop_size=1000, 
+		random_choice=False, ret_stats=False, print_stats=True):
+
 		if not isinstance(costs, collections.Iterable):
 			raise Exception("Costs parameter should be a real number iterable")
 
@@ -63,10 +65,16 @@ class Model1:
 			children=self.mutation(pop[mut_id], cores_num)
 			children_fitness=self.fitness(children, costs)
 
-			# Select the less prone instace and check if
-			# produced children have higher fitness
-			less_prone_id=np.argmin(fitness)
-			smallest_fitness=np.min(fitness)
+			if not random_choice:
+				# Select the less prone instace and check if
+				# produced children have higher fitness
+				less_prone_id=np.argmin(fitness)
+			else:
+				# Random choice of a instance to compete
+				# with the brand-new children
+				less_prone_id=np.random.randint(pop_size)
+
+			smallest_fitness=fitness[less_prone_id]
 
 			if smallest_fitness < children_fitness:
 				pop[less_prone_id]=children
@@ -93,14 +101,19 @@ class Model1:
 	Program driver
 """
 if __name__ == '__main__':
-	m=Model1()
+	m=Steady()
 	costs=[10.0, 50.0, 5, 70.5, 20.0, 20.0, 15, 105, 25]
-	sol, stats=m.run(5, costs, ret_stats=True)
+	sol1, stats1=m.run(5, costs, ret_stats=True)
+	sol2, stats2=m.run(5, costs, ret_stats=True, random_choice=True)
 
-	print('best solution:', sol, '(fitness:', m.fitness(sol, costs), ')')
+	print('best solution:', sol1, '(fitness:', m.fitness(sol1, costs), ')')
 
-	plt.subplot(1, 2, 1)	
-	plt.plot(stats['fitness'])
+	plt.subplot(1, 2, 1)
+	plt.xlabel("Average Fitness")
+	plt.plot(stats1['fitness'])
+	plt.plot(stats2['fitness'])
 	plt.subplot(1, 2, 2)	
-	plt.plot(stats['deviation'])
+	plt.xlabel("Average Deviation")
+	plt.plot(stats1['deviation'])
+	plt.plot(stats2['deviation'])
 	plt.show()
