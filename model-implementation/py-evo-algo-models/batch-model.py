@@ -103,9 +103,10 @@ class Batch:
 """
 if __name__ == '__main__':
 	m=Batch()
-	costs=[10.0, 50.0, 5, 70.5, 20.0, 20.0, 15, 105, 25]
-	sol1, stats1=m.run(5, costs, pop_size=100, ret_stats=True)
-	sol2, stats2=m.run(5, costs, pop_size=100, ret_stats=True, random_choice=True)
+	#costs=[10.0, 50.0, 5, 70.5, 20.0, 20.0, 15, 105, 25]
+	costs=np.random.random(100) * 400 + 100
+	sol1, stats1=m.run(25, costs, generation_num=75000, pop_size=1000, ret_stats=True)
+	sol2, stats2=m.run(25, costs, generation_num=75000, pop_size=1000, ret_stats=True, random_choice=True)
 
 	print('best solution:', sol1, '(fitness:', m.fitness(sol1, costs), ')')
 
