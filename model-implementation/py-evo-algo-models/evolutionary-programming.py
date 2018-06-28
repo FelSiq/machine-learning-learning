@@ -1,9 +1,3 @@
-"""
-	Based on video
-	"Vídeo 37 - Computação Evolutiva: Modelo em Batch ou de Geração"
-	URL: https://www.youtube.com/watch?v=Qn1mPCoz5yQ
-"""
-
 import matplotlib.pyplot as plt
 import collections
 import numpy as np
@@ -16,7 +10,17 @@ import copy
 class EvolProg:
 	"""
 		Model charactetistics:
-		-
+		- This model is supposed to be more determinist in the
+			way the solutions are generated. As an disavantage,
+			it does not explore the solution space as good as
+			more sofisticated models.
+
+		-> Each parent always produce a son via mutation
+		-> Keep each son in a separed population
+		-> Merge parents and childrens population
+		-> Keep only top pop_size fittest instances to the next generation
+		-> Repeat
+
 		- Mutation: random process is selected, then its core is switched
 	"""
 
@@ -52,7 +56,7 @@ class EvolProg:
 		# the random population
 		fitness=np.array([self.fitness(inst, costs) for inst in pop])
 
-		stats={'fitness': [fitness.mean()], 'deviation': [fitness.std()]}
+		stats={"fitness": [fitness.mean()], "deviation": [fitness.std()]}
 		gen_id=0
 
 		while gen_id < generation_num:
@@ -76,11 +80,11 @@ class EvolProg:
 			avg_fitness=fitness.mean()
 			avg_deviation=fitness.std()
 			gen_id += 1
-			stats['fitness'].append(avg_fitness)
-			stats['deviation'].append(avg_deviation)
+			stats["fitness"].append(avg_fitness)
+			stats["deviation"].append(avg_deviation)
 
 			if print_stats:
-				print(gen_id, ':', avg_fitness, avg_deviation)
+				print(gen_id, ":", avg_fitness, avg_deviation)
 		
 		# Return best solution found
 		best_fit_id=fitness.argmax()
@@ -92,18 +96,18 @@ class EvolProg:
 """
 	Program driver
 """
-if __name__ == '__main__':
+if __name__ == "__main__":
 	m=EvolProg()
-	#costs=[10.0, 50.0, 5, 70.5, 20.0, 20.0, 15, 105, 25]
 	costs=np.random.random(100) * 400 + 100
-	sol, stats=m.run(25, costs, generation_num=250, pop_size=1000, ret_stats=True)
+	sol, stats=m.run(25, costs, generation_num=200, pop_size=1000, ret_stats=True)
 
-	print('best solution:', sol, '(fitness:', m.fitness(sol, costs), ')')
+	print("best solution:", sol, "(fitness:", m.fitness(sol, costs), ")")
 
+	plt.suptitle("Evolutionary Programming")
 	plt.subplot(1, 2, 1)
 	plt.xlabel("Average Fitness")
-	plt.plot(stats['fitness'])
+	plt.plot(stats["fitness"])
 	plt.subplot(1, 2, 2)	
 	plt.xlabel("Average Deviation")
-	plt.plot(stats['deviation'])
+	plt.plot(stats["deviation"])
 	plt.show()
