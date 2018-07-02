@@ -10,7 +10,7 @@ class Aco:
 		end_id=-1,
 		num_generations=250, 
 		pheromone_inc=1.0,
-		pheromone_fade_ratio=0.1, 
+		pheromone_fade_ratio=0.35, 
 		epsilon=1.0e-16,
 		iterative_plot=False):
 
@@ -49,7 +49,8 @@ class Aco:
 				if ant_onward[ant_id]:
 					# Assume that graph higher positions (relative to 
 					# the current position) are always a onward position
-					next_dir_probs=graph[cur_ant_pos, (cur_ant_pos+1):]
+					next_dir_probs=graph[cur_ant_pos, (cur_ant_pos+1):]*\
+						pheromone_trace[cur_ant_pos, (cur_ant_pos+1):]
 					next_dir_probs/=sum(next_dir_probs)
 					next_position=np.random.choice(\
 						range(cur_ant_pos+1, ncol),
@@ -57,7 +58,8 @@ class Aco:
 				else:
 					# Assume that graph lower positions (relative to 
 					# the current position) are always a backward position
-					next_dir_probs=graph[cur_ant_pos, :cur_ant_pos]
+					next_dir_probs=graph[cur_ant_pos, :cur_ant_pos]*\
+						pheromone_trace[cur_ant_pos, :cur_ant_pos]
 					next_dir_probs/=sum(next_dir_probs)
 					next_position=np.random.choice(\
 						range(cur_ant_pos),
