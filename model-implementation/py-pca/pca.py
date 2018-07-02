@@ -15,6 +15,7 @@ class Pca:
 		# Last transformation eigen-stuff
 		self.eigenvalues=None
 		self.eigenvectors=None
+		self.information=0.0
 
 	def _plot_line(self, intercept, slope, vertical=False):
 		axes=plt.gca()
@@ -26,7 +27,7 @@ class Pca:
 			y_vals=intercept + np.array(axes.get_ylim())
 		plt.plot(x_vals, y_vals, '--')
 
-	def transform(self, filepath, normalize=True, sep=",", plot=True):
+	def transform(self, filepath, normalize=True, sep=",", plot=False):
 		dataset = pd.read_csv(filepath, sep=sep)
 		
 		# Normalize the dataset
@@ -63,7 +64,8 @@ class Pca:
 
 		# Linear transformation from eigenvectors
 		# to rotate the data to the eigenvectors basis
-		dataset=pd.DataFrame(np.matmul(dataset, self.eigenvectors))
+		dataset=pd.DataFrame(np.matmul(dataset, self.eigenvectors), 
+			columns=dataset.columns)
 	
 		if plot:
 			plt.subplot(1, 2, 2)
@@ -82,16 +84,35 @@ class Pca:
 			raise Exception("No eigenvalues of previous transformation"+\
 				" found nor eigenvalues parameter was set.")
 
-		new_dataset=pd.DataFrame.copy(dataset)
+		eigenvalues=eigenvalues if eigenvalues is not None else self.eigenvalues
+
 
 		# Normalize eigenvalues to calculate the percentage
 		# of information retained while removing less important
 		# columns
-		e_vals_norm=self.eigenvalues/sum(self.eigenvalues)
+		e_vals_norm=eigenvalues/sum(eigenvalues)
 
+		del_indexes=[]
 		cur_information=1.0
-		while cur_information > information:
-			break
+		cur_info_loss=0.0
+		while cur_information-cur_info_loss > information:
+			eigenvalue_id=e_vals_norm.argmin()
+			cur_info_loss=e_vals_norm[eigenvalue_id]
+
+			print('Current information ratio:', '%.6f' % cur_information, 
+				'\tNext possible cutoff:', '%.6f' % cur_info_loss)
+			
+			if cur_information-cur_info_loss >= information:
+				cur_information -= cur_info_loss
+				e_vals_norm=np.delete(e_vals_norm, eigenvalue_id)
+				del_indexes.append(eigenvalue_id)
+				cur_info_loss=0.0
+		
+		# Drop less-important columns
+		new_dataset=pd.DataFrame.copy(dataset).drop(dataset.columns[del_indexes], axis=1)
+		self.eigenvalues=np.delete(self.eigenvalues, del_indexes)
+		self.eigenvectors=np.delete(self.eigenvectors, del_indexes)
+		self.information=cur_information
 	
 		return new_dataset
 
@@ -100,12 +121,14 @@ class Pca:
 	Program driver
 """
 if __name__ == "__main__":
-	if len(sys.argv) < 3:
+	if len(sys.argv) < 2:
 		print("usage:", sys.argv[0], "<data filepath> [normalize? (0/1)]")
 		exit(1)
 
 	try:
-		normalize=bool(int(sys.argv[2]))
+		normalize=True
+		if len(sys.argv) >= 3:
+			normalize=bool(int(sys.argv[2]))
 	except:
 		print("Normalize parameter should be 0 or 1.")
 		exit(2)
@@ -135,4 +158,5 @@ if __name__ == "__main__":
 	t2_dataset=model.feature_selection(t1_dataset, \
 		eigenvalues, information=0.95)
 
-	print("New dataset:\n", t2_dataset)
+	print("New dataset:\n", t2_dataset, \
+		'\nInformation ratio:', model.information)
