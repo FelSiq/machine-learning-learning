@@ -12,6 +12,15 @@ class Pso():
 		self.dimension = dimension
 		self.goal = None
 
+		self.renew(
+			num_particles=num_particles, 
+			interval=interval, 
+			dimension=dimension)
+
+	def renew(self, 
+		num_particles=100, 
+		interval=(0, 1), 
+		dimension=2):
 		# Initing each particle position in a n-dimensional space
 		# using a uniform distribution in range [range_min, range_max)
 		self.position = array([random.random(size=num_particles) * \
@@ -64,6 +73,10 @@ class Pso():
 			in_until_break = initial value of the "probably reached convergence counter".
 			
 		"""
+
+		# Phi factor normalization
+		if phi_p + phi_g > 1.0:
+			phi_p, phi_g = phi_p / (phi_p + phi_g), phi_g / (phi_p + phi_g)
 
 		# Check if goal setup must be updated for another run,
 		# supposing that the previous one exists
@@ -167,6 +180,7 @@ class Pso():
 			"best particle id" : self.global_best_particle,
 			"best global solution" : self.global_best_position,
 			"particle velocity" : self.velocity[:, self.global_best_particle],
+			"Factors" : {"omega" : omega, "phi_p" : phi_p, "phi_g" : phi_g}
 		}
 		
 		return ans
@@ -186,13 +200,16 @@ class Pso():
 if __name__ == "__main__":
 	import sys
 
-	if len(sys.argv) < 2:
+	if len(sys.argv) < 1:
 		print("usage:", sys.argv[0], 
 			"[-it max_number_of_iterations, default to 1000]",
 			"[-num number_of_particles, default to 10]",
 			"[-minvar, default to 1.0e-10]",
 			"[-min, default to min(goal) - 1.0]",
 			"[-max, default to max(goal) + 1.0]",
+			"[-phip, default to 0.7]",
+			"[-phig, default to (1 - phip)]",
+			"[-omega, default to 0.5]",
 			"[-goal x y ... z]", sep="\n\t")
 		exit(1)
 
@@ -228,16 +245,45 @@ if __name__ == "__main__":
 	except:
 		min_var_accepted = 1.0e-10
 
+	try:
+		omega = float(sys.argv[1 + sys.argv.index("-omega")])
+		if not 0 <= omega <= 1.0:
+			print("Warning: \"omega\" must be in [0.0, 1.0]")
+			raise Exception
+
+	except:
+		omega = 0.5
+
+	try:
+		phi_p = float(sys.argv[1 + sys.argv.index("-phip")])
+		if not 0 <= phi_p <= 1.0:
+			print("Warning: \"phip\" must be in [0.0, 1.0]")
+			raise Exception
+	except:
+		phi_p = 0.7
+
+	try:
+		phi_g = float(sys.argv[1 + sys.argv.index("-phig")])
+		if not 0 <= phi_g <= 1.0:
+			print("Warning: \"phig\" must be in [0.0, 1.0]")
+			raise Exception
+	except:
+		phi_g = 1.0 - phi_p
+
 	pso = Pso(
 		interval=(min_range_val, max_range_val),
 		dimension=dim,
 		num_particles=particle_num)
 
 	ans = pso.run(
+		omega=omega,
+		phi_p=phi_p,
+		phi_g=phi_g,
 		iteration_max=it_num,
 		goal=goal,
 		min_variation_accepted=min_var_accepted)
 
+	print("\nResult:")
 	for key in ans:
 		print(key, "\t:", ans[key])
 	
