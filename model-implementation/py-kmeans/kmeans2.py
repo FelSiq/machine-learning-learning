@@ -5,6 +5,7 @@
 
 from numpy import array, random, argmin, mean as npmean, where, inf
 from pandas import DataFrame, read_csv
+from scipy.special import binom
 
 class Kmeans():
 	def __euclideandist__(inst_a, inst_b):
@@ -138,7 +139,87 @@ class Kmeans():
 		
 	
 	def adjusted_rand_index(predictive_attr, labels, inst_cluster_id): 
-		pass
+
+		if len(set(labels)) != len(set(inst_cluster_id)):
+			return None
+
+		"""
+			The first problem that arrives calculting this
+			measure is the relation between the clusters ID and
+			the true instance labels. For example, picking
+			up some Iris dataset instances:
+
+			11,5.4,3.7,1.5,0.2,setosa
+			50,5.0,3.3,1.4,0.2,setosa
+			51,7.0,3.2,4.7,1.4,versicolor
+			86,6.0,3.4,4.5,1.6,versicolor
+			113,6.8,3.0,5.5,2.1,virginica
+			121,6.9,3.2,5.7,2.3,virginica
+
+			Supposing a 100% accurary from he Kmeans algorithm,
+			can map these instances with any combination of 0's,
+			1's and 2's given their classes:
+
+			Possibility 1: [0 0 1 1 2 2]
+			Possibility 2: [1 1 0 0 2 2]
+			Possibility 3: [0 0 2 2 1 1]
+			Possibility 4: [1 1 2 2 0 0]
+			Possibility 5: [2 2 0 0 1 1]
+			Possibility 6: [2 2 1 1 0 0]
+
+			This means that the first step is top discover which
+			relationship the class labels and the cluster IDs ha-
+			ve. One way of doing this is to check which cluster ID
+			one class has more connected instances with.
+		"""
+		
+		# Discover the relationship between the cluster IDs and
+		# the class labels
+		class_label_set = set(labels)
+		clusters_id_set = set(inst_cluster_id)
+
+		class_cluster_mapping = {}
+		aux_clusters_id_set = list(clusters_id_set)
+
+		for class_label in class_label_set:
+			remaining_clusters = len(aux_clusters_id_set)
+			intersec_cardinality_list = array([0] * remaining_clusters)
+			for cluster_id in range(remaining_clusters):
+				intersec_cardinality_list[cluster_id] = sum(\
+					(inst_cluster_id == aux_clusters_id_set[cluster_id]) &\
+					(labels == class_label))
+
+			best_choice_id = aux_clusters_id_set[\
+				intersec_cardinality_list.argmax()]
+			class_cluster_mapping[class_label] = best_choice_id
+			aux_clusters_id_set.remove(best_choice_id)
+
+		# Build up the contingency table
+		class_fixed_seq = class_cluster_mapping.keys()
+		cluster_fixed_seq = [class_cluster_mapping[key] \
+			for key in class_fixed_seq]
+
+		contingency_table = array([[
+			sum((labels == cla_label) & \
+				(inst_cluster_id == clu_id))
+			for cla_label in class_fixed_seq]
+			for clu_id in cluster_fixed_seq])
+
+		# Calculate the row and column sums
+		b_col_sum = contingency_table.sum(axis=0)
+		a_row_sum = contingency_table.sum(axis=1)
+
+		# Calculate the Adjusted Rand Index
+		N = dataset.shape[0]
+		aux_a = sum([binom(contingency_table[i, i], 2) \
+			for i in range(contingency_table.shape[0])])
+		aux_aux_a = sum([binom(a_i, 2) for a_i in a_row_sum])
+		aux_aux_b = sum([binom(b_j, 2) for b_j in b_col_sum])
+		aux_b = aux_aux_a * aux_aux_b / binom(N, 2)
+		aux_c = 0.5 * (aux_aux_a + aux_aux_b)
+		adjusted_rand_index = (aux_a - aux_b)/(aux_c - aux_b)
+
+		return adjusted_rand_index
 
 	def jackard_index(predictive_attr, labels, inst_cluster_id): 
 		"""
