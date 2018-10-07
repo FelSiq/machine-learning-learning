@@ -85,7 +85,85 @@ class Kmeans():
 
 		return npmean(inst_sil)
 
-	def run(dataset, k, it_max=1000, min_variation=1.0e-4):
+	def rand_index(
+		predictive_attr, 
+		labels, 
+		inst_cluster_id, 
+		return_counters=False): 
+
+		"""
+			Rand Index definition:
+			let
+			f_00 : # of instance pairs with diff classes in diff clusters
+			f_01 : # of instance pairs with diff classes in the same cluster
+			f_10 : # of instance pairs with same class in diff clusters
+			f_11 : # of instance pairs with same classes in the same cluster
+
+			Therefore, the most significative "bit" tells about 
+			the class label pair and the less significative one
+			about the cluster pair.
+
+					Same cluster	Diff Cluster
+			Same class	f_11		f_10
+			Diff class	f_01		f_00
+
+			then:
+			rand_index := (f_00 + f_11) / (f_00 + f_10 + f_01 + f_11)
+		"""
+
+		# The counter array will express the f_ij value
+		# in terms of it's own index. (For example, the 
+		# counter f_10 is counters[int("10", 2)] == counters[2]
+		# and the counter f_11 is counters[int("11", 2)] == counters[3])
+		counters = 4 * [0]
+
+		for i in range(predictive_attr.shape[0]):
+			for j in range(predictive_attr.shape[0]):
+				pos = 2 * (labels[i] == labels[j]) + \
+					(inst_cluster_id[i] == inst_cluster_id[j])
+				counters[pos] += 1
+
+			# Remove the i == j counter. I do not put an
+			# extra "if" to speed up the process.
+			counters[3] -= 1 # Remember: int("11", 2) == 3.
+
+		# rand_index = (f_00 + f_11) / (f_00 + f_10 + f_01 + f_11)
+		rand_index = (counters[int("00", 2)] + \
+			counters[int("11", 2)]) / sum(counters)
+
+		if return_counters:
+			return rand_index, counters
+
+		return rand_index
+		
+	
+	def adjusted_rand_index(predictive_attr, labels, inst_cluster_id): 
+		pass
+
+	def jackard_index(predictive_attr, labels, inst_cluster_id): 
+		"""
+			The jackard index is pretty much just like
+			rand index. However, it does not consider the
+			f_00 measure. So,
+
+			jackard_index := f_11 / (f_01 + f_10 + f_11)
+		"""
+		junk, counters = Kmeans.rand_index(\
+			predictive_attr, 
+			labels, 
+			inst_cluster_id,
+			return_counters=True)
+
+		# f_00 is not considered, set it to the neutral element
+		# of addition, 0.
+		counters[int("00", 2)] = 0
+
+		# jackard_index := f_11 / (f_01 + f_10 + f_11)
+		jackard_index = counters[int("11", 2)] / sum(counters)
+
+		return jackard_index
+
+	def run(dataset, k, it_max=1000, min_variation=1.0e-4, labels=None):
 		# Init centers_coord
 		centers_id = random.randint(dataset.shape[0], size=k)
 		centers_coord = dataset[centers_id,:]
@@ -117,12 +195,14 @@ class Kmeans():
 
 			# For each cluster, calculate the new center coordinates
 			for center_id in range(k):
-				new_cur_cluster_coords = npmean(dataset[inst_cluster_id == center_id,:], axis=0)
+				new_cur_cluster_coords = npmean(dataset[\
+					inst_cluster_id == center_id,:], axis=0)
 
 				# Calculate variation between previous centers_coord and
 				# new ones (using infinite norm)
 				prev_variation = max(prev_variation, \
-					max(abs(centers_coord[center_id] - new_cur_cluster_coords)))
+					max(abs(centers_coord[center_id] - \
+						new_cur_cluster_coords)))
 
 				centers_coord[center_id] = new_cur_cluster_coords
 
@@ -131,11 +211,29 @@ class Kmeans():
 			"centers" : centers_coord,
 			"clusters" : inst_cluster_id,
 			"inner_metrics" : {
-				"SSE/Cohesion" : Kmeans.sse(dataset, centers_coord, inst_cluster_id),
-				"BSS/Separation" : Kmeans.bss(dataset, centers_coord, inst_cluster_id),
-				"Silhouette" : Kmeans.silhouette(dataset, centers_coord, inst_cluster_id),
+				"SSE/Cohesion" : Kmeans.sse(dataset, \
+					centers_coord, inst_cluster_id),
+				"BSS/Separation" : Kmeans.bss(dataset, \
+					centers_coord, inst_cluster_id),
+				"Silhouette" : Kmeans.silhouette(dataset, \
+					centers_coord, inst_cluster_id),
 			},
 		}
+
+		if labels is not None:
+			# If true labels are given, then we can compute
+			# OUTTER clustering quality measures
+			ans = {
+				**ans,
+				"outter_metrics" : {
+					"Rand_index:" : Kmeans.rand_index(\
+						dataset, labels, inst_cluster_id),
+					"Adjusted_rand_index:" : Kmeans.adjusted_rand_index(\
+						dataset, labels, inst_cluster_id),
+					"Jackard_index:" : Kmeans.jackard_index(\
+						dataset, labels, inst_cluster_id),
+				}
+			}
 
 		return ans
 
@@ -164,16 +262,8 @@ if __name__ == "__main__":
 				rem_label + "\" from dataset.")
 	ans = Kmeans.run(
 		dataset=dataset.loc[:,:].values, 
-		k=int(sys.argv[2]))
-
-	if class_ids is not None:
-		# Given class labels, one can calculate
-		# OUTTER unsupervised measures like
-		# - Rand Index
-		# - Jackard Index
-		# - Adjusted Rand Index
-		# Will be coded eventually.
-		pass
+		k=int(sys.argv[2]),
+		labels=class_ids)
 
 	print("Results:")
 	for item in ans:
