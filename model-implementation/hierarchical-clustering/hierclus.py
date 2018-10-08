@@ -1,26 +1,127 @@
-from numpy import array
+"""
+	Useful video link: https://youtu.be/pQJrJR_B7Rc (in Portuguese)
+	video title: Vídeo 49 - Agrupamento Hierárquico de Dados
+	Channel: ML4U
+"""
+
+from numpy import array, zeros, random
 from pandas import read_csv
+from scipy.special import binom
+from copy import deepcopy
 
 class Hierclus():
 
-	def __linksingle__(dataset, inst_cluster_id):
+	def __euclideandist__(inst_a, inst_b):
+		return (sum((inst_a - inst_b)**2.0))**0.5
+
+	def __linksingle__(dataset, supergroup_A, supergroup_B):
+		# min({dist(a, b) | a e A v b e B}
+		return random.randint(-100, 100)
+
+	def __linkcomplete__(dataset, supergroup_A, supergroup_B):
+		# max({dist(a, b) | a e A v b e B}
 		pass
 
-	def __linkcomplete__(dataset, inst_cluster_id):
+	def __linkaverage__(dataset, supergroup_A, supergroup_B):
+		# (|A|*|B|)^{-1} * sum(a e A){sum(b e B){d(a, b)}}
 		pass
 
-	def __linkaverage__(dataset, inst_cluster_id):
-		pass
+	def __choosecriterion__(criterion):
+		criterion = criterion.lower()
 
-	def run(dataset, criterion="single"):
-		if criterion.lower() not in {"single", "complete", "average"}:
+		if criterion not in {"single", "complete", "average"}:
 			print("Error: unrecognized criterion",
 				"option \"" + criterion + "\".")
 			return None
 
-		inst_cluster_id = None
+		elif criterion == "single":
+			return Hierclus.__linksingle__
 
-		return inst_clluster_id
+		elif criterion == "complete":
+			return Hierclus.__linkcomplete__
+
+		# Default case
+		return Hierclus.__linkaverage__
+
+	def run(dataset, criterion="single"):
+	
+		clustering_metric = Hierclus.__choosecriterion__(criterion)
+		if clustering_metric is None:
+			return None
+
+		# Cluster hierarchy
+		cluster_tree = {i : i \
+			for i in range(dataset.shape[0])}
+		group_heights = {i : 0.0 \
+			for i in range(dataset.shape[0])}
+
+		group_id_counter = dataset.shape[0]
+
+		# Stop criterion: run the algorithm while the number
+		# of supergroups (a group that contain smaller groups)
+		# is larger than 1. In other words, run the algorithm
+		# while there is at least one missing connection between
+		# a pair of groups.
+		num_supergroups = dataset.shape[0]
+
+		while num_supergroups > 1:
+
+			aux_dist = array([None] * int(binom(num_supergroups, 2)))
+
+			supergroups_ids = tuple(cluster_tree.keys())
+
+			k = 0
+			for i in range(num_supergroups):
+				for j in range(i+1, num_supergroups):
+					supergroup_A_id = supergroups_ids[i]
+					supergroup_B_id = supergroups_ids[j]
+					aux_dist[k] = {
+						"clustering_metric" :\
+							clustering_metric(\
+								dataset,
+								cluster_tree[supergroup_A_id],\
+								cluster_tree[supergroup_B_id]),
+						"supergroup_ids" : (supergroup_A_id, supergroup_B_id)}
+					k += 1
+
+			# Get the nearest pair of groups based on the
+			# user given criterion.
+			nearest_pair = min(aux_dist,
+				key = lambda k : k["clustering_metric"])
+			nearest_supergroup_A_id, nearest_supergroup_B_id = \
+				nearest_pair["supergroup_ids"]
+
+			# Build up a new level in the cluster tree, unifying
+			# the two nearest groups into a new supergroup.
+			supergroup_A = cluster_tree.pop(nearest_supergroup_A_id)
+			supergroup_B = cluster_tree.pop(nearest_supergroup_B_id)
+			cluster_tree = {
+				group_id_counter : {
+					nearest_supergroup_A_id : supergroup_A,
+					nearest_supergroup_B_id : supergroup_B
+				}, 
+				**cluster_tree,
+			}
+
+			# Keep the height of each supergroup in order
+			# to construct the dendrogram.
+			group_heights[group_id_counter] = \
+				nearest_pair["clustering_metric"]
+
+			# Update supergroup counter in order to keep the
+			# supergroup ids unique
+			group_id_counter += 1
+			
+			num_supergroups = len(cluster_tree)
+
+		# Build up final answer (cluster tree + nodes heights
+		# for dendrogram)
+		ans = {
+			"cluster_tree" : cluster_tree,
+			"group_heights" : group_heights,
+		}
+
+		return ans
 
 if __name__ == "__main__":
 	import sys
