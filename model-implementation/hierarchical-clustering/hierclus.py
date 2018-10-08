@@ -4,7 +4,7 @@
 	Channel: ML4U
 """
 
-from numpy import array, zeros, random
+from numpy import array, zeros, inf
 from pandas import read_csv
 from scipy.special import binom
 from copy import deepcopy
@@ -14,9 +14,20 @@ class Hierclus():
 	def __euclideandist__(inst_a, inst_b):
 		return (sum((inst_a - inst_b)**2.0))**0.5
 
-	def __linksingle__(dataset, supergroup_A, supergroup_B):
+	def __linksingle__(supergroup_A, supergroup_B):
 		# min({dist(a, b) | a e A v b e B}
-		return random.randint(-100, 100)
+		"""
+			The single linkage is fairly simple:
+			the distance between the clusters is
+			the smallest distance between one
+			pair of instance.
+		"""
+		min_dist = inf
+		for inst_a in supergroup_A:
+			for inst_b in supergroup_B:
+				min_dist = min(min_dist, \
+					Hierclus.__euclideandist__(inst_a, inst_b))
+		return min_dist	
 
 	def __linkcomplete__(dataset, supergroup_A, supergroup_B):
 		# max({dist(a, b) | a e A v b e B}
@@ -55,6 +66,11 @@ class Hierclus():
 		group_heights = {i : 0.0 \
 			for i in range(dataset.shape[0])}
 
+		# This array will keep the greatest supergroup
+		# that every instace are in
+		outtermost_group_id = array([i \
+			for i in range(dataset.shape[0])])
+
 		group_id_counter = dataset.shape[0]
 
 		# Stop criterion: run the algorithm while the number
@@ -68,19 +84,18 @@ class Hierclus():
 
 			aux_dist = array([None] * int(binom(num_supergroups, 2)))
 
-			supergroups_ids = tuple(cluster_tree.keys())
+			supergroup_ids = tuple(cluster_tree.keys())
 
 			k = 0
 			for i in range(num_supergroups):
+				supergroup_A_id = supergroup_ids[i]
 				for j in range(i+1, num_supergroups):
-					supergroup_A_id = supergroups_ids[i]
-					supergroup_B_id = supergroups_ids[j]
+					supergroup_B_id = supergroup_ids[j]
 					aux_dist[k] = {
 						"clustering_metric" :\
 							clustering_metric(\
-								dataset,
-								cluster_tree[supergroup_A_id],\
-								cluster_tree[supergroup_B_id]),
+								dataset[supergroup_A_id == outtermost_group_id,:],\
+								dataset[supergroup_B_id == outtermost_group_id,:]),\
 						"supergroup_ids" : (supergroup_A_id, supergroup_B_id)}
 					k += 1
 
@@ -102,6 +117,12 @@ class Hierclus():
 				}, 
 				**cluster_tree,
 			}
+
+			# Update outtermost supergroup indexes
+			outtermost_group_id[\
+				(outtermost_group_id == nearest_supergroup_A_id) |\
+				(outtermost_group_id == nearest_supergroup_B_id) ]\
+				= group_id_counter
 
 			# Keep the height of each supergroup in order
 			# to construct the dendrogram.
@@ -154,6 +175,15 @@ if __name__ == "__main__":
 		criterion=sys.argv[2])
 
 	print("Result:")
-	for item in ans:
-		print(item, ":", ans[item])
 
+	def __recursiveprint__(tree, heights, level):
+		for key in tree:
+			print("->" * level, key, end=" ")
+			if type(tree[key]) == type(dict()):
+				print("Height: (" + str(heights[key]) + ")", ":")
+				__recursiveprint__(tree[key], heights, level + 1)
+			else:
+				print("Attributes:", dataset.iloc[tree[key],:].values)
+				
+
+	__recursiveprint__(ans["cluster_tree"], ans["group_heights"], 0)
