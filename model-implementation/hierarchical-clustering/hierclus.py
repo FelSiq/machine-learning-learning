@@ -7,7 +7,6 @@
 from numpy import array, zeros, inf
 from pandas import read_csv
 from scipy.special import binom
-from copy import deepcopy
 
 class Hierclus():
 
@@ -15,7 +14,7 @@ class Hierclus():
 		return (sum((inst_a - inst_b)**2.0))**0.5
 
 	def __linksingle__(supergroup_A, supergroup_B):
-		# min({dist(a, b) | a e A v b e B}
+		# min({dist(a, b) | a e A ^ b e B}
 		"""
 			The single linkage is fairly simple:
 			the distance between the clusters is
@@ -27,15 +26,34 @@ class Hierclus():
 			for inst_b in supergroup_B:
 				min_dist = min(min_dist, \
 					Hierclus.__euclideandist__(inst_a, inst_b))
+
 		return min_dist	
 
-	def __linkcomplete__(dataset, supergroup_A, supergroup_B):
-		# max({dist(a, b) | a e A v b e B}
-		pass
+	def __linkcomplete__(supergroup_A, supergroup_B):
+		# max({dist(a, b) | a e A ^ b e B}
+		"""
+			The complete linkage picks up the maximum
+			distance between two pair of points in
+			different clusters. 
+		"""
+		max_dist = 0.0
+		for inst_a in supergroup_A:
+			for inst_b in supergroup_B:
+				max_dist = max(max_dist, \
+					Hierclus.__euclideandist__(inst_a, inst_b))
 
-	def __linkaverage__(dataset, supergroup_A, supergroup_B):
+		return max_dist
+
+	def __linkaverage__(supergroup_A, supergroup_B):
 		# (|A|*|B|)^{-1} * sum(a e A){sum(b e B){d(a, b)}}
-		pass
+		cardinality = (supergroup_A.shape[0] * supergroup_B.shape[0])
+
+		cum_sum = 0.0
+		for inst_a in supergroup_A:
+			for inst_b in supergroup_B:
+				cum_sum += Hierclus.__euclideandist__(inst_a, inst_b)
+
+		return cum_sum / cardinality
 
 	def __choosecriterion__(criterion):
 		criterion = criterion.lower()
@@ -174,16 +192,18 @@ if __name__ == "__main__":
 		dataset.iloc[:,:].values, 
 		criterion=sys.argv[2])
 
-	print("Result:")
 
-	def __recursiveprint__(tree, heights, level):
-		for key in tree:
-			print("->" * level, key, end=" ")
-			if type(tree[key]) == type(dict()):
-				print("Height: (" + str(heights[key]) + ")", ":")
-				__recursiveprint__(tree[key], heights, level + 1)
-			else:
-				print("Attributes:", dataset.iloc[tree[key],:].values)
-				
+	if ans is not None:
+		print("Result:")
 
-	__recursiveprint__(ans["cluster_tree"], ans["group_heights"], 0)
+		def __recursiveprint__(tree, heights, level):
+			for key in tree:
+				print("->" * level, end=" ")
+				if type(tree[key]) == type(dict()):
+					print("Height: (" + str(heights[key]) + ")", ":")
+					__recursiveprint__(tree[key], heights, level + 1)
+				else:
+					print("value:", dataset.iloc[key,:].values, "index:", key)
+					
+
+		__recursiveprint__(ans["cluster_tree"], ans["group_heights"], 0)
