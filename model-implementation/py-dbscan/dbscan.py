@@ -99,16 +99,97 @@ class Dbscan():
 		density-connectivity concept, different from
 		the density-reachable concept, is symmetric.
 		-------------------------------------------
-		-------------------------------------------
 	"""
-	def __euclideandist__(inst_a, inst_b)
+
+	def __euclideandist__(inst_a, inst_b):
 		return (sum((inst_a - inst_b)**2.0))**0.5
 
 	def run(dataset, radius, minpts):
-		pass
-	
+		
+		possible_noises = set()
+		cluster_id = array([-1] * dataset.shape[0])
+		node_core = array([False] * dataset.shape[0])
+		counter = 0
+
+		equiv_cluster_ids = {}
+
+		# Ultimately all instances must be checked
+		for inst_id in range(dataset.shape[0]):
+
+			cur_neighborhood = set()
+
+			for neighbor_id in range(dataset.shape[0]):
+				if Dbscan.__euclideandist__(\
+					dataset[inst_id,:], \
+					dataset[neighbor_id,:]) <= radius:
+
+					cur_neighborhood.update({neighbor_id})
+
+			if len(cur_neighborhood) >= minpts:
+				# New core point detected
+				node_core[inst_id] = True
+
+				if cluster_id[inst_id] == -1:
+					# This core point does not belong
+					# to any previously created cluster, so
+					# create a new one
+					cluster_id[inst_id] = counter	
+					neighbor_cluster_id = counter
+					counter += 1
+				else:
+					# This core point is density-reachable
+					# to another core point in an existing
+					# cluster.
+					neighbor_cluster_id = cluster_id[inst_id]
+
+				# "Paint" current neighbors with the same
+				# cluster id of this current instance.
+				for neighbor_id in cur_neighborhood:
+					if node_core[neighbor_id]:
+						# If this ever happens, it means that
+						# we have two core nodes of the same
+						# cluster, but with cluster_ids distincts.
+						# In other words, both cluster_id repre-
+						# sents the same cluster.
+						if cluster_id[inst_id] not in equiv_cluster_ids:
+							equiv_cluster_ids[cluster_id[inst_id]] =\
+								cluster_id[neighbor_id]
+						else:
+							equiv_cluster_ids[cluster_id[neighbor_id]] =\
+								equiv_cluster_ids[cluster_id[inst_id]]
+
+					cluster_id[neighbor_id] = neighbor_cluster_id
+
+			elif cluster_id[inst_id] == -1:
+				# Current instance is not a CORE point and
+				# is still not painted (i.e. it is not classified
+				# as a BORDER point until now), so it can be a 
+				# possible noisy instance.
+				possible_noises.update({inst_id})
+
+		# For each instance marked as a possible noise,
+		# recheck if it is not "colored". If not, then
+		# the instance is a true noise.
+		noise_id = set()
+		for inst_id in possible_noises:
+			if cluster_id[inst_id] == -1:
+				noise_id.update({inst_id})
+
+		for inst_id in range(dataset.shape[0]):
+			cur_inst_id = cluster_id[inst_id]
+			if cluster_id[inst_id] in equiv_cluster_ids:
+				cluster_id[inst_id] = equiv_cluster_ids[cur_inst_id]
+
+		ans = {
+			"cluster_id" : cluster_id,
+			"noise" : noise_id,
+		}
+
+		return ans
+				
 
 if __name__ == "__main__":
+	import matplotlib.pyplot as plt
 	import sys
 
 	if len(sys.argv) < 4:
@@ -134,3 +215,9 @@ if __name__ == "__main__":
 		for item in ans:
 			print(item, ":", ans[item])
 
+		if dataset.shape[1] == 2:
+			plt.scatter(
+				x=dataset.iloc[:, 0], 
+				y=dataset.iloc[:, 1], 
+				c=ans["cluster_id"]) 
+			plt.show()
