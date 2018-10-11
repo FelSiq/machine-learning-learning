@@ -1,13 +1,8 @@
-# Helpful video: (in Portuguese)
-# title: "Vídeo 48 - Planejamento de Experimentos: Agrupamento de Dados"
-# canal: ML4U
-# https://www.youtube.com/watch?v=OLwabj1WJj0
-
 from numpy import array, random, argmin, median as npmedian, inf
 from pandas import DataFrame, read_csv
 from clustering.metrics import ClusterMetrics
 
-class Kmeans():
+class Kmedians():
 	def __euclideandist__(inst_a, inst_b):
 		return (sum((inst_a - inst_b)**2.0))**0.5
 
@@ -33,7 +28,7 @@ class Kmeans():
 					# For each instance, calculate the distance between
 					# each center
 					auxvec_cur_distances[center_id] = \
-						Kmeans.__euclideandist__(\
+						Kmedians.__euclideandist__(\
 							dataset[inst_id,:],
 							centers_coord[center_id,:])
 					
@@ -109,7 +104,7 @@ if __name__ == "__main__":
 		if ("-label",) in sys.argv:
 			print("Warning: can not remove column \"" +\
 				rem_label + "\" from dataset.")
-	ans = Kmeans.run(
+	ans = Kmedians.run(
 		dataset=dataset.loc[:,:].values, 
 		k=int(sys.argv[2]),
 		labels=class_ids)
