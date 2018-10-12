@@ -137,7 +137,7 @@ class Valclass():
 			confusion_matrix, 
 			true_class_index=true_class_index)
 
-		reca = Valclass.precision(\
+		reca = Valclass.recall(\
 			confusion_matrix, 
 			true_class_index=true_class_index)
 
@@ -176,6 +176,12 @@ class Valclass():
 class Partitions():
 
 	def __getclassprobs__(y, stratified=True):
+
+		if type(y) != type(array):
+			y = array(y)
+		else:
+			y = y.flatten()
+
 		num_inst = len(y)
 
 		# Calculate probability of each class to be
@@ -200,7 +206,7 @@ class Partitions():
 
 		return num_inst, class_labels, inst_sel_prob
 
-	def kfold(x, y, k=10, stratified=True, ret_train_bins=True):
+	def kfold(y, k=10, stratified=True, ret_train_bins=True):
 		"""
 			This method separates the train set
 			into k mutually exclusive partitions.
@@ -220,6 +226,7 @@ class Partitions():
 			set(all_indexes) - set(test_indexes)) is
 			just to make the testing phase simpler.
 		"""
+
 		num_inst, class_labels, inst_sel_prob =\
 			Partitions.__getclassprobs__(y,
 				stratified=stratified)
@@ -269,9 +276,7 @@ class Partitions():
 
 		return test_bins
 
-	def holdout(x, y, 
-		test_prop=0.25, 
-		stratified=True):
+	def holdout(y, test_prop=0.25, stratified=True):
 		"""
 			This function separates the dataset into
 			two mutually exclusive partitions, one
@@ -280,7 +285,7 @@ class Partitions():
 			it, trying to approximate its "true risk".
 		"""
 		num_inst, class_labels, inst_sel_prob =\
-			Partitions.__getclassprobs__(y, \
+			Partitions.__getclassprobs__(y,\
 				stratified=stratified)
 
 		test_indexes = random.choice(\
@@ -295,32 +300,40 @@ class Partitions():
 		
 		return train_indexes, test_indexes
 
-	def bootstrap(dataset, 
-		train_func, 
-		rep=1000, 
-		train_prop=0.75,
-		macroaverage=True,
-		full_output=False):
+	def bootstrap(y,
+		sep_test=False,
+		bag_size_prop=1.0,
+		test_prop=0.2, 
+		stratified=True):
 
-		# Random sampling with replacement
+		num_inst, class_labels, inst_sel_prob =\
+			Partitions.__getclassprobs__(y, \
+				stratified=stratified)
 
-		"""
-			Amostragem com reposição
+		if sep_test:
+			# Separate instances for test
+			test_indexes = random.choice(
+				num_inst,
+				size=int(test_prop * num_inst),
+				replace=False,
+				p=inst_sel_prob)
 
-			Cada partição é uma amostra aleatória com reposição 
-			do conjunto total de exemplos
+			inst_sel_prob[test_indexes] = 0.0
+			inst_sel_prob /= sum(inst_sel_prob)
 
-			Conjunto de treinamento têm o mesmo número de exemplos
-			do conjunto total
+		# Choose, with replacement, in the training
+		# data the instances that are not already in the
+		# testing set, if any
+		train_bag = random.choice(
+			num_inst,
+			size=int(bag_size_prop * num_inst),
+			replace=True,
+			p=inst_sel_prob)
 
-			Esta  reamostragem é feita muitas vezes(de 1000 a 10000 
-			vezes) para criar uma estimativa da função de distribuição 
-			acumulada.
+		if sep_test:
+			return train_bag, test_indexes
 
-			Processo é repetido k vezes. Resultado final é a média dos k 
-			experimentos.
-		"""
-		pass
+		return train_bag
 
 if __name__ == "__main__":
 	m = Valclass.confusion_matrix(
@@ -341,12 +354,15 @@ if __name__ == "__main__":
 	from sklearn.datasets import load_iris
 	iris = load_iris()
 	k = 10
-	train, test = Partitions.kfold(iris["data"], iris["target"], k=k)
+	train, test = Partitions.kfold(iris["target"], k=k)
 
 	for i in range(k):
 		print(set(train[i]).intersection(test[i]))
 
-	train, test = Partitions.holdout(iris["data"], iris["target"])
+	train, test = Partitions.holdout(iris["target"])
 	print(train, test)
 	print(set(train).intersection(set(test)))
 
+	train, test = Partitions.bootstrap(iris["target"], sep_test=True)
+	print(train, test)
+	print(set(train).intersection(set(test)))
