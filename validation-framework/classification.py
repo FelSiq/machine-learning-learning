@@ -269,8 +269,8 @@ class Partitions():
 
 		return test_bins
 
-	def holdout(dataset, 
-		train_prop=0.75, 
+	def holdout(x, y, 
+		test_prop=0.25, 
 		stratified=True):
 		"""
 			This function separates the dataset into
@@ -284,12 +284,13 @@ class Partitions():
 				stratified=stratified)
 
 		test_indexes = random.choice(\
-			dataset.shape[0], 
+			num_inst,
+			size=int(test_prop * num_inst),
 			replace=False,
 			p=inst_sel_prob)
 
 		train_indexes = delete(\
-			range(dataset.shape[0]),
+			range(num_inst),
 			test_indexes)
 		
 		return train_indexes, test_indexes
@@ -344,3 +345,8 @@ if __name__ == "__main__":
 
 	for i in range(k):
 		print(set(train[i]).intersection(test[i]))
+
+	train, test = Partitions.holdout(iris["data"], iris["target"])
+	print(train, test)
+	print(set(train).intersection(set(test)))
+
