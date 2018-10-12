@@ -1,4 +1,4 @@
-from numpy import array, zeros, diag
+from numpy import array, zeros, diag, random, where, concatenate, delete
 from pandas import DataFrame
 
 class Valclass():
@@ -174,30 +174,131 @@ class Valclass():
 		return ans
 
 class Partitions():
-	def kfoldcv(dataset, 
-		train_func, 
-		k=10, 
-		stratified=True,
-		full_output=False):
-		pass
 
-	def loocv(dataset, 
-		train_func, 
-		stratified=True,
-		full_output=False):
-		pass
+	def __getclassprobs__(y, stratified=True):
+		num_inst = len(y)
+
+		# Calculate probability of each class to be
+		# selected
+		class_labels = set(y)
+		class_probs = {}
+		for cl in class_labels:
+			class_probs[cl] = sum(y == cl)/num_inst
+
+		# Probability of each instance to be chosen
+		# in each bin
+		if stratified:
+			inst_sel_prob = array([0.0] * num_inst)
+
+			for inst_id in range(num_inst):
+				inst_sel_prob[inst_id] = \
+					class_probs[y[inst_id]]
+
+			inst_sel_prob /= sum(inst_sel_prob)
+		else:
+			inst_sel_prob = None
+
+		return num_inst, class_labels, inst_sel_prob
+
+	def kfold(x, y, k=10, stratified=True, ret_train_bins=True):
+		"""
+			This method separates the train set
+			into k mutually exclusive partitions.
+
+			If "stratified" is true, each partition
+			will try to keep the original proportion 
+			of each class. This is not guaranteed.
+
+			If "ret_train_bins" is true, this method
+			will return two lists: test_bins and tr-
+			ain_bins which keeps, respectivelly, the
+			indexes of test instances and train instan-
+			ces in for each iteration of the k-fold cv.
+
+			The purpose behind the creation of the
+			train_bin (which effectively is 
+			set(all_indexes) - set(test_indexes)) is
+			just to make the testing phase simpler.
+		"""
+		num_inst, class_labels, inst_sel_prob =\
+			Partitions.__getclassprobs__(y,
+				stratified=stratified)
+
+		# Prepare test bins
+		test_bins = []
+
+		if ret_train_bins:
+			# Train bins are created just to make 
+			# life simplier, not because they're
+			# really necessary.
+			train_bins = []
+
+		for i in range(k):
+			cur_partition_indexes = random.choice(\
+				a=range(num_inst),
+				size=num_inst//k,
+				replace=False,
+				p=inst_sel_prob)
+
+			if stratified:
+				inst_sel_prob[cur_partition_indexes] = 0.0
+				aux_sum = sum(inst_sel_prob)
+				if aux_sum > 0.0:
+					inst_sel_prob /= aux_sum
+
+			test_bins.append(cur_partition_indexes)
+
+			if ret_train_bins:
+				train_bins.append(\
+					delete(range(num_inst),
+						cur_partition_indexes))
+
+		# Check if there is not remaining
+		# instances not chosen. In this case,
+		# distribute they in a round-robin fashion
+		if sum(inst_sel_prob) > 0.0:
+			remaining_ids = array(where(inst_sel_prob > 0.0)).flatten()
+			for i in range(len(remaining_ids)):
+				test_bins[i % k] = concatenate((\
+					test_bins[i % k], [remaining_ids[i]]))
+				train_bins[i % k] = delete(train_bins[i % k], \
+					where(train_bins[i % k] == remaining_ids[i])[0])
+
+		if ret_train_bins:
+			return train_bins, test_bins
+
+		return test_bins
 
 	def holdout(dataset, 
-		train_func, 
 		train_prop=0.75, 
-		stratified=True,
-		full_output=False):
-		pass
+		stratified=True):
+		"""
+			This function separates the dataset into
+			two mutually exclusive partitions, one
+			designed to be used for training a machine
+			learning model and the other one to evaluate
+			it, trying to approximate its "true risk".
+		"""
+		num_inst, class_labels, inst_sel_prob =\
+			Partitions.__getclassprobs__(y, \
+				stratified=stratified)
+
+		test_indexes = random.choice(\
+			dataset.shape[0], 
+			replace=False,
+			p=inst_sel_prob)
+
+		train_indexes = delete(\
+			range(dataset.shape[0]),
+			test_indexes)
+		
+		return train_indexes, test_indexes
 
 	def bootstrap(dataset, 
 		train_func, 
 		rep=1000, 
 		train_prop=0.75,
+		macroaverage=True,
 		full_output=False):
 
 		# Random sampling with replacement
@@ -235,3 +336,11 @@ if __name__ == "__main__":
 	max_len = 1 + max([len(k) for k in array(list(ans.keys()))])
 	for item in ans:
 		print("{val:<{fill}}".format(val=item, fill=max_len), ":", ans[item])
+
+	from sklearn.datasets import load_iris
+	iris = load_iris()
+	k = 10
+	train, test = Partitions.kfold(iris["data"], iris["target"], k=k)
+
+	for i in range(k):
+		print(set(train[i]).intersection(test[i]))
