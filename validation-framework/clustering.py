@@ -240,6 +240,35 @@ class ClusterMetrics():
 
 		return jackard_index
 
+	def runall(dataset, centers_coord, inst_cluster_id, labels=None):
+		ans = {
+			"inner_metrics" : {
+				"SSE/Cohesion" : ClusterMetrics.sse(dataset, \
+					centers_coord, inst_cluster_id),
+				"BSS/Separation" : ClusterMetrics.bss(dataset, \
+					centers_coord, inst_cluster_id),
+				"Silhouette" : ClusterMetrics.silhouette(dataset, \
+					centers_coord, inst_cluster_id),
+			},
+		}
+
+		if labels is not None:
+			# If true labels are given, then we can compute
+			# OUTTER clustering quality measures
+			ans = {
+				**ans,
+				"outter_metrics" : {
+					"Rand_index" : ClusterMetrics.rand_index(\
+						labels, inst_cluster_id),
+					"Adjusted_rand_index" : ClusterMetrics.adjusted_rand_index(\
+						labels, inst_cluster_id),
+					"Jackard_index" : ClusterMetrics.jackard_index(\
+						labels, inst_cluster_id),
+				}
+			}
+
+		return ans
+
 	def best_cluster_num(dataset,
 		clustering_func,
 		k_max, 
@@ -250,6 +279,47 @@ class ClusterMetrics():
 		warnings=True,
 		cluster_func_args=None):
 
+		"""
+			Arguments guide:
+
+			dataset		: numpy array, unlabeled dataset with numeric data only
+
+			clusteting_func	: function address, function used to cluster the data. That function MUST
+					RETURN a dictionary containing the following keys:
+						1. "inst_cluster_id": integer array, containing the index
+						of the cluster that each instance belongs to.
+
+						2. (only for INNER clustering metrics such as "silhouette", 
+						"bss" or "sse") "centers_coord" : float array, coordinates 
+						of each cluster center.
+
+					All other information inside the output dictionary will be
+					ignored.
+
+			k_min, k_max	: integer, range of number of cluster to test.
+
+			metric		: string, metric used to compare models with different number
+					of clusters. Must be in {"silhouette", "rand", "jackard",
+					"bss", "sse"}. Also, "rand" and "jackard" are outter metrics
+					so they need the paramter "labels" also.
+
+			labels		: array, known labels for each instance in the dataset. It is a
+					mandatory argument if "jackard" or "rand" metrics are used,
+					as they're outter clustering metrics.
+
+			full_output	: boolean, enable or disable a complete output. If False, then only the
+					best k will be returned. Otherwise, will return a dictionary
+					will a few information about the testing process.
+
+			warnings	: boolean,  enable/disable warning/errors messages.
+
+			cluster_func_args: dictionary, arguments to be passed to the clustering_func.
+					The keys of that dictionary are the function argument name,
+					and the values will be attributed correspondently.
+		"""
+
+		# --------------------------------------------
+		# Parameters checking
 		if k_max <= 0 or k_min <= 0:
 			if warnings:
 				print("Error: \"k_min\"/\"k_max\" must be > 0")
@@ -261,17 +331,18 @@ class ClusterMetrics():
 					"be <= \"k_max\"")
 			return None
 
-		# Parameters checking
+		metric = metric.lower()
+
 		if metric not in {"silhouette", "bss", "sse", "jackard", "rand"}:
 			if warnings:
-				print("Unknown metric \"" + metric + "\"")
+				print("Error: unknown metric \"" + metric + "\"")
 			return None
 
 		if metric in {"jackard", "rand"}:
 			# Outter metrics
 			if labels is None:
 				if warnings:
-					print("\"" + metric + "\" need instance \"labels\"",
+					print("Error: \"" + metric + "\" need instance \"labels\"",
 						"as an Outter Clustering Metric.")
 				return None
 
@@ -280,6 +351,7 @@ class ClusterMetrics():
 				"labels" : labels,
 			}
 
+			inner_metric = False
 			if metric == "jackard":
 				chosen_metric_func = ClusterMetrics.jackard_index
 			else:
@@ -293,6 +365,7 @@ class ClusterMetrics():
 			}
 
 			# Inner metrics
+			inner_metric = True
 			if metric == "silhouette":
 				chosen_metric_func = ClusterMetrics.silhouette
 			elif metric == "bss":
@@ -302,21 +375,55 @@ class ClusterMetrics():
 
 		if cluster_func_args is None:
 			cluster_func_args = {}
+
+		# End of parameters checking section
+		# --------------------------------------------
 		
+		# Create an array which will keep all matric
+		# value for all k tested
 		metric_array = array([0.0] * (k_max - k_min + 1))
 
+		# Test the clustering for all k in [k_min, k_max] range
 		for k in range(k_min, k_max+1):
-			args = {
-				**args,
-				**clustering_func(\
-					dataset=dataset, 
-					k=k,
-					**cluster_func_args),
-			}
+			"""
+				Update metric function arguments with
+				the output of the clustering function.
+				Please note that the output of the clus-
+				tering function must be a dictionary
+				containing the following keys:
 
+				Both for OUTTER and INNER metrics:
+					1. "inst_cluster_id" : array of integers,
+						showing which cluster each instance
+						belongs to.
+				
+				Only needed for INNER metrics also:
+					2. "centers_coord" : array of floats, indi-
+						cating the coordinates of the centers
+						of each cluster.
+
+				Note that
+					OUTTER METRICS: rand and jackard indexes.
+					INNER METRICS: silhouetter, bss and sse.
+			"""
+			
+			cluster_func_out = clustering_func(\
+				dataset=dataset, 
+				k=k,
+				**cluster_func_args)
+
+			args["inst_cluster_id"] = cluster_func_out["inst_cluster_id"]
+			if inner_metric:
+				args["centers_coord"] = cluster_func_out["centers_coord"]
+
+			# Apply metric function to evaluate current
+			# clustering configuration.
 			metric_array[k-k_min] = chosen_metric_func(**args)
 
+		# Build up final answer.
 		ans = {
+			"clustering_method" : clustering_func.__name__,
+			"metric" : metric,
 			"k interval" : [k_min, k_max],
 			"k_chosen" : range(k_min, k_max+1)[metric_array.argmax()],
 			"all_k_metrics" : {
