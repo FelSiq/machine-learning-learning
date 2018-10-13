@@ -1,5 +1,8 @@
-from numpy import array, zeros, diag, random, where, concatenate, delete
+from numpy import array, zeros, diag, random, \
+	where, concatenate, delete, c_ as cat_cols, \
+	r_ as cat_rows, nan
 from pandas import DataFrame
+import matplotlib.pyplot as plt
 
 class Valclass():
 	def generalization():
@@ -150,36 +153,122 @@ class Valclass():
 			b=1.0,
 			true_class_index=true_class_index)
 
-	def roc(confusion_matrix, true_class_index=0, plot=False):
+	def __simpsonrule__(a, b, values):
+		total_inst = len(values)
+		h = (b - a)/(total_inst-1)
+		odd_sum = 4 * sum(values[1:-1:2]) 
+		even_sum = 2 * sum(values[2:-1:2])
+		totalsum = values[0] + values[-1] +\
+			odd_sum + even_sum
+		return (h/3.0) * totalsum
+
+	def roc_auc(tpr, fpr, true_class_index=0, plot=False):
 		# ROC stands for "Receiver Operating 
-		# Characteristics"
-		pass
+		# Characteristics". AUC stands for "Area Under
+		# the Curve (ROC)".
+
+		if len(tpr) != len(fpr):
+			print("Error: size of TPR and FPR",
+				"arrays must match!")
+			return None
+
+		tpr = array(tpr).flatten()
+		fpr = array(fpr).flatten()
+
+		# In order to use Simpson Rule for numeric
+		# integration the number of points must be
+		# odd.
+		if len(tpr) % 2 == 0:
+			tpr = tpr[:-1]
+			fpr = fpr[:-1]
+
+		auc_val = Valclass.__simpsonrule__(\
+			a=0.0,
+			b=1.0,
+			values=tpr)
+
+		if plot:
+			aux_data = cat_cols[fpr, tpr]
+			print(aux_data.shape)
+			aux_data = cat_rows[[[0.0, 0.0]], aux_data]
+			aux_data = cat_rows[aux_data, [[1.0, 1.0]]]
+			aux_data.sort(axis=0)
+
+			fpr = aux_data[:,0]
+			tpr = aux_data[:,1]
+
+			# Plotting
+			plt.plot(fpr, tpr, "-o")
+			plt.plot([0.0, 1.0], [0.0, 1.0], "r-")
+			plt.title("ROC AUC")
+			plt.show()
+
+		return auc_val
 
 	def testall(confusion_matrix, b=1, true_class_index=0):
 		ans = {
-			"accuracy" : Valclass.accuracy(confusion_matrix),
-			"empirical_risk" : Valclass.empirical_risk(confusion_matrix),
-			"precision" : Valclass.precision(confusion_matrix, true_class_index=true_class_index),
-			"true_positive_rate/recall/sensitivity" : Valclass.tpr(confusion_matrix, true_class_index=true_class_index),
-			"true_negative_rate/specifity" : Valclass.tnr(confusion_matrix, true_class_index=true_class_index),
-			"false_positive_rate" : Valclass.fpr(confusion_matrix, true_class_index=true_class_index),
-			"false_negative_rate" : Valclass.fnr(confusion_matrix, true_class_index=true_class_index),
-			"f"+str(b)+"-score" : Valclass.fbscore(confusion_matrix,b=b,true_class_index=true_class_index),
-			"roc" : Valclass.roc(confusion_matrix, true_class_index=0, plot=False),
+			"accuracy" : \
+				Valclass.accuracy(confusion_matrix),
+
+			"empirical_risk" : \
+				Valclass.empirical_risk(confusion_matrix),
+
+			"precision" : \
+				Valclass.precision(confusion_matrix, 
+					true_class_index=true_class_index),
+
+			"true_positive_rate/recall/sensitivity" : \
+				Valclass.tpr(confusion_matrix, 
+					true_class_index=true_class_index),
+
+			"true_negative_rate/specifity" : \
+				Valclass.tnr(confusion_matrix, 
+					true_class_index=true_class_index),
+
+			"false_positive_rate" : \
+				Valclass.fpr(confusion_matrix, 
+					true_class_index=true_class_index),
+
+			"false_negative_rate" : \
+				Valclass.fnr(confusion_matrix, 
+					true_class_index=true_class_index),
+
+			"f"+str(b)+"-score" : \
+				Valclass.fbscore(confusion_matrix,
+					b=b,
+					true_class_index=true_class_index),
 		}
 
 		return ans
 
-	def combine_matrices(confusions_matrix, b=1, true_class_index=0, macroaverage=True):
+	def combine_matrices(confusions_matrix, 
+		b=1, 
+		true_class_index=0, 
+		macroaverage=False):
+		"""
+			This method combine the results of various
+			confusion matrices. It can just sum up all
+			matrices and then perform the evaluations,
+			or it can perform the evaluations one by one
+			and then combine the metrics, averaging then
+			and also collecting the standard deviation.
+		"""
 		if macroaverage:
+			# Sum up all confusion matrices and
+			# then perform the calculations
 			master_matrix = confusions_matrix[0]
 			for i in range(1, len(confusions_matrix)):
 				master_matrix += confusions_matrix[i]
+
 			return testall(master_matrix, 
 				b=b, 
 				true_class_index=true_class_index)
 
 		else:
+			# Perform the calculations of each matrix
+			# separately and then combine they, avera-
+			# ging the values. Also, collect the stand-
+			# ard deviation of each metric.
 			final_ans = {}
 			for i in range(1, len(confusions_matrix)):
 				ans = testall(confusions_matrix[i],
@@ -188,15 +277,17 @@ class Valclass():
 
 				for item in ans:
 					if item not in final_ans:
-						final_ans[item] = array([0.0] * len(confusions_matrix))
+						final_ans[item] = array([0.0] * \
+							len(confusions_matrix))
 					final_ans[item][i] = ans[item]
 
 			for item in final_ans:
 				aux_std = final_ans[item].std()
-				final_ans[item] = (\
-					final_ans[item].sum() /\
+				final_ans[item] = {
+					"average" : final_ans[item].sum() /\
 						len(confusions_matrix),
-					aux_std)
+					"stdev" : aux_std
+				}
 			
 			return final_ans
 
@@ -363,33 +454,40 @@ class Partitions():
 		return train_bag
 
 if __name__ == "__main__":
-	m = Valclass.confusion_matrix(
-		true_labels=([1, 2, 1, 3]), 
-		class_result=([1, 2, 1, 1]))
+	from sklearn import datasets
+	from sklearn.tree import DecisionTreeClassifier as dtc
+	iris_data = datasets.load_iris()
 
-	t_cl_ind = 1
+	vals=iris_data["data"]
+	target=iris_data["target"]
 
-	print(m)
+	from numpy import random, c_ as add_col
+	shuffled_data = add_col[vals, target]
+	random.shuffle(shuffled_data)
 
-	ans = Valclass.testall(m, true_class_index=t_cl_ind)
+	vals = shuffled_data[:,:-1]
+	target = shuffled_data[:,-1]
 
-	print("\nResults:")
-	max_len = 1 + max([len(k) for k in array(list(ans.keys()))])
-	for item in ans:
-		print("{val:<{fill}}".format(val=item, fill=max_len), ":", ans[item])
+	dt = dtc(criterion="gini", splitter="best")
 
-	from sklearn.datasets import load_iris
-	iris = load_iris()
-	k = 10
-	train, test = Partitions.kfold(iris["target"], k=k)
+	tpr = []
+	fpr = []
+	for i in range(1,vals.shape[0]-1):
+		classifier = dt.fit(X=vals[:i,:], y=target[:i])
 
-	for i in range(k):
-		print(set(train[i]).intersection(test[i]))
+		preds_array = classifier.predict(vals[i:,:])
+		true_labels = target[i:]
 
-	train, test = Partitions.holdout(iris["target"])
-	print(train, test)
-	print(set(train).intersection(set(test)))
+		# Class "0" vs all
+		cm = Valclass.confusion_matrix(true_labels, preds_array)
 
-	train, test = Partitions.bootstrap(iris["target"], sep_test=True)
-	print(train, test)
-	print(set(train).intersection(set(test)))
+		aux1 = Valclass.tpr(cm)
+		aux2 = Valclass.fpr(cm)
+
+		if aux1 is not nan and aux2 is not nan:
+			tpr.append(aux1)
+			fpr.append(aux2)
+
+	auc = Valclass.roc_auc(tpr=tpr, fpr=fpr, plot=True)
+
+	print("AUC:", auc)
