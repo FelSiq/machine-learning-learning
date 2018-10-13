@@ -159,19 +159,46 @@ class Valclass():
 		ans = {
 			"accuracy" : Valclass.accuracy(confusion_matrix),
 			"empirical_risk" : Valclass.empirical_risk(confusion_matrix),
-			"recall" : Valclass.recall(confusion_matrix, true_class_index=true_class_index),
 			"precision" : Valclass.precision(confusion_matrix, true_class_index=true_class_index),
-			"sensitivity" : Valclass.sensitivity(confusion_matrix, true_class_index=true_class_index),
-			"true_positive_rate" : Valclass.tpr(confusion_matrix, true_class_index=true_class_index),
-			"true_negative_rate" : Valclass.tnr(confusion_matrix, true_class_index=true_class_index),
+			"true_positive_rate/recall/sensitivity" : Valclass.tpr(confusion_matrix, true_class_index=true_class_index),
+			"true_negative_rate/specifity" : Valclass.tnr(confusion_matrix, true_class_index=true_class_index),
 			"false_positive_rate" : Valclass.fpr(confusion_matrix, true_class_index=true_class_index),
 			"false_negative_rate" : Valclass.fnr(confusion_matrix, true_class_index=true_class_index),
-			"specifity" : Valclass.specifity(confusion_matrix, true_class_index=true_class_index),
 			"f"+str(b)+"-score" : Valclass.fbscore(confusion_matrix,b=b,true_class_index=true_class_index),
 			"roc" : Valclass.roc(confusion_matrix, true_class_index=0, plot=False),
 		}
 
 		return ans
+
+	def combine_matrices(confusions_matrix, b=1, true_class_index=0, macroaverage=True):
+		if macroaverage:
+			master_matrix = confusions_matrix[0]
+			for i in range(1, len(confusions_matrix)):
+				master_matrix += confusions_matrix[i]
+			return testall(master_matrix, 
+				b=b, 
+				true_class_index=true_class_index)
+
+		else:
+			final_ans = {}
+			for i in range(1, len(confusions_matrix)):
+				ans = testall(confusions_matrix[i],
+					b=b,
+					true_class_index=true_class_index)
+
+				for item in ans:
+					if item not in final_ans:
+						final_ans[item] = array([0.0] * len(confusions_matrix))
+					final_ans[item][i] = ans[item]
+
+			for item in final_ans:
+				aux_std = final_ans[item].std()
+				final_ans[item] = (\
+					final_ans[item].sum() /\
+						len(confusions_matrix),
+					aux_std)
+			
+			return final_ans
 
 class Partitions():
 
