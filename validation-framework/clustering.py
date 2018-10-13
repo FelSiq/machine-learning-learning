@@ -422,7 +422,7 @@ class ClusterMetrics():
 
 		# Build up final answer.
 		ans = {
-			"clustering_method" : clustering_func.__name__,
+			"clustering_function" : clustering_func,
 			"metric" : metric,
 			"k interval" : [k_min, k_max],
 			"k_chosen" : range(k_min, k_max+1)[metric_array.argmax()],

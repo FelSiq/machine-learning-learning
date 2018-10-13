@@ -1,4 +1,5 @@
 if __name__ == "__main__":
+	from numpy import array
 	from kmeans2 import Kmeans
 	from kmedians import Kmedians
 	from kmedoids import Kmedoids
@@ -8,13 +9,13 @@ if __name__ == "__main__":
 	sys.path.insert(0, "../../validation-framework/")
 	from clustering import ClusterMetrics
 
-
 	if len(sys.argv) < 3:
 		print("usage:", sys.argv[0], "<data_filepath> <clustering_method>",
-			"\n\t[-k, default to 3]",
+			"\n\t[-k_min, default to 2]",
+			"\n\t[-k_max, default to 5]",
 			"\n\t[-sep data_separator, default to \",\"]",
 			"\n\t[-label column_label_to_remove]",
-			"\n\t[-findbestk]",
+			"\n\t[-simplerun, don't run for all k's, just for k_max]",
 			"\n\t[-metric metric_to_find_best_k, default is \"silhouette\"]",
 			"\n\nNote: \"metric\" parameter must be in",
 			"{\"silhouette\", \"bss\", \"sse\", \"jackard\", \"rand\"}",
@@ -36,7 +37,7 @@ if __name__ == "__main__":
 	else:
 		clustering_method_addr = Kmedoids.run
 
-	find_best_k = "-findbestk" in sys.argv
+	simple_run = "-simplerun" in sys.argv
 
 	try:
 		sep = sys.argv[1 + sys.argv.index("-sep")]
@@ -49,9 +50,14 @@ if __name__ == "__main__":
 		metric = "silhouette"
 
 	try:
-		k = int(sys.argv[1 + sys.argv.index("-k")])
+		k_min = int(sys.argv[1 + sys.argv.index("-k_min")])
 	except:
-		k = 5
+		k_min = 2
+
+	try:
+		k_max = int(sys.argv[1 + sys.argv.index("-k_max")])
+	except:
+		k_max = 5
 
 	dataset = read_csv(sys.argv[1], sep=sep)
 
@@ -64,16 +70,17 @@ if __name__ == "__main__":
 			print("Warning: can not remove column \"" +\
 				rem_label + "\" from dataset.")
 
-	if not find_best_k:
+	if simple_run:
 		ans = clustering_method_addr(
 			dataset=dataset.loc[:,:].values, 
-			k=k,
+			k=k_max,
 			labels=class_ids)
 	else:
 		ans = ClusterMetrics.best_cluster_num(\
 			dataset=dataset.loc[:,:].values,
 			clustering_func=clustering_method_addr,
-			k_max=k,
+			k_min=k_min,
+			k_max=k_max,
 			metric=metric,
 			labels=class_ids,
 			warnings=True,
@@ -84,12 +91,17 @@ if __name__ == "__main__":
 		print("Results:")
 		for item in ans:
 			if type(ans[item]) == type({}):
-				print(item, ":", sep="")
+				print(item, ": ", sep="")
 				for val in ans[item]:
-					print("\t", val, ":", 
+					print("\t", val, ": ", 
 						ans[item][val], sep="")
 			else:
-				print(item, ":\n", ans[item], sep="")
+				sep=": "
+				if type(ans[item]) == type([]) or\
+					type(ans[item]) == type(array([])):
+					sep += "\n"
+
+				print(item, sep, ans[item], sep="")
 			print()
 
 
