@@ -15,7 +15,7 @@ class Valclass():
 		# Risk_emp(f) = 1.0 - Accuracy(f) 
 		return 1.0 - Valclass.accuracy(confusion_matrix)
 
-	def confusion_matrix(true_labels, class_result):
+	def confusion_matrix(true_labels, class_result, warnings=True):
 		"""
 		Confusion Matrix:
 		o-------o-------o-------o-------o
@@ -32,9 +32,10 @@ class Valclass():
 		class_labels = set(true_labels)
 
 		if set(class_result) - class_labels:
-			print("Error: more classes predicted than",
-				"specified in the true label array:",
-				set(class_result) - class_labels)
+			if warnings:
+				print("Error: more classes predicted than",
+					"specified in the true label array:",
+					set(class_result) - class_labels)
 			return None
 
 		if type(true_labels) != type(array):
@@ -162,14 +163,15 @@ class Valclass():
 			odd_sum + even_sum
 		return (h/3.0) * totalsum
 
-	def roc_auc(tpr, fpr, true_class_index=0, plot=False):
+	def roc_auc(tpr, fpr, true_class_index=0, plot=False, warnings=True):
 		# ROC stands for "Receiver Operating 
 		# Characteristics". AUC stands for "Area Under
 		# the Curve (ROC)".
 
 		if len(tpr) != len(fpr):
-			print("Error: size of TPR and FPR",
-				"arrays must match!")
+			if warnings:
+				print("Error: size of TPR and FPR",
+					"arrays must match!")
 			return None
 
 		tpr = array(tpr).flatten()
@@ -189,11 +191,9 @@ class Valclass():
 
 		if plot:
 			aux_data = cat_cols[fpr, tpr]
-			print(aux_data.shape)
 			aux_data = cat_rows[[[0.0, 0.0]], aux_data]
 			aux_data = cat_rows[aux_data, [[1.0, 1.0]]]
 			aux_data.sort(axis=0)
-
 			fpr = aux_data[:,0]
 			tpr = aux_data[:,1]
 
@@ -456,6 +456,7 @@ class Partitions():
 if __name__ == "__main__":
 	from sklearn import datasets
 	from sklearn.tree import DecisionTreeClassifier as dtc
+	from sklearn.metrics import auc as skauc
 	iris_data = datasets.load_iris()
 
 	vals=iris_data["data"]
@@ -479,15 +480,26 @@ if __name__ == "__main__":
 		true_labels = target[i:]
 
 		# Class "0" vs all
-		cm = Valclass.confusion_matrix(true_labels, preds_array)
+		cm = Valclass.confusion_matrix(true_labels, preds_array, warnings=False)
+		if cm is not None:
+			aux1 = Valclass.tpr(cm)
+			aux2 = Valclass.fpr(cm)
 
-		aux1 = Valclass.tpr(cm)
-		aux2 = Valclass.fpr(cm)
+			if aux1 is not nan and aux2 is not nan:
+				tpr.append(aux1)
+				fpr.append(aux2)
 
-		if aux1 is not nan and aux2 is not nan:
-			tpr.append(aux1)
-			fpr.append(aux2)
-
-	auc = Valclass.roc_auc(tpr=tpr, fpr=fpr, plot=True)
+	auc = Valclass.roc_auc(tpr=tpr, fpr=fpr, plot=False)
 
 	print("AUC:", auc)
+
+	aux_data = cat_cols[fpr, tpr]
+	aux_data = cat_rows[[[0.0, 0.0]], aux_data]
+	aux_data = cat_rows[aux_data, [[1.0, 1.0]]]
+	aux_data.sort(axis=0)
+	fpr = aux_data[:,0]
+	tpr = aux_data[:,1]
+
+	res = skauc(fpr, tpr)
+
+	print("sklearn AUC:", res)
