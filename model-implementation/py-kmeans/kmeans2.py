@@ -14,7 +14,12 @@ class Kmeans():
 	def __euclideandist__(inst_a, inst_b):
 		return (sum((inst_a - inst_b)**2.0))**0.5
 
-	def run(dataset, k, it_max=1000, min_variation=1.0e-4, labels=None):
+	def run(dataset, k, 
+		it_max=1000, 
+		min_variation=1.0e-4, 
+		labels=None, 
+		full_output=True):
+
 		# Init centers_coord
 		centers_id = random.randint(dataset.shape[0], size=k)
 		centers_coord = dataset[centers_id,:]
@@ -58,32 +63,39 @@ class Kmeans():
 				centers_coord[center_id] = new_cur_cluster_coords
 
 		# Build up answer
-		ans = {
-			"centers" : centers_coord,
-			"clusters" : inst_cluster_id,
-			"inner_metrics" : {
-				"SSE/Cohesion" : ClusterMetrics.sse(dataset, \
-					centers_coord, inst_cluster_id),
-				"BSS/Separation" : ClusterMetrics.bss(dataset, \
-					centers_coord, inst_cluster_id),
-				"Silhouette" : ClusterMetrics.silhouette(dataset, \
-					centers_coord, inst_cluster_id),
-			},
-		}
-
-		if labels is not None:
-			# If true labels are given, then we can compute
-			# OUTTER clustering quality measures
+		if full_output:
 			ans = {
-				**ans,
-				"outter_metrics" : {
-					"Rand_index" : ClusterMetrics.rand_index(\
-						dataset, labels, inst_cluster_id),
-					"Adjusted_rand_index" : ClusterMetrics.adjusted_rand_index(\
-						dataset, labels, inst_cluster_id),
-					"Jackard_index" : ClusterMetrics.jackard_index(\
-						dataset, labels, inst_cluster_id),
+				"k" : k,
+				"centers" : centers_coord,
+				"clusters" : inst_cluster_id,
+				"inner_metrics" : {
+					"SSE/Cohesion" : ClusterMetrics.sse(dataset, \
+						centers_coord, inst_cluster_id),
+					"BSS/Separation" : ClusterMetrics.bss(dataset, \
+						centers_coord, inst_cluster_id),
+					"Silhouette" : ClusterMetrics.silhouette(dataset, \
+						centers_coord, inst_cluster_id),
+				},
+			}
+
+			if labels is not None:
+				# If true labels are given, then we can compute
+				# OUTTER clustering quality measures
+				ans = {
+					**ans,
+					"outter_metrics" : {
+						"Rand_index" : ClusterMetrics.rand_index(\
+							labels, inst_cluster_id),
+						"Adjusted_rand_index" : ClusterMetrics.adjusted_rand_index(\
+							labels, inst_cluster_id),
+						"Jackard_index" : ClusterMetrics.jackard_index(\
+							labels, inst_cluster_id),
+					}
 				}
+		else:
+			ans = {
+				"inst_cluster_id" : inst_cluster_id, 
+				"centers_coord" : centers_coord,
 			}
 
 		return ans
@@ -91,15 +103,25 @@ class Kmeans():
 if __name__ == "__main__":
 	import sys
 
-	if len(sys.argv) < 3:
-		print("usage:", sys.argv[0], "<data_filepath> <k>",
-			"\n\t[-sep data_separator] [-label column_label_to_remove]")
+	if len(sys.argv) < 2:
+		print("usage:", sys.argv[0], "<data_filepath>",
+			"\n\t[-k, default to 3]",
+			"\n\t[-sep data_separator, default to \",\"]",
+			"\n\t[-label column_label_to_remove]",
+			"\n\t[-findbestk]")
 		exit(1)
+
+	find_best_k = "-findbestk" in sys.argv
 
 	try:
 		sep = sys.argv[1 + sys.argv.index("-sep")]
 	except:
 		sep = ","
+
+	try:
+		k = int(sys.argv[1 + sys.argv.index("-k")])
+	except:
+		k = 5
 
 	dataset = read_csv(sys.argv[1], sep=sep)
 
@@ -111,10 +133,22 @@ if __name__ == "__main__":
 		if ("-label",) in sys.argv:
 			print("Warning: can not remove column \"" +\
 				rem_label + "\" from dataset.")
-	ans = Kmeans.run(
-		dataset=dataset.loc[:,:].values, 
-		k=int(sys.argv[2]),
-		labels=class_ids)
+
+	if not find_best_k:
+		ans = Kmeans.run(
+			dataset=dataset.loc[:,:].values, 
+			k=k,
+			labels=class_ids)
+	else:
+		ans = ClusterMetrics.best_cluster_num(\
+			dataset=dataset.loc[:,:].values,
+			clustering_func=Kmeans.run,
+			k_max=k,
+			metric="silhouette",
+			labels=None,
+			warnings=True,
+			full_output=True,
+			cluster_func_args = {"full_output" : False})
 
 	print("Results:")
 	for item in ans:
@@ -126,5 +160,4 @@ if __name__ == "__main__":
 		else:
 			print(item, ":\n", ans[item], sep="")
 		print()
-
 

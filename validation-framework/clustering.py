@@ -78,10 +78,15 @@ class ClusterMetrics():
 		return npmean(inst_sil)
 
 	def rand_index(
-		predictive_attr, 
 		labels, 
 		inst_cluster_id, 
 		return_counters=False): 
+
+		if len(labels) != len(inst_cluster_id):
+			if warnings:
+				print("Error: length of label and",
+					"inst_clust_id must match.")
+			return None
 
 		"""
 			Rand Index definition:
@@ -109,8 +114,9 @@ class ClusterMetrics():
 		# and the counter f_11 is counters[int("11", 2)] == counters[3])
 		counters = 4 * [0]
 
-		for i in range(predictive_attr.shape[0]):
-			for j in range(predictive_attr.shape[0]):
+		num_inst = len(labels)
+		for i in range(num_inst):
+			for j in range(num_inst):
 				pos = 2 * (labels[i] == labels[j]) + \
 					(inst_cluster_id[i] == inst_cluster_id[j])
 				counters[pos] += 1
@@ -129,7 +135,7 @@ class ClusterMetrics():
 		return rand_index
 		
 	
-	def adjusted_rand_index(predictive_attr, labels, inst_cluster_id): 
+	def adjusted_rand_index(labels, inst_cluster_id): 
 
 		if len(set(labels)) != len(set(inst_cluster_id)):
 			return None
@@ -212,7 +218,7 @@ class ClusterMetrics():
 
 		return adjusted_rand_index
 
-	def jackard_index(predictive_attr, labels, inst_cluster_id): 
+	def jackard_index(labels, inst_cluster_id): 
 		"""
 			The jackard index is pretty much just like
 			rand index. However, it does not consider the
@@ -221,7 +227,6 @@ class ClusterMetrics():
 			jackard_index := f_11 / (f_01 + f_10 + f_11)
 		"""
 		junk, counters = ClusterMetrics.rand_index(\
-			predictive_attr, 
 			labels, 
 			inst_cluster_id,
 			return_counters=True)
@@ -235,3 +240,93 @@ class ClusterMetrics():
 
 		return jackard_index
 
+	def best_cluster_num(dataset,
+		clustering_func,
+		k_max, 
+		k_min=2,
+		metric="silhouette", 
+		labels=None,
+		full_output=True,
+		warnings=True,
+		cluster_func_args=None):
+
+		if k_max <= 0 or k_min <= 0:
+			if warnings:
+				print("Error: \"k_min\"/\"k_max\" must be > 0")
+			return None
+
+		if k_min > k_max:
+			if warnings:
+				print("Error: \"k_min\" must",
+					"be <= \"k_max\"")
+			return None
+
+		# Parameters checking
+		if metric not in {"silhouette", "bss", "sse", "jackard", "rand"}:
+			if warnings:
+				print("Unknown metric \"" + metric + "\"")
+			return None
+
+		if metric in {"jackard", "rand"}:
+			# Outter metrics
+			if labels is None:
+				if warnings:
+					print("\"" + metric + "\" need instance \"labels\"",
+						"as an Outter Clustering Metric.")
+				return None
+
+			args = {
+				"inst_cluster_id" : None,
+				"labels" : labels,
+			}
+
+			if metric == "jackard":
+				chosen_metric_func = ClusterMetrics.jackard_index
+			else:
+				chosen_metric_func = ClusterMetrics.rand_index
+
+		else:
+			args = {
+				"dataset" : dataset,
+				"centers_coord" : None,
+				"inst_cluster_id" : None,
+			}
+
+			# Inner metrics
+			if metric == "silhouette":
+				chosen_metric_func = ClusterMetrics.silhouette
+			elif metric == "bss":
+				chosen_metric_func = ClusterMetrics.bss
+			else:
+				chosen_metric_func = ClusterMetrics.sse
+
+		if cluster_func_args is None:
+			cluster_func_args = {}
+		
+		metric_array = array([0.0] * (k_max - k_min + 1))
+
+		for k in range(k_min, k_max+1):
+			args = {
+				**args,
+				**clustering_func(\
+					dataset=dataset, 
+					k=k,
+					**cluster_func_args),
+			}
+
+			metric_array[k-k_min] = chosen_metric_func(**args)
+
+		ans = {
+			"k interval" : [k_min, k_max],
+			"k_chosen" : range(k_min, k_max+1)[metric_array.argmax()],
+			"all_k_metrics" : {
+				k : k_metric \
+				for k, k_metric in \
+				zip(range(k_min, k_max+1), metric_array)
+			},
+		}
+
+		if full_output:
+			return ans
+
+		return ans["k_chosen"]
