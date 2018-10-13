@@ -4,7 +4,6 @@
 # https://www.youtube.com/watch?v=OLwabj1WJj0
 
 from numpy import array, random, argmin, mean as npmean, inf
-from pandas import DataFrame, read_csv
 
 import sys
 sys.path.insert(0, "../../validation-framework/")
@@ -63,101 +62,22 @@ class Kmeans():
 				centers_coord[center_id] = new_cur_cluster_coords
 
 		# Build up answer
+		ans = {
+			"inst_cluster_id" : inst_cluster_id, 
+			"centers_coord" : centers_coord,
+		}
+
 		if full_output:
 			ans = {
+				"clustering_method" : "K-Means",
 				"k" : k,
-				"centers" : centers_coord,
-				"clusters" : inst_cluster_id,
-				"inner_metrics" : {
-					"SSE/Cohesion" : ClusterMetrics.sse(dataset, \
-						centers_coord, inst_cluster_id),
-					"BSS/Separation" : ClusterMetrics.bss(dataset, \
-						centers_coord, inst_cluster_id),
-					"Silhouette" : ClusterMetrics.silhouette(dataset, \
-						centers_coord, inst_cluster_id),
-				},
-			}
-
-			if labels is not None:
-				# If true labels are given, then we can compute
-				# OUTTER clustering quality measures
-				ans = {
-					**ans,
-					"outter_metrics" : {
-						"Rand_index" : ClusterMetrics.rand_index(\
-							labels, inst_cluster_id),
-						"Adjusted_rand_index" : ClusterMetrics.adjusted_rand_index(\
-							labels, inst_cluster_id),
-						"Jackard_index" : ClusterMetrics.jackard_index(\
-							labels, inst_cluster_id),
-					}
-				}
-		else:
-			ans = {
-				"inst_cluster_id" : inst_cluster_id, 
-				"centers_coord" : centers_coord,
+				**ans,
+				**ClusterMetrics.runall(\
+					dataset=dataset,
+					centers_coord=centers_coord,
+					inst_cluster_id=inst_cluster_id,
+					labels=labels),
 			}
 
 		return ans
-
-if __name__ == "__main__":
-	import sys
-
-	if len(sys.argv) < 2:
-		print("usage:", sys.argv[0], "<data_filepath>",
-			"\n\t[-k, default to 3]",
-			"\n\t[-sep data_separator, default to \",\"]",
-			"\n\t[-label column_label_to_remove]",
-			"\n\t[-findbestk]")
-		exit(1)
-
-	find_best_k = "-findbestk" in sys.argv
-
-	try:
-		sep = sys.argv[1 + sys.argv.index("-sep")]
-	except:
-		sep = ","
-
-	try:
-		k = int(sys.argv[1 + sys.argv.index("-k")])
-	except:
-		k = 5
-
-	dataset = read_csv(sys.argv[1], sep=sep)
-
-	try:
-		rem_label = sys.argv[1 + sys.argv.index("-label")]
-		class_ids = dataset.pop(rem_label)
-	except:
-		class_ids = None
-		if ("-label",) in sys.argv:
-			print("Warning: can not remove column \"" +\
-				rem_label + "\" from dataset.")
-
-	if not find_best_k:
-		ans = Kmeans.run(
-			dataset=dataset.loc[:,:].values, 
-			k=k,
-			labels=class_ids)
-	else:
-		ans = ClusterMetrics.best_cluster_num(\
-			dataset=dataset.loc[:,:].values,
-			clustering_func=Kmeans.run,
-			k_max=k,
-			metric="silhouette",
-			labels=None,
-			warnings=True,
-			full_output=True,
-			cluster_func_args = {"full_output" : False})
-
-	print("Results:")
-	for item in ans:
-		if type(ans[item]) == type({}):
-			print(item, ":", sep="")
-			for val in ans[item]:
-				print("\t", val, ":", 
-					ans[item][val], sep="")
-		else:
-			print(item, ":\n", ans[item], sep="")
-		print()
 

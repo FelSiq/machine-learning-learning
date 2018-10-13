@@ -1,5 +1,4 @@
 from numpy import array, random, argmin, median as npmedian, inf
-from pandas import DataFrame, read_csv
 
 import sys
 sys.path.insert(0, "../../validation-framework/")
@@ -9,7 +8,12 @@ class Kmedians():
 	def __euclideandist__(inst_a, inst_b):
 		return (sum((inst_a - inst_b)**2.0))**0.5
 
-	def run(dataset, k, it_max=1000, min_variation=1.0e-4, labels=None):
+	def run(dataset, k, 
+		it_max=1000, 
+		min_variation=1.0e-4, 
+		labels=None, 
+		full_output=True):
+
 		# Init centers_coord
 		centers_id = random.randint(dataset.shape[0], size=k)
 		centers_coord = dataset[centers_id,:]
@@ -55,72 +59,20 @@ class Kmedians():
 
 		# Build up answer
 		ans = {
-			"centers" : centers_coord,
-			"clusters" : inst_cluster_id,
-			"inner_metrics" : {
-				"SSE/Cohesion" : ClusterMetrics.sse(dataset, \
-					centers_coord, inst_cluster_id),
-				"BSS/Separation" : ClusterMetrics.bss(dataset, \
-					centers_coord, inst_cluster_id),
-				"Silhouette" : ClusterMetrics.silhouette(dataset, \
-					centers_coord, inst_cluster_id),
-			},
+			"inst_cluster_id" : inst_cluster_id, 
+			"centers_coord" : centers_coord,
 		}
 
-		if labels is not None:
-			# If true labels are given, then we can compute
-			# OUTTER clustering quality measures
+		if full_output:
 			ans = {
+				"clustering_method" : "K-Medians",
+				"k" : k,
 				**ans,
-				"outter_metrics" : {
-					"Rand_index" : ClusterMetrics.rand_index(\
-						dataset, labels, inst_cluster_id),
-					"Adjusted_rand_index" : ClusterMetrics.adjusted_rand_index(\
-						dataset, labels, inst_cluster_id),
-					"Jackard_index" : ClusterMetrics.jackard_index(\
-						dataset, labels, inst_cluster_id),
-				}
+				**ClusterMetrics.runall(\
+					dataset=dataset,
+					centers_coord=centers_coord,
+					inst_cluster_id=inst_cluster_id,
+					labels=labels),
 			}
 
 		return ans
-
-if __name__ == "__main__":
-	import sys
-
-	if len(sys.argv) < 3:
-		print("usage:", sys.argv[0], "<data_filepath> <k>",
-			"\n\t[-sep data_separator] [-label column_label_to_remove]")
-		exit(1)
-
-	try:
-		sep = sys.argv[1 + sys.argv.index("-sep")]
-	except:
-		sep = ","
-
-	dataset = read_csv(sys.argv[1], sep=sep)
-
-	try:
-		rem_label = sys.argv[1 + sys.argv.index("-label")]
-		class_ids = dataset.pop(rem_label)
-	except:
-		class_ids = None
-		if ("-label",) in sys.argv:
-			print("Warning: can not remove column \"" +\
-				rem_label + "\" from dataset.")
-	ans = Kmedians.run(
-		dataset=dataset.loc[:,:].values, 
-		k=int(sys.argv[2]),
-		labels=class_ids)
-
-	print("Results:")
-	for item in ans:
-		if type(ans[item]) == type({}):
-			print(item, ":", sep="")
-			for val in ans[item]:
-				print("\t", val, ":", 
-					ans[item][val], sep="")
-		else:
-			print(item, ":\n", ans[item], sep="")
-		print()
-
-
