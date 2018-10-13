@@ -1,6 +1,9 @@
 from numpy import array, random, argmin, median as npmedian, inf
 from pandas import DataFrame, read_csv
-from clustering.metrics import ClusterMetrics
+
+import sys
+sys.path.insert(0, "../../validation-framework/")
+from clustering import ClusterMetrics
 
 class Kmedians():
 	def __euclideandist__(inst_a, inst_b):

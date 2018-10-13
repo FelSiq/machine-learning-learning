@@ -5,7 +5,10 @@
 
 from numpy import array, random, argmin, mean as npmean, inf
 from pandas import DataFrame, read_csv
-from clustering.metrics import ClusterMetrics
+
+import sys
+sys.path.insert(0, "../../validation-framework/")
+from clustering import ClusterMetrics
 
 class Kmeans():
 	def __euclideandist__(inst_a, inst_b):
