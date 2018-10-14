@@ -291,6 +291,76 @@ class Valclass():
 			
 			return final_ans
 
+	def __moment__(vector, 
+		p=2.0, 
+		normalized=False, 
+		mean_centered=True, 
+		unbiased=True,
+		epsilon=1.0e-8,
+		warnings=True):
+
+		"""
+			Calculations of mathematical moments.
+			
+			------------------------------------------
+			moment: known name 	| normalized value
+			------------------------------------------
+			1: central		| 0.0
+			2: variance		| 1.0
+			3: skewness		| -
+			4: kurthosis		| -
+			------------------------------------------
+			Note: variance**0.5 == standard deviation
+		"""
+
+		if p <= 0.0:
+			if warnings:
+				print("Error: \"p\" must be > 0.0")
+			return None
+		
+		if normalized:
+			if not mean_centered and warnings:
+				print("Warning: \"normalized\" parameter",
+					"imply in \"mean_centered\".")
+				mean_centered = True
+		
+		if mean_centered:
+			vec_mean = sum(vector) / len(vector)
+			total_sum = sum([(val - vec_mean)**p \
+				for val in vector])
+		else:
+			total_sum = sum([val**p for val in vector])
+		
+		if normalized:
+			total_sum /= (\
+				Valclass.__moment__(\
+				vector, 
+				p=2.0,
+				normalized=False,
+				mean_centered=True,
+				unbiased=unbiased)**(p/2.0))
+		
+		return (total_sum / (len(vector) - \
+			(1.0 if unbiased else 0.0)))
+
+	def ttest(metrics_a, metrics_b, confidence=0.95):
+		"""
+			Perform a Student's T Test in order
+			to check if the performance of a
+			classifier A is statistically different
+			from the performance of classifier B
+			with given "confidence" rate.
+		"""
+
+		metrics_a = array(metrics_a)
+		metrics_b = array(metrics_b)
+
+		pop_a_size = len(metrics_a)
+		pop_b_size = len(metrics_b)
+
+		var_a = metrics_a.var()
+		var_b = metrics_b.var()
+
 class Partitions():
 
 	def __getclassprobs__(y, stratified=True):
