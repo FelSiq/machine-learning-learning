@@ -4,6 +4,7 @@
 # https://www.youtube.com/watch?v=OLwabj1WJj0
 
 from numpy import array, random, argmin, mean as npmean, inf
+from math import isnan
 
 import sys
 sys.path.insert(0, "../../validation-framework/")
@@ -50,16 +51,19 @@ class Kmeans():
 
 			# For each cluster, calculate the new center coordinates
 			for center_id in range(k):
-				new_cur_cluster_coords = npmean(dataset[\
-					inst_cluster_id == center_id,:], axis=0)
 
-				# Calculate variation between previous centers_coord and
-				# new ones (using infinite norm)
-				prev_variation = max(prev_variation, \
-					max(abs(centers_coord[center_id] - \
-						new_cur_cluster_coords)))
+				part_aux = dataset[inst_cluster_id == center_id,:]
 
-				centers_coord[center_id] = new_cur_cluster_coords
+				if part_aux.shape[0] > 0:
+					new_cur_cluster_coords = npmean(part_aux, axis=0)
+
+					# Calculate variation between previous centers_coord and
+					# new ones (using infinite norm)
+					prev_variation = max(prev_variation, \
+						max(abs(centers_coord[center_id] - \
+							new_cur_cluster_coords)))
+
+					centers_coord[center_id] = new_cur_cluster_coords
 
 		# Build up answer
 		ans = {
