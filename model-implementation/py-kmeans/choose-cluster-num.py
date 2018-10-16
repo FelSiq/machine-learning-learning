@@ -32,7 +32,7 @@ if __name__ == "__main__":
 
 	if clustering_method == "kmeans":
 		clustering_method_addr = Kmeans.run
-	if clustering_method == "kmedians":
+	elif clustering_method == "kmedians":
 		clustering_method_addr = Kmedians.run
 	else:
 		clustering_method_addr = Kmedoids.run
