@@ -9,6 +9,10 @@ from pandas import read_csv
 from scipy.special import binom
 from scipy.stats.stats import pearsonr
 
+import sys
+sys.path.insert(0, "../py-kmeans")
+from kmeans2 import Kmeans
+
 class Hierclus():
 
 	def __euclideandist__(inst_a, inst_b):
@@ -162,6 +166,7 @@ class Hierclus():
 		criterion="single", 
 		min_cluster_num=1, 
 		cophenetic_corr=False,
+		init=None,
 		warnings=True):
 
 		if min_cluster_num < 1:
@@ -177,24 +182,33 @@ class Hierclus():
 			return None
 
 		# Cluster hierarchy
-		cluster_tree = {i : i \
-			for i in range(dataset.shape[0])}
-		group_heights = {i : 0.0 \
-			for i in range(dataset.shape[0])}
+		if init is None:
+			cluster_tree = {i : i \
+				for i in range(dataset.shape[0])}
 
-		# This array will keep the greatest supergroup
-		# that every instace are in
-		outtermost_group_id = array([i \
-			for i in range(dataset.shape[0])])
+			# This array will keep the greatest supergroup
+			# that every instace are in
+			outtermost_group_id = array([i \
+				for i in range(dataset.shape[0])])
 
-		group_id_counter = dataset.shape[0]
+			group_id_counter = dataset.shape[0]
+		else:
+			cluster_tree = init["initial_cluster_tree"]
+			outtermost_group_id = init["outtermost_group_id"]
+			group_id_counter = init["group_id_counter"]
+
+		if init is not None and "initial_cluster_heights" in init:
+			group_heights = init["initial_cluster_heights"]
+		else:
+			group_heights = {i : 0.0 for i in cluster_tree}
+
 
 		# Stop criterion: run the algorithm while the number
 		# of supergroups (a group that contain smaller groups)
 		# is larger than 1. In other words, run the algorithm
 		# while there is at least one missing connection between
 		# a pair of groups.
-		num_supergroups = dataset.shape[0]
+		num_supergroups = len(cluster_tree)
 
 		while num_supergroups > min_cluster_num:
 
@@ -266,6 +280,40 @@ class Hierclus():
 
 		return ans
 
+	def fit(dataset, min_cluster_num, k): 
+
+		inst_cluster_id = Kmeans.run(dataset=dataset, 
+			k=k)["inst_cluster_id"]
+
+		cluster_ids = set(inst_cluster_id)
+		cluster_num = len(cluster_ids)
+		cluster_id_map = {
+			cl_id : i for cl_id, i in \
+				zip(cluster_ids, range(cluster_num))
+		}
+
+		# Init leaf nodes
+		initial_cluster_tree = {cluster_id : {} \
+			for cluster_id in range(cluster_num)}
+
+		remapped_inst_ids = array([0] * dataset.shape[0])
+		for inst in range(dataset.shape[0]):
+			remapped_inst_cluster = cluster_id_map[inst_cluster_id[inst]]
+			initial_cluster_tree[remapped_inst_cluster][inst] = inst
+			remapped_inst_ids[inst] = remapped_inst_cluster
+
+		init = {
+			"initial_cluster_tree" : initial_cluster_tree,
+			"outtermost_group_id" : remapped_inst_ids + dataset.shape[0],
+			"group_id_counter" : cluster_num + dataset.shape[0],
+		}
+
+		return Hierclus.run(\
+			dataset, 
+			criterion="single",
+			min_cluster_num=min_cluster_num, 
+			init=init)
+
 if __name__ == "__main__":
 	import sys
 
@@ -274,7 +322,9 @@ if __name__ == "__main__":
 			"\t[-label class_label]",
 			"\t[-sep data_separator, default to \",\"]",
 			"\t[-n minimal_number_of_clusters, default is 1]",
-			"\t[-coph, enable to calculate the cophenetic correlation]",
+			"\t[-coph, enable to calculate the cophenetic correlation if n = 1]",
+			"\t[-fit, use Kmeans with single linkage to fit nonlinear data]",
+			"\t[-k, parameter for kmeans if \"-fit\" is used, default is dataset_size/10]",
 			"\nWhere <linkage_type> must be one of the following:",
 			"\tsingle: connect the nearest groups using the nearest pair of instances.",
 			"\tcomplete: connect the nearest groups using the farthest pair of instances.",
@@ -284,6 +334,7 @@ if __name__ == "__main__":
 		exit(1)
 
 	cophcorr = "-coph" in sys.argv
+	fitdata = "-fit" in sys.argv
 
 	try:
 		sep = sys.argv[1 + sys.argv.index("-sep")]
@@ -303,11 +354,22 @@ if __name__ == "__main__":
 	except:
 		n = 1
 
-	ans = Hierclus.run(
-		dataset.iloc[:,:].values, 
-		criterion=sys.argv[2],
-		min_cluster_num=n,
-		cophenetic_corr=cophcorr)
+	try:
+		k = int(sys.argv[1 + sys.argv.index("-k")])
+	except:
+		k = dataset.shape[0]//10
+
+	if fitdata:
+		ans = Hierclus.fit(
+			dataset.iloc[:,:].values, 
+			min_cluster_num=n,
+			k=k)
+	else:
+		ans = Hierclus.run(
+			dataset.iloc[:,:].values, 
+			criterion=sys.argv[2],
+			min_cluster_num=n,
+			cophenetic_corr=cophcorr)
 
 	if ans is not None:
 		print("Dendrogram:")
