@@ -8,6 +8,7 @@ from numpy import array, zeros, inf, median, corrcoef
 from pandas import read_csv
 from scipy.special import binom
 from scipy.stats.stats import pearsonr
+import matplotlib.pyplot as plt
 
 import sys
 sys.path.insert(0, "../py-kmeans")
@@ -280,7 +281,19 @@ class Hierclus():
 
 		return ans
 
-	def fit(dataset, min_cluster_num, k): 
+	def __collectkeys__(cur_dict):
+		if type(cur_dict) != type({}):
+			return {cur_dict}
+
+		childrens_keys = set()
+		for key in cur_dict:
+			childrens_keys.update(\
+				Hierclus.__collectkeys__(\
+					cur_dict[key]))
+
+		return childrens_keys
+
+	def fit(dataset, min_cluster_num, k, plot=True): 
 
 		inst_cluster_id = Kmeans.run(dataset=dataset, 
 			k=k)["inst_cluster_id"]
@@ -308,11 +321,35 @@ class Hierclus():
 			"group_id_counter" : cluster_num + dataset.shape[0],
 		}
 
-		return Hierclus.run(\
+		ans = Hierclus.run(\
 			dataset, 
 			criterion="single",
 			min_cluster_num=min_cluster_num, 
 			init=init)
+
+		if plot:
+			if dataset.shape[1] == 2:
+				counter = 1
+				plot_colors = array([0] * dataset.shape[0])
+				for key in ans["cluster_tree"]:
+					aux_keys = Hierclus.__collectkeys__(\
+						ans["cluster_tree"][key])
+
+					for inst in aux_keys:
+						plot_colors[inst] = counter
+					counter += 1
+
+				plt.scatter(
+					x=dataset[:, 0], 
+					y=dataset[:, 1], 
+					c=plot_colors) 
+
+				plt.show()
+			else:
+				print("Warning: can't plot if dataset",
+					"does not have only 2 dimensions")
+
+		return ans
 
 if __name__ == "__main__":
 	import sys
