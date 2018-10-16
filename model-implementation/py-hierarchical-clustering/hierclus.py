@@ -4,7 +4,7 @@
 	Channel: ML4U
 """
 
-from numpy import array, zeros, inf
+from numpy import array, zeros, inf, median
 from pandas import read_csv
 from scipy.special import binom
 
@@ -55,10 +55,24 @@ class Hierclus():
 
 		return cum_sum / cardinality
 
+	def __linkmedian__(supergroup_A, supergroup_B):
+		# (|A|*|B|)^{-1} * sum(a e A){sum(b e B){d(a, b)}}
+		cardinality = (supergroup_A.shape[0] * supergroup_B.shape[0])
+
+		dists = array([0.0] * cardinality)
+
+		counter = 0
+		for inst_a in supergroup_A:
+			for inst_b in supergroup_B:
+				dists[counter] = Hierclus.__euclideandist__(inst_a, inst_b)
+				counter += 1
+
+		return median(dists)
+
 	def __choosecriterion__(criterion):
 		criterion = criterion.lower()
 
-		if criterion not in {"single", "complete", "average"}:
+		if criterion not in {"single", "complete", "average", "median"}:
 			print("Error: unrecognized criterion",
 				"option \"" + criterion + "\".")
 			return None
@@ -69,10 +83,13 @@ class Hierclus():
 		elif criterion == "complete":
 			return Hierclus.__linkcomplete__
 
+		elif criterion == "median":
+			return Hierclus.__linkmedian__
+
 		# Default case
 		return Hierclus.__linkaverage__
 
-	def run(dataset, criterion="single"):
+	def run(dataset, criterion="single", min_cluster_num=1):
 	
 		clustering_metric = Hierclus.__choosecriterion__(criterion)
 		if clustering_metric is None:
@@ -98,7 +115,7 @@ class Hierclus():
 		# a pair of groups.
 		num_supergroups = dataset.shape[0]
 
-		while num_supergroups > 1:
+		while num_supergroups > min_cluster_num:
 
 			aux_dist = array([None] * int(binom(num_supergroups, 2)))
 
@@ -158,6 +175,7 @@ class Hierclus():
 		ans = {
 			"cluster_tree" : cluster_tree,
 			"group_heights" : group_heights,
+			"cluster_num" : len(cluster_tree),
 		}
 
 		return ans
@@ -167,11 +185,14 @@ if __name__ == "__main__":
 
 	if len(sys.argv) < 3:
 		print("usage: " + sys.argv[0] + " <data_filepath> <linkage_type>",
-			"\t[-label class_label] [-sep data_separator, default to \",\"]",
+			"\t[-label class_label]",
+			"\t[-sep data_separator, default to \",\"]",
+			"\t[-n minimal_number_of_clusters, default is 1]",
 			"\nWhere <linkage_type> must be one of the following:",
 			"\tsingle: connect the nearest groups using the nearest pair of instances.",
 			"\tcomplete: connect the nearest groups using the farthest pair of instances.",
 			"\taverage: connect the nearest groups using an average distance between the instances.", 
+			"\tmedian: connect the nearest groups using the median distance between the instances.", 
 			sep="\n")
 		exit(1)
 
@@ -188,13 +209,18 @@ if __name__ == "__main__":
 	except:
 		class_labels = None
 
+	try:
+		n = int(sys.argv[1 + sys.argv.index("-n")])
+	except:
+		n = 1
+
 	ans = Hierclus.run(
 		dataset.iloc[:,:].values, 
-		criterion=sys.argv[2])
-
+		criterion=sys.argv[2],
+		min_cluster_num=n)
 
 	if ans is not None:
-		print("Result:")
+		print("Dendrogram:")
 
 		def __recursiveprint__(tree, heights, level):
 			for key in tree:
@@ -207,3 +233,9 @@ if __name__ == "__main__":
 					
 
 		__recursiveprint__(ans["cluster_tree"], ans["group_heights"], 0)
+
+		ans.pop("cluster_tree")
+		ans.pop("group_heights")
+		print("\nMore information:")
+		for item in ans:
+			print(item, ":", ans[item])
