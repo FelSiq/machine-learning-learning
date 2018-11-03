@@ -15,3 +15,4 @@ This repository is supposed to compile some of my machine learning related activ
 - Udemy Online Course for starters (NOT FREE): "Machine Learning A-Z™: Hands-On Python & R In Data Science" course, by Kirill Eremenko and Hadelin de Ponteves.
 - MIT Introduction to Deep Learning: https://www.youtube.com/playlist?list=PLtBw6njQRU-rwp5__7C0oIVt26ZgjG9NI
 - Stanford University Lecture Collection | Convolutional Neural Networks for Visual Recognition (Spring 2017): https://www.youtube.com/playlist?list=PL3FW7Lu3i5JvHM8ljYj-zLfQRF3EO8sYv
+- Deep Reinforcement Learning: Pong from Pixels: http://karpathy.github.io/2016/05/31/rl/
