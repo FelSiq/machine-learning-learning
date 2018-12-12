@@ -11,12 +11,13 @@ import re
 
 # Script configuration
 METADATA_PATH = "./metafeatures/"
-PERFORMANCE_METRIC = "f1_micro"
+PERFORMANCE_METRIC = "accuracy"
 METAFEATURES_NAME = "metafeatures-extracted.metadata"
 PERFORMANCE_DATA_NAME = "base-learners-perf-" +\
         PERFORMANCE_METRIC + ".metadata"
 RANK_MODELS = True
-OUTPUT_PATH = METADATA_PATH + "final_combined.metadata"
+OUTPUT_PATH = METADATA_PATH + "final_combined-" +\
+        PERFORMANCE_METRIC + ".metadata"
 
 # Read dataset performance metrics
 perf_metadata = pd.read_csv(
