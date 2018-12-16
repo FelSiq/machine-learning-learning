@@ -1,9 +1,10 @@
 # -*- coding: utf8 -*-
 import pandas as pd
 import numpy as np
+# import matplotlib.pyplot as plt
 from sklearn.neighbors import KNeighborsRegressor
 from sklearn.multioutput import MultiOutputRegressor
-from sklearn.model_selection import cross_val_score
+from scipy.stats import spearmanr
 
 
 class MlRecommender:
@@ -15,6 +16,7 @@ class MlRecommender:
         self.X = None
         self.y = None
         self.k = k
+        self.baseline_alg = None
 
         if filepath is not None:
             if perf_columns is None:
@@ -44,7 +46,12 @@ class MlRecommender:
         """To do."""
         self.X[np.isnan(self.X)] = 0
 
-    def load_metadata(self, filepath, perf_columns, ignore_columns=None):
+    def load_metadata(
+            self,
+            filepath,
+            perf_columns,
+            fit=False,
+            ignore_columns=None):
         """Load metadata with rank or performance of
         base learners columns specified via per_columns
         parameter.
@@ -58,10 +65,15 @@ class MlRecommender:
         self.X = metadata.drop(
                 metadata.columns[perf_columns], axis=1).values
         self.y = metadata.iloc[:, perf_columns].values
+        self.baseline_alg = metadata.columns[perf_columns].values
 
         self._fill_na_knn()
-        self._pred_model.fit(self.X, self.y)
 
+        if fit:
+            self.fit(self.X, self.y)
+
+    def fit(self, X, y):
+        self._pred_model.fit(self.X, self.y)
         self._get_baseline()
 
     def predict(self, query):
@@ -71,19 +83,29 @@ class MlRecommender:
 
         return self._pred_model.predict(query)
 
-    def validate(self, score_metrics=None, cv=10):
+    def loocv_validate(self, shuffle=True):
         """."""
-        if score_metrics is None:
-            score_metrics = "explained_variance"
+        n = len(self.y)
+        train_index = list(range(n))
+        output = np.zeros((n, 2))
 
-        scores = cross_val_score(
-                self._pred_model,
-                self.X,
-                self.y,
-                scoring=score_metrics,
-                cv=cv)
+        for test_index in range(n):
+            train_index.remove(test_index)
 
-        return scores
+            self._pred_model.fit(
+                    X=self.X[train_index, :],
+                    y=self.y[train_index, :])
+
+            test_ranking = self._pred_model.predict(
+                    X=self.X[test_index, :].reshape(1, -1)).flatten()
+
+            output[test_index, :] = spearmanr(
+                    test_ranking,
+                    self.y[test_index, :])
+
+            train_index.append(test_index)
+
+        return output
 
     def plot(self, performance, baseline):
         """."""
@@ -112,6 +134,10 @@ if __name__ == "__main__":
         perf_columns=perf_columns,
         ignore_columns=ignored_columns)
 
-    res = rec.validate()
+    res = rec.loocv_validate()
 
+    print(rec.X.shape)
+    print("baseline algorithms:", rec.baseline_alg)
+    print("baseline:", rec._rank_baseline)
+    print("Results:")
     print(res)
