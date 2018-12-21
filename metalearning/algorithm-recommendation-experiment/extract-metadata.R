@@ -3,7 +3,8 @@ require(mfe)
 setwd("./openml-data")
 datasets = system("ls ./*.csv", intern=T)
 
-max_rows = 5000
+MAX_ROWS = 5000
+STARTS_FROM = 20
 
 first_col_class = c(
 	"segmentation.data",
@@ -16,7 +17,10 @@ custom_col_class = rbind(
  	c("flag.data", 7))
 
 mtft = NULL
-for (dataset in datasets) {
+errors = NULL
+accepted_datasets = NULL
+
+for (dataset in datasets[STARTS_FROM:length(datasets)]) {
 	cat("extracting metafeatures from", dataset, "...\n")
 	cur_data = read.table(dataset, 
         header=T,
@@ -33,12 +37,14 @@ for (dataset in datasets) {
 		class_index = ncol(cur_data)
 	}
 
-    if (nrow(cur_data) > max_rows) {
+    if (MAX_ROWS > 0 && nrow(cur_data) > MAX_ROWS) {
         inst_prob = cur_data[,class_index] + 1
-        inst_prob = table(inst_prob)[inst_prob]
+        table_aux = table(inst_prob)
+        table_aux = table_aux / sum(table_aux)
+        inst_prob = table_aux[inst_prob]
         inst_prob = inst_prob / sum(inst_prob)
 
-        sampled_inst = sample(1:nrow(cur_data), size=max_rows, prob=inst_prob)
+        sampled_inst = sample(1:nrow(cur_data), size=MAX_ROWS, prob=inst_prob)
         cur_data = cur_data[sampled_inst,]
 
         rm(sampled_inst, inst_prob)
@@ -51,16 +57,32 @@ for (dataset in datasets) {
 			sum(cur_data[, class_index] == class), "\n")
 	}
 
-	mtft = rbind(mtft, 
-		metafeatures(
-			cur_data[, -class_index], 
-			cur_data[,  class_index], 
-			groups = c("landmarking", "statistical", "infotheo", "general", "model.based"))) 
+    aux = tryCatch (
+            metafeatures(
+                    cur_data[, -class_index], 
+                    cur_data[,  class_index], 
+                    groups = c("landmarking", "infotheo", "general", "model.based")),
+            error=function(error_message) {
+                cat("Failed at", dataset, "dataset. \n")
+                errors <<- c(errors, dataset)
+                return (NULL)
+            }
+    )
 
-    row.names(mtft) = datasets[1:nrow(mtft)]
+    if (!is.null(aux)) {
+            accepted_datasets <- c(accepted_datasets, dataset)
 
-    write.csv(mtft, 
-        file="../metafeatures/metaf-extracted-openml.metadata", 
-        quote=F, 
-        row.names=T)
+            mtft = rbind(mtft, aux)
+
+            row.names(mtft) = accepted_datasets
+
+            write.csv(mtft, 
+                file="../metafeatures/metaf-extracted-openml3.metadata", 
+                quote=F, 
+                row.names=T)
+    }
 }
+
+cat("\nFinished with total of", length(accepted_datasets),
+    " processed datasets and", length(errors), "errors:\n")
+print(errors)
