@@ -4,7 +4,7 @@ setwd("./openml-data")
 datasets = system("ls ./*.csv", intern=T)
 
 MAX_ROWS = 5000
-STARTS_FROM = 20
+STARTS_FROM = 1
 
 first_col_class = c(
 	"segmentation.data",
@@ -77,7 +77,7 @@ for (dataset in datasets[STARTS_FROM:length(datasets)]) {
             row.names(mtft) = accepted_datasets
 
             write.csv(mtft, 
-                file="../metafeatures/metaf-extracted-openml3.metadata", 
+                file="../metafeatures/metaf-extracted-openml4.metadata", 
                 quote=F, 
                 row.names=T)
     }
