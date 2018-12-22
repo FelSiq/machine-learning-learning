@@ -58,8 +58,8 @@ MODEL_DATA_NORMALIZE_LIST = ["KNN", "SVMLinear", "SVMGaussian"]
 def _resolve_output(output_path, dataset_list=None, model_list=None):
     """Load a existing output file or create the model for a new one."""
     try:
-        print("Output file found. Loading current one.")
         scores = pd.read_csv(output_path, index_col=0)
+        print("Output file found. Loaded current one.")
 
     except FileNotFoundError:
         print("No output file found. Creating a empty one...")
@@ -143,7 +143,7 @@ def get_cv_score(
         classifier_alg,
         attr_independent,
         attr_labels,
-        scoring="accuracy_score",
+        scoring="accuracy",
         cv=10,
         return_train_score=False):
     """Return cross validation score of given algorithm and dataset."""
@@ -183,7 +183,7 @@ def _fill_performance(
     score_test_avg_performance = score_test["test_score"]
     score_test_avg_time = score_test["fit_time"]
 
-    score_test_avg_performance = score_test_avg_time[
+    score_test_avg_performance = score_test_avg_performance[
         np.logical_not(np.isnan(score_test_avg_performance))
     ].mean()
     score_test_avg_time = score_test_avg_time[
@@ -204,8 +204,6 @@ def _check_dataset_state(dataset, scores):
 def main():
     scores = _resolve_output(OUTPUT_PATH, DATASET_LIST, MODEL_LIST)
     errors = []
-
-    print(scores.head())
 
     # Fit models from datasets
     for dataset_index, dataset in enumerate(DATASET_LIST):
