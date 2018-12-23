@@ -10,20 +10,36 @@ import numpy as np
 import re
 
 # Script configuration
-METADATA_PATH = "./metafeatures/"
+METADATA_PATH = "./metafeatures/openml-metafeatures/"
 PERFORMANCE_METRIC = "accuracy"
-METAFEATURES_NAME = "metafeatures-extracted.metadata"
+METAFEATURES_NAME = "metaf-extracted-openml.metadata"
 PERFORMANCE_DATA_NAME = "base-learners-perf-" +\
         PERFORMANCE_METRIC + ".metadata"
 RANK_MODELS = True
 OUTPUT_PATH = METADATA_PATH + "final_combined-" +\
         PERFORMANCE_METRIC + ".metadata"
+START_FROM_COL = 0
+INDEX_COL = 0
 
 # Read dataset performance metrics
 perf_metadata = pd.read_csv(
-    METADATA_PATH +
-    PERFORMANCE_DATA_NAME
+    METADATA_PATH + PERFORMANCE_DATA_NAME,
+    index_col=INDEX_COL,
 )
+
+# Read metafeature dataset
+metadata = pd.read_csv(
+    METADATA_PATH + METAFEATURES_NAME,
+    index_col=INDEX_COL,
+)
+
+# Get only indexes common in metafeatures and performance
+# datasets
+common_indexes = set(perf_metadata.index.values)
+common_indexes.intersection_update(metadata.index.values)
+
+perf_metadata = perf_metadata.loc[common_indexes, :]
+metadata = metadata.loc[common_indexes, :]
 
 # Combine performance metrics with time spend
 # for all base learners using A3R metric
@@ -46,7 +62,7 @@ out_num_col //= 2
 combined_metrics = np.zeros((out_num_row, out_num_col))
 
 for cur_index_dataset, dataset_perf in \
-        enumerate(perf_metadata.iloc[:, 1:].values):
+        enumerate(perf_metadata.iloc[:, START_FROM_COL:].values):
 
     all_perfs = dataset_perf[:-1:2]
     all_times = dataset_perf[1::2]
@@ -81,24 +97,18 @@ if RANK_MODELS:
             rankdata(-dataset_metric, method="min")
     ranking_output = ranking_output.astype(np.int32)
 
-# Read metafeature dataset
-metadata = pd.read_csv(
-    METADATA_PATH +
-    METAFEATURES_NAME
-)
-
 # Prepare output dataframe
 regex_get_model_name = re.compile(r"([^\.]+)")
 output_column_names = [
     regex_get_model_name.match(model_name).group(1) +
     (".rank" if RANK_MODELS else ".normalized_median_a3r")
-    for model_name in perf_metadata.columns[1:-1:2]
+    for model_name in perf_metadata.columns[START_FROM_COL:-1:2]
 ]
 
 ranking_output = pd.DataFrame(
     ranking_output if RANK_MODELS else combined_metrics,
     columns=output_column_names,
-    index=metadata.index.values
+    index=metadata.index.values,
 )
 
 # Append combined perf metrics into
