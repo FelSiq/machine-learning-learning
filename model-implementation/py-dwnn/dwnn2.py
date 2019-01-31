@@ -1,6 +1,5 @@
-
 class dwnn:
-	"""
+    """
 	The larger the 'sigma' is, the wider the
 	of the gaussian weight function will be.
 
@@ -18,18 +17,17 @@ class dwnn:
 	Sigma	: down	up
 	"""
 
-	def _euclideanDist(self, a, b):
-		return (sum(a**2 - b**2))**0.5
+    def _euclideanDist(self, a, b):
+        return (sum(a**2 - b**2))**0.5
 
-	def _gaussian(self, dist, sigma=1.0):
-		return np.exp(-dist**2.0/(2.0*sigma**2.0))
+    def _gaussian(self, dist, sigma=1.0):
+        return np.exp(-dist**2.0 / (2.0 * sigma**2.0))
 
-	def feed(self, query, x, y, sigma=1.0):
-		
-		wSum = 0.0
-		for s, val in zip(x, y):
-			w = self._gaussian(self._euclideanDist(query, s), sigma)
-			ret = w * val
-			wSum += w	
-		return ret / wSum
+    def feed(self, query, x, y, sigma=1.0):
 
+        wSum = 0.0
+        for s, val in zip(x, y):
+            w = self._gaussian(self._euclideanDist(query, s), sigma)
+            ret = w * val
+            wSum += w
+        return ret / wSum

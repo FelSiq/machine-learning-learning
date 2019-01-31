@@ -6,298 +6,380 @@ import math
 import copy
 import random
 
+
 class idtree:
-	def __init__(self, type='continuous', thresholds=10):
-		self.thresholds = thresholds
-		self.tree = {}
-		if not type in {'continuous', 'discrete'}:
-			print('E: data \'type\' must be \'continuous\' or \'discrete\'. Assuming \'continuous\'.')
-			self.type = 'continuous'
-		else:
-			self.type = type
+    def __init__(self, type='continuous', thresholds=10):
+        self.thresholds = thresholds
+        self.tree = {}
+        if not type in {'continuous', 'discrete'}:
+            print(
+                'E: data \'type\' must be \'continuous\' or \'discrete\'. Assuming \'continuous\'.'
+            )
+            self.type = 'continuous'
+        else:
+            self.type = type
 
-	def _subsetEntropy(self, subset, base=2):
-		classes, absFreqs = np.unique(subset, return_counts=True)
-		probs = absFreqs/len(subset)
-		return -sum([(probs[i] * math.log(probs[i], base) if 0.0 < probs[i] < 1.0 else 0.0) for i in range(len(probs))])
+    def _subsetEntropy(self, subset, base=2):
+        classes, absFreqs = np.unique(subset, return_counts=True)
+        probs = absFreqs / len(subset)
+        return -sum([(probs[i] * math.log(probs[i], base)
+                      if 0.0 < probs[i] < 1.0 else 0.0)
+                     for i in range(len(probs))])
 
-	def _setEntropy(self, instSet, classLabels, base=2):
-		if len(instSet):
-			totalSetLen = 0
-			for subset in instSet:
-				totalSetLen += len(subset)
-			
-			totalDisorder = 0.0
-			for subset in instSet:
-				if len(subset):
-					totalDisorder += self._subsetEntropy(classLabels[subset], base) * (len(subset)/totalSetLen)
+    def _setEntropy(self, instSet, classLabels, base=2):
+        if len(instSet):
+            totalSetLen = 0
+            for subset in instSet:
+                totalSetLen += len(subset)
 
-			return totalDisorder
-		return math.inf
+            totalDisorder = 0.0
+            for subset in instSet:
+                if len(subset):
+                    totalDisorder += self._subsetEntropy(
+                        classLabels[subset],
+                        base) * (len(subset) / totalSetLen)
 
-	def _initNode(self, ID=0, Instances=list(), Attr=-1, Threshold=-1.0, 
-		ClassLabel='', ChildrenValues=[], Deep=0, Disorder=0):
-		if self.type == 'continuous':
-			return {
-				'ID': ID,
-				'Instances': Instances,
-				'Attr': Attr, # Just for non-leaf nodes
-				'Threshold': Threshold, # Just for continuous data
-				'ClassLabel': ClassLabel,
-				'Deep': Deep,
-				'Disorder': Disorder}
-		else:
-			return {
-				'ID': ID,
-				'Instances': Instances,
-				'Attr': Attr, # Just for non-leaf nodes
-				'ClassLabel': ClassLabel, 
-				'Deep': Deep,
-				'Disorder': Disorder}
+            return totalDisorder
+        return math.inf
 
-	def _checkPred(self, curNode, target, predVec):
-		found = False
+    def _initNode(self,
+                  ID=0,
+                  Instances=list(),
+                  Attr=-1,
+                  Threshold=-1.0,
+                  ClassLabel='',
+                  ChildrenValues=[],
+                  Deep=0,
+                  Disorder=0):
+        if self.type == 'continuous':
+            return {
+                'ID': ID,
+                'Instances': Instances,
+                'Attr': Attr,  # Just for non-leaf nodes
+                'Threshold': Threshold,  # Just for continuous data
+                'ClassLabel': ClassLabel,
+                'Deep': Deep,
+                'Disorder': Disorder
+            }
+        else:
+            return {
+                'ID': ID,
+                'Instances': Instances,
+                'Attr': Attr,  # Just for non-leaf nodes
+                'ClassLabel': ClassLabel,
+                'Deep': Deep,
+                'Disorder': Disorder
+            }
 
-		while not found and curNode in predVec:
-			found = predVec[curNode][1] == target
-			curNode = predVec[curNode][0]
+    def _checkPred(self, curNode, target, predVec):
+        found = False
 
-		return found
+        while not found and curNode in predVec:
+            found = predVec[curNode][1] == target
+            curNode = predVec[curNode][0]
 
-	def fit(self, x, y, base=2, maxEntropy=0.1, precision=3, maxDeep=5, showError=False, cleanResult=True):
+        return found
 
-		continuousData = (self.type == 'continuous') # Just a little optimization
+    def fit(self,
+            x,
+            y,
+            base=2,
+            maxEntropy=0.1,
+            precision=3,
+            maxDeep=5,
+            showError=False,
+            cleanResult=True):
 
-		instNum = x.shape[0]
-		attrNum = x.shape[1]
+        continuousData = (
+            self.type == 'continuous')  # Just a little optimization
 
-		if not continuousData:
-			# Discrete data
-			predVec = {}
-			attribValues = [set() for i in range(attrNum)]
-			for inst in x:
-				for i in range(attrNum):
-					attribValues[i].add(inst[i])
+        instNum = x.shape[0]
+        attrNum = x.shape[1]
 
-		# Don't necessarily has to be a stack. Any data structure 
-		# works, even if unstable (like a heap) or a random sorted array.
-		stack = [self._initNode(Instances=[i for i in range(instNum)])]
-		usedComb = set()
+        if not continuousData:
+            # Discrete data
+            predVec = {}
+            attribValues = [set() for i in range(attrNum)]
+            for inst in x:
+                for i in range(attrNum):
+                    attribValues[i].add(inst[i])
 
-		counter=0
+        # Don't necessarily has to be a stack. Any data structure
+        # works, even if unstable (like a heap) or a random sorted array.
+        stack = [self._initNode(Instances=[i for i in range(instNum)])]
+        usedComb = set()
 
-		nodeID = 0
-		while len(stack):
-			curNode = stack.pop()
+        counter = 0
 
-			if continuousData:
-				# Continuous data
-				maxAttribVals = np.max(x[curNode['Instances']], axis=0)
-				minAttribVals = np.min(x[curNode['Instances']], axis=0)
-				attribThresholds = np.around([[minAttribVals[j] + i * (maxAttribVals[j] - minAttribVals[j])/(self.thresholds + 2) 
-					for i in range(self.thresholds + 2)][0:-1] 
-					for j in range(len(minAttribVals))], precision)
+        nodeID = 0
+        while len(stack):
+            curNode = stack.pop()
 
-			curEntropy = self._subsetEntropy(y[curNode['Instances']])
-			
-			if showError:
-				print('NodeID:', curNode['ID'], '\tNode entropy:', curEntropy)
+            if continuousData:
+                # Continuous data
+                maxAttribVals = np.max(x[curNode['Instances']], axis=0)
+                minAttribVals = np.min(x[curNode['Instances']], axis=0)
+                attribThresholds = np.around([[
+                    minAttribVals[j] + i *
+                    (maxAttribVals[j] - minAttribVals[j]) /
+                    (self.thresholds + 2) for i in range(self.thresholds + 2)
+                ][0:-1] for j in range(len(minAttribVals))], precision)
 
-			if curEntropy > maxEntropy and curNode['Deep'] <= maxDeep:
-				# Not a leaf node
-				if continuousData:
-					minCombEntropy = {'value': math.inf, 'comb': (-1,-1), 'instSet': []}
-				else:
-					minAttrEntropy = {'value': math.inf, 'Attr': -1, 'instSet': {}}
+            curEntropy = self._subsetEntropy(y[curNode['Instances']])
 
-				for attr in range(attrNum):
-					if continuousData:
-						# Continuous data approach
-						for thrs in range(self.thresholds):
-							if not (attr, thrs) in usedComb:
-								curThresholdValue = attribThresholds[attr][thrs]
-								# The threshold approach only creates two subsets (less-than and greater-or-equal-than)
-								instSet = [[], []]
+            if showError:
+                print('NodeID:', curNode['ID'], '\tNode entropy:', curEntropy)
 
-								for instIndex in curNode['Instances']:
-									instSet[x[instIndex][attr] >= curThresholdValue].append(instIndex) 
+            if curEntropy > maxEntropy and curNode['Deep'] <= maxDeep:
+                # Not a leaf node
+                if continuousData:
+                    minCombEntropy = {
+                        'value': math.inf,
+                        'comb': (-1, -1),
+                        'instSet': []
+                    }
+                else:
+                    minAttrEntropy = {
+                        'value': math.inf,
+                        'Attr': -1,
+                        'instSet': {}
+                    }
 
-								curCombEntropy = self._setEntropy(instSet, y, base)
-								if curCombEntropy < minCombEntropy['value']:
-									minCombEntropy['value'] = curCombEntropy
-									minCombEntropy['comb'] = (attr, thrs)
-									minCombEntropy['instSet'] = copy.deepcopy(instSet)
-					else:
-						# Discrete data approach
-						# I need to keep track of every path on the tree, because it's
-						# possible to reuse the same attribute, but not on the same path.
-						if not self._checkPred(curNode['ID'], attr, predVec): 
-							instSet = {key : [] for key in attribValues[attr]}
+                for attr in range(attrNum):
+                    if continuousData:
+                        # Continuous data approach
+                        for thrs in range(self.thresholds):
+                            if not (attr, thrs) in usedComb:
+                                curThresholdValue = attribThresholds[attr][
+                                    thrs]
+                                # The threshold approach only creates two subsets (less-than and greater-or-equal-than)
+                                instSet = [[], []]
 
-							for instIndex in curNode['Instances']:
-								instSet[x[instIndex][attr]].append(instIndex)
+                                for instIndex in curNode['Instances']:
+                                    instSet[x[instIndex][attr] >=
+                                            curThresholdValue].append(
+                                                instIndex)
 
-							curAttrEntropy = self._setEntropy([instSet[key] for key in instSet], y, base)
-							if curAttrEntropy < minAttrEntropy['value']:
-								minAttrEntropy['value'] = curAttrEntropy
-								minAttrEntropy['Attr'] = attr
-								minAttrEntropy['instSet'] = copy.deepcopy(instSet)
+                                curCombEntropy = self._setEntropy(
+                                    instSet, y, base)
+                                if curCombEntropy < minCombEntropy['value']:
+                                    minCombEntropy['value'] = curCombEntropy
+                                    minCombEntropy['comb'] = (attr, thrs)
+                                    minCombEntropy['instSet'] = copy.deepcopy(
+                                        instSet)
+                    else:
+                        # Discrete data approach
+                        # I need to keep track of every path on the tree, because it's
+                        # possible to reuse the same attribute, but not on the same path.
+                        if not self._checkPred(curNode['ID'], attr, predVec):
+                            instSet = {key: [] for key in attribValues[attr]}
 
-				if continuousData:
-					# Continuous data approach
-					# Get min entropy set
-					curNode['Attr'] = minCombEntropy['comb'][0]
-					curNode['Disorder'] = minCombEntropy['value']
-					thrsIndex = minCombEntropy['comb'][1]
-					instSet = minCombEntropy['instSet']
+                            for instIndex in curNode['Instances']:
+                                instSet[x[instIndex][attr]].append(instIndex)
 
-					# This combination must not be used again
-					usedComb.add((curNode['Attr'], thrsIndex))
+                            curAttrEntropy = self._setEntropy(
+                                [instSet[key] for key in instSet], y, base)
+                            if curAttrEntropy < minAttrEntropy['value']:
+                                minAttrEntropy['value'] = curAttrEntropy
+                                minAttrEntropy['Attr'] = attr
+                                minAttrEntropy['instSet'] = copy.deepcopy(
+                                    instSet)
 
-					# Get true threshold value from possible thresholds generated matrix
-					curNode['Threshold'] = np.around(attribThresholds[curNode['Attr']][thrsIndex], precision)
+                if continuousData:
+                    # Continuous data approach
+                    # Get min entropy set
+                    curNode['Attr'] = minCombEntropy['comb'][0]
+                    curNode['Disorder'] = minCombEntropy['value']
+                    thrsIndex = minCombEntropy['comb'][1]
+                    instSet = minCombEntropy['instSet']
 
-					# Generate children nodes
-					# Continuous data tree is a binary tree
-					self.tree[curNode['ID']] = {'Node': curNode, 'lThan': nodeID+1, 'goeThan': nodeID+2}
-					stack.append(self._initNode(ID=nodeID+2, Instances=instSet[1], Deep=curNode['Deep']+1))
-					stack.append(self._initNode(ID=nodeID+1, Instances=instSet[0], Deep=curNode['Deep']+1))
-					nodeID += 2
+                    # This combination must not be used again
+                    usedComb.add((curNode['Attr'], thrsIndex))
 
-				else:
-					# Discrete data approach
-					# Get min entropy set
-					curNode['Attr'] = minAttrEntropy['Attr']
-					curNode['Disorder'] = minAttrEntropy['value']
+                    # Get true threshold value from possible thresholds generated matrix
+                    curNode['Threshold'] = np.around(
+                        attribThresholds[curNode['Attr']][thrsIndex],
+                        precision)
 
-					if curNode['Attr'] != -1:
-						# Generate children nodes
-						# Each Discrete data tree node has one children for each attribute different value 
-						childrens = {}
-						for key in attribValues[curNode['Attr']]:
-							nodeID += 1
-							predVec[nodeID] = (curNode['ID'], curNode['Attr'])
-							childrens[key] = nodeID
-							stack.append(self._initNode(ID=nodeID, Instances=minAttrEntropy['instSet'][key], Deep=curNode['Deep']+1))
+                    # Generate children nodes
+                    # Continuous data tree is a binary tree
+                    self.tree[curNode['ID']] = {
+                        'Node': curNode,
+                        'lThan': nodeID + 1,
+                        'goeThan': nodeID + 2
+                    }
+                    stack.append(
+                        self._initNode(
+                            ID=nodeID + 2,
+                            Instances=instSet[1],
+                            Deep=curNode['Deep'] + 1))
+                    stack.append(
+                        self._initNode(
+                            ID=nodeID + 1,
+                            Instances=instSet[0],
+                            Deep=curNode['Deep'] + 1))
+                    nodeID += 2
 
-						self.tree[curNode['ID']] = {'Node': curNode, 'Childrens': childrens}
-					else:
-						# There's no attribute left to decresease set entropy on current branch.
-						# Promote this node a leaf node.
-						curNode['Deep'] = maxDeep + 1 # Force current node to be a leaf node.
-						stack.append(curNode)
+                else:
+                    # Discrete data approach
+                    # Get min entropy set
+                    curNode['Attr'] = minAttrEntropy['Attr']
+                    curNode['Disorder'] = minAttrEntropy['value']
 
-			else:
-				# New leaf node
-				majorityClass = 'Unknown'
-				if len(y[curNode['Instances']]):
-					classes, counts = np.unique(y[curNode['Instances']], return_counts=True)
-					majorityClass = max(zip(classes, counts), key = lambda k : k[1])[0]
-				curNode['ClassLabel'] = majorityClass 
-				if continuousData:
-					self.tree[curNode['ID']] = {'Node': curNode, 'lThan': -1, 'goeThan': -1}
-				else:
-					self.tree[curNode['ID']] = {'Node': curNode, 'Childrens': {}}
-		
-		if cleanResult:
-			for node in self.tree:
-				curNode = self.tree[node]['Node']
-				curNode.pop('Instances')
-				if curNode['ClassLabel'] != '':
-					if continuousData:
-						curNode.pop('Attr')
-						curNode.pop('Threshold')
+                    if curNode['Attr'] != -1:
+                        # Generate children nodes
+                        # Each Discrete data tree node has one children for each attribute different value
+                        childrens = {}
+                        for key in attribValues[curNode['Attr']]:
+                            nodeID += 1
+                            predVec[nodeID] = (curNode['ID'], curNode['Attr'])
+                            childrens[key] = nodeID
+                            stack.append(
+                                self._initNode(
+                                    ID=nodeID,
+                                    Instances=minAttrEntropy['instSet'][key],
+                                    Deep=curNode['Deep'] + 1))
 
-		return self
+                        self.tree[curNode['ID']] = {
+                            'Node': curNode,
+                            'Childrens': childrens
+                        }
+                    else:
+                        # There's no attribute left to decresease set entropy on current branch.
+                        # Promote this node a leaf node.
+                        curNode[
+                            'Deep'] = maxDeep + 1  # Force current node to be a leaf node.
+                        stack.append(curNode)
 
-	def predict(self, query):
-		curNode = 0
-		while self.tree[curNode]['Node']['ClassLabel'] == '':
-			if self.type == 'continuous':
-				if query[self.tree[curNode]['Node']['Attr']] < self.tree[curNode]['Node']['Threshold']:
-					curNode = self.tree[curNode]['lThan']
-				else:
-					curNode = self.tree[curNode]['goeThan']
-			else:
-				for value in self.tree[curNode]['Childrens']:
-					if query[self.tree[curNode]['Node']['Attr']] == value:
-						if value in self.tree[curNode]['Childrens']:
-							curNode = self.tree[curNode]['Childrens'][value]
-						else:
-							return 'Unknown'
-		return self.tree[curNode]['Node']['ClassLabel']
+            else:
+                # New leaf node
+                majorityClass = 'Unknown'
+                if len(y[curNode['Instances']]):
+                    classes, counts = np.unique(
+                        y[curNode['Instances']], return_counts=True)
+                    majorityClass = max(
+                        zip(classes, counts), key=lambda k: k[1])[0]
+                curNode['ClassLabel'] = majorityClass
+                if continuousData:
+                    self.tree[curNode['ID']] = {
+                        'Node': curNode,
+                        'lThan': -1,
+                        'goeThan': -1
+                    }
+                else:
+                    self.tree[curNode['ID']] = {
+                        'Node': curNode,
+                        'Childrens': {}
+                    }
 
-	def plot(self, x, y, dim=250):
-		if x.shape[1] > 2:
-			print('E: can\'t  plot a dataset on a higher dimension than two.')
-			return
+        if cleanResult:
+            for node in self.tree:
+                curNode = self.tree[node]['Node']
+                curNode.pop('Instances')
+                if curNode['ClassLabel'] != '':
+                    if continuousData:
+                        curNode.pop('Attr')
+                        curNode.pop('Threshold')
 
-		xCoords = []
-		yCoords = []
-		for s in x:
-			xCoords.append(s[0])
-			yCoords.append(s[1])
+        return self
 
-		plt.scatter(xCoords, yCoords)
+    def predict(self, query):
+        curNode = 0
+        while self.tree[curNode]['Node']['ClassLabel'] == '':
+            if self.type == 'continuous':
+                if query[self.tree[curNode]['Node']
+                         ['Attr']] < self.tree[curNode]['Node']['Threshold']:
+                    curNode = self.tree[curNode]['lThan']
+                else:
+                    curNode = self.tree[curNode]['goeThan']
+            else:
+                for value in self.tree[curNode]['Childrens']:
+                    if query[self.tree[curNode]['Node']['Attr']] == value:
+                        if value in self.tree[curNode]['Childrens']:
+                            curNode = self.tree[curNode]['Childrens'][value]
+                        else:
+                            return 'Unknown'
+        return self.tree[curNode]['Node']['ClassLabel']
 
-		xdim = plt.axes().get_xlim()
-		ydim = plt.axes().get_ylim()
+    def plot(self, x, y, dim=250):
+        if x.shape[1] > 2:
+            print('E: can\'t  plot a dataset on a higher dimension than two.')
+            return
 
-		xdiff = (xdim[1] * 1.1 - xdim[0] * 1.1)/dim  
-		ydiff = (ydim[1] * 1.1 - ydim[0] * 1.1)/dim  
-		xpoints = [i * xdiff + xdim[0] * 1.1 for i in range(dim)]
-		ypoints = [i * ydiff + ydim[0] * 1.1 for i in range(dim)]
+        xCoords = []
+        yCoords = []
+        for s in x:
+            xCoords.append(s[0])
+            yCoords.append(s[1])
 
-		classes = np.unique(y)
-		classesColors = {key : (random.random(), random.random(), random.random()) for key in classes}
-		markerColors = {key : (random.random(), random.random(), random.random()) for key in classes}
+        plt.scatter(xCoords, yCoords)
 
-		matpoints = [[i, j] for j in ypoints for i in xpoints]
-		classifications = []
-		for sample in matpoints:
-			classifications.append(classesColors[self.predict(sample)])
+        xdim = plt.axes().get_xlim()
+        ydim = plt.axes().get_ylim()
 
-		xpoints = [m[0] for m in matpoints]
-		ypoints = [m[1] for m in matpoints]
-		plt.scatter(xpoints, ypoints, c=classifications, s=1.0, marker='.')
-		plt.scatter(xCoords, yCoords, c=[markerColors[s] for s in y])
-		plt.show()
+        xdiff = (xdim[1] * 1.1 - xdim[0] * 1.1) / dim
+        ydiff = (ydim[1] * 1.1 - ydim[0] * 1.1) / dim
+        xpoints = [i * xdiff + xdim[0] * 1.1 for i in range(dim)]
+        ypoints = [i * ydiff + ydim[0] * 1.1 for i in range(dim)]
 
-	def _print(self, curNode, offset):
-		levelOffset = ' ' * offset + str(offset) + '. '
-		currentNode = self.tree[curNode]['Node']
-		if currentNode['ClassLabel'] != '':
-			print(levelOffset, 'Class:', currentNode['ClassLabel'], 
-				'(with disorder of', str(currentNode['Disorder']) + ')')
-		else:
-			if self.type == 'discrete':
-				None
-			else:
-				print(levelOffset, 'Test on attribute', currentNode['Attr'], 
-					'with Threshold:', currentNode['Threshold'])
-				print(levelOffset, 'if <  :')
-				self._print(self.tree[curNode]['lThan'], offset + 1)
-				print(levelOffset, 'if >= :')
-				self._print(self.tree[curNode]['goeThan'], offset + 1)
+        classes = np.unique(y)
+        classesColors = {
+            key: (random.random(), random.random(), random.random())
+            for key in classes
+        }
+        markerColors = {
+            key: (random.random(), random.random(), random.random())
+            for key in classes
+        }
 
-	def print(self):
-		self._print(0, 0)
+        matpoints = [[i, j] for j in ypoints for i in xpoints]
+        classifications = []
+        for sample in matpoints:
+            classifications.append(classesColors[self.predict(sample)])
+
+        xpoints = [m[0] for m in matpoints]
+        ypoints = [m[1] for m in matpoints]
+        plt.scatter(xpoints, ypoints, c=classifications, s=1.0, marker='.')
+        plt.scatter(xCoords, yCoords, c=[markerColors[s] for s in y])
+        plt.show()
+
+    def _print(self, curNode, offset):
+        levelOffset = ' ' * offset + str(offset) + '. '
+        currentNode = self.tree[curNode]['Node']
+        if currentNode['ClassLabel'] != '':
+            print(levelOffset, 'Class:', currentNode['ClassLabel'],
+                  '(with disorder of',
+                  str(currentNode['Disorder']) + ')')
+        else:
+            if self.type == 'discrete':
+                None
+            else:
+                print(levelOffset, 'Test on attribute', currentNode['Attr'],
+                      'with Threshold:', currentNode['Threshold'])
+                print(levelOffset, 'if <  :')
+                self._print(self.tree[curNode]['lThan'], offset + 1)
+                print(levelOffset, 'if >= :')
+                self._print(self.tree[curNode]['goeThan'], offset + 1)
+
+    def print(self):
+        self._print(0, 0)
 
 
 def kfcv(size, k=10):
-	FLAG = True
-	while FLAG:
-		FLAG = False
-		folds = np.array([random.randint(0, cvfolds-1) for i in range(size)])
-		idc, counts = np.unique(folds, return_counts=True)
-		for c in counts:
-			if c == 0:
-				FLAG = True
-	return folds
+    FLAG = True
+    while FLAG:
+        FLAG = False
+        folds = np.array([random.randint(0, cvfolds - 1) for i in range(size)])
+        idc, counts = np.unique(folds, return_counts=True)
+        for c in counts:
+            if c == 0:
+                FLAG = True
+    return folds
+
 
 if __name__ == '__main__':
-	# IRIS TESTING
-	"""	
+    # IRIS TESTING
+    """	
 	iris = datasets.load_iris()
 
 	cvfolds = 10
@@ -327,8 +409,8 @@ if __name__ == '__main__':
 
 	"""
 
-	# TENIS DATASET
-	"""
+    # TENIS DATASET
+    """
 	dataset = pd.read_csv('datasets/tenis.dat')
 
 	# LOOCV
@@ -354,8 +436,8 @@ if __name__ == '__main__':
 
 	"""
 
-	# CAR EVALUATION (UCI)
-	"""
+    # CAR EVALUATION (UCI)
+    """
 	dataset = pd.read_csv('datasets/car.data')
 
 	cvfolds = 50
@@ -381,10 +463,10 @@ if __name__ == '__main__':
 	print('CV accuracy: ', np.mean(accuracies))
 	"""
 
-	# MIT AI Course Final Exam (Quiz 3, Problem 1)
-	dataset = pd.read_csv('datasets/2.in')
-	attr = dataset.iloc[:,1:-1].values
-	labels = dataset.iloc[:,-1].values
-	model = idtree(thresholds=20).fit(attr, labels)
-	model.print()
-	model.plot(attr, labels)
+    # MIT AI Course Final Exam (Quiz 3, Problem 1)
+    dataset = pd.read_csv('datasets/2.in')
+    attr = dataset.iloc[:, 1:-1].values
+    labels = dataset.iloc[:, -1].values
+    model = idtree(thresholds=20).fit(attr, labels)
+    model.print()
+    model.plot(attr, labels)
