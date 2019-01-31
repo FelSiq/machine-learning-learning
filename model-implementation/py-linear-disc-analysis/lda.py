@@ -11,21 +11,14 @@ class LDA:
         self.X = np.array(X)
         self.y = np.array(y)
 
-        self.classes = np.unique(y)
+        self.classes, self.cls_freqs = np.unique(y, return_counts=True)
 
     def _scatter_within(self):
-        num_attr = self.y.size
-
-        sw = np.zeros((num_attr, num_attr))
-
-        for cls in self.classes:
-            class_inst = self.X[self.y == cls, :]
-
-            class_mean = class_inst.mean(axis=0)
-
-            class_center = class_inst - class_mean
-
-            sw += np.matmul(class_center.T, class_center)
+        """."""
+        sw = np.array([
+            cls_freq * np.cov(self.X[self.y == cls, :], rowvar=False)
+            for cls, cls_freq in zip(self.classes, self.cls_freqs)
+        ]).sum(axis=0)
 
         return sw
 
@@ -41,8 +34,6 @@ if __name__ == "__main__":
 
     model = LDA()
     model.fit(iris.data, iris.target)
-    model.fit([[4.1], [2.08], [0.604]], [1, 1, 1])
     ans = model.predict()
 
-    print(ans / iris.data.shape[0])
-    print(np.cov(iris.data, rowvar=False))
+    print(ans)
