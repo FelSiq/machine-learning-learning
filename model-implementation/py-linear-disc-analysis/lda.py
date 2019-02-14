@@ -59,19 +59,23 @@ class LDA:
 
         return eig_vals, eig_vecs
 
-    def predict(self, num_dim=2):
+    def predict(self, max_dim=2):
         """Create transf. matrix which best separates the fitted data proj."""
         sw = self._scatter_within()
         sb = self._scatter_between()
 
+        max_dim = min(max_dim, self.classes.size-1)
+
         eig = self._get_eig(sw, sb)
 
-        eig_vals, eig_vecs = self._project(eig, num_dim=num_dim)
+        eig_vals, eig_vecs = self._project(eig, num_dim=max_dim)
 
         _, num_col = self.X.shape
 
         self.eig_vals = np.array(eig_vals)
-        self.transf_mat = np.concatenate(eig_vecs).reshape(num_col, num_dim)
+        self.transf_mat = np.concatenate(eig_vecs).reshape(num_col, max_dim)
+
+        self.transf_mat = self.transf_mat.real
 
         return self.transf_mat
 
@@ -90,7 +94,7 @@ if __name__ == "__main__":
 
     model = LDA()
     model.fit(iris.data, iris.target)
-    ans = model.predict(num_dim=2)
+    ans = model.predict(max_dim=2)
 
     print("Transformation Matrix:", ans, sep="\n", end="\n\n")
     print("Eigenvalues of L. D. matrix:", model.eig_vals, end="\n\n")
