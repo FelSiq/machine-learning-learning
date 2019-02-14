@@ -1,4 +1,10 @@
 # -*- coding: utf8 -*-
+"""Experimenting with metalearning algorithm recomendation.
+
+The purpose of this module is just learn more about this
+topic. There's no intention of building up something really
+useful.
+"""
 import pandas as pd
 import numpy as np
 # import matplotlib.pyplot as plt
@@ -8,14 +14,19 @@ from scipy.stats import spearmanr
 
 
 class MlRecommender:
-    def __init__(self, filepath=None, k=5,
-                 perf_columns=None, ignore_columns=None):
+    """Class for testing alg. recommendation with metalearning."""
+
+    def __init__(self,
+                 filepath=None,
+                 k=5,
+                 perf_columns=None,
+                 ignore_columns=None):
         """Uses k-NN to rank base learners algorithms."""
         self._pred_model = MultiOutputRegressor(KNeighborsRegressor())
         self._rank_baseline = None
-        self.X = None
-        self.y = None
-        self.k = k
+        self.x_attr = None
+        self.y_attr = None
+        self.neighbor_num = k
         self.baseline_alg = None
 
         if filepath is not None:
@@ -24,13 +35,14 @@ class MlRecommender:
                     alongside filepath parameter.")
 
             self.load_metadata(
-                    filepath=filepath,
-                    perf_columns=perf_columns,
-                    ignore_columns=ignore_columns)
+                filepath=filepath,
+                perf_columns=perf_columns,
+                ignore_columns=ignore_columns)
 
-    def _average_ranking(self, rankings):
+    @classmethod
+    def _average_ranking(cls, rankings):
         """Calculate average ranking."""
-        if type(rankings) is not np.array:
+        if not isinstance(rankings, np.array):
             rankings = np.array(rankings)
 
         return rankings.mean(axis=0)
@@ -39,19 +51,13 @@ class MlRecommender:
         """Get Expected value by random recommendation as
         baseline value.
         """
-        self._rank_baseline = self.y.mean(axis=0)
+        self._rank_baseline = self.y_attr.mean(axis=0)
 
     def _fill_na_knn(self):
         """Fill missing values using k-NN values."""
-        """To do."""
-        self.X[np.isnan(self.X)] = 0
+        self.x_attr[np.isnan(self.x_attr)] = 0
 
-    def load_metadata(
-            self,
-            filepath,
-            perf_columns,
-            fit=False,
-            ignore_columns=None):
+    def load_metadata(self, filepath, perf_columns, ignore_columns=None):
         """Load metadata with rank or performance of
         base learners columns specified via per_columns
         parameter.
@@ -59,57 +65,44 @@ class MlRecommender:
         metadata = pd.read_csv(filepath)
 
         if ignore_columns is not None:
-            metadata.drop(metadata.columns[ignore_columns],
-                          axis=1, inplace=True)
+            metadata.drop(
+                metadata.columns[ignore_columns], axis=1, inplace=True)
 
-        self.X = metadata.drop(
-                metadata.columns[perf_columns], axis=1).values
-        self.y = metadata.iloc[:, perf_columns].values
+        self.x_attr = metadata.drop(
+            metadata.columns[perf_columns], axis=1).values
+        self.y_attr = metadata.iloc[:, perf_columns].values
         self.baseline_alg = metadata.columns[perf_columns].values
 
         self._fill_na_knn()
 
-        if fit:
-            self.fit(self.X, self.y)
-
-    def fit(self, X, y):
-        self._pred_model.fit(self.X, self.y)
-        self._get_baseline()
-
     def predict(self, query):
         """."""
-        if self.metadata is None:
+        if self.x_attr is None:
             raise Exception("first call \"load_metadata\" method.")
 
         return self._pred_model.predict(query)
 
-    def loocv_validate(self, shuffle=True):
+    def loocv_validate(self):
         """."""
-        n = len(self.y)
-        train_index = list(range(n))
-        output = np.zeros((n, 2))
+        y_attr_size = len(self.y_attr)
+        train_index = list(range(y_attr_size))
+        output = np.zeros((y_attr_size, 2))
 
-        for test_index in range(n):
+        for test_index in range(y_attr_size):
             train_index.remove(test_index)
 
             self._pred_model.fit(
-                    X=self.X[train_index, :],
-                    y=self.y[train_index, :])
+                X=self.x_attr[train_index, :], y=self.y_attr[train_index, :])
 
             test_ranking = self._pred_model.predict(
-                    X=self.X[test_index, :].reshape(1, -1)).flatten()
+                X=self.x_attr[test_index, :].reshape(1, -1)).flatten()
 
-            output[test_index, :] = spearmanr(
-                    test_ranking,
-                    self.y[test_index, :])
+            output[test_index, :] = spearmanr(test_ranking,
+                                              self.y_attr[test_index, :])
 
             train_index.append(test_index)
 
         return output
-
-    def plot(self, performance, baseline):
-        """."""
-        pass
 
 
 if __name__ == "__main__":
@@ -121,23 +114,22 @@ if __name__ == "__main__":
               "[ignored_columns_comma_separated]")
         exit(1)
 
-    perf_columns = list(map(int, sys.argv[2].strip().split(",")))
+    PERF_COLUMNS = list(map(int, sys.argv[2].strip().split(",")))
 
     try:
-        ignored_columns = list(map(int, sys.argv[3].strip().split(",")))
+        IGNORED_COLUMNS = list(map(int, sys.argv[3].strip().split(",")))
 
-    except Exception:
-        ignored_columns = None
+    except TypeError:
+        IGNORED_COLUMNS = None
 
     rec = MlRecommender(
         filepath=sys.argv[1],
-        perf_columns=perf_columns,
-        ignore_columns=ignored_columns)
+        perf_columns=PERF_COLUMNS,
+        ignore_columns=IGNORED_COLUMNS)
 
     res = rec.loocv_validate()
 
-    print(rec.X.shape)
+    print(rec.x_attr.shape)
     print("baseline algorithms:", rec.baseline_alg)
-    print("baseline:", rec._rank_baseline)
     print("Results:")
     print(res)

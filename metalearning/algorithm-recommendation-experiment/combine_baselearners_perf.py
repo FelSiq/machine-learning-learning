@@ -11,7 +11,7 @@ import re
 
 # Script configuration
 METADATA_PATH = "./metafeatures/openml-metafeatures/"
-PERFORMANCE_METRIC = "accuracy"
+PERFORMANCE_METRIC = "f1_micro"
 METAFEATURES_NAME = "metaf-extracted-openml.metadata"
 PERFORMANCE_DATA_NAME = "base-learners-perf-" +\
         PERFORMANCE_METRIC + ".metadata"
