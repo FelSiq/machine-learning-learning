@@ -19,7 +19,7 @@ class LogReg:
     @staticmethod
     def sigmoid(val: t.Union[np.number, np.ndarray]):
         """Sigmoid activation function."""
-        return 1 / (1 + np.exp(-val))
+        return 1.0 / (1.0 + np.exp(-val))
 
     def log_likelihood(self, prediction: np.ndarray):
         """Log-likelihood of the model's prediction."""
@@ -36,9 +36,11 @@ class LogReg:
     def fit(self,
             X: np.ndarray,
             y: np.ndarray,
-            max_it: int = 20000,
+            max_it: int = 1000,
             learning_rate: float = 1.0e-4,
-            add_intercept: bool = True) -> "LogReg":
+            add_intercept: bool = True,
+            penalty: bool = True,
+            C: float = 1.0) -> "LogReg":
         """Fit data into the model to adjust its weights."""
         self.X = np.array(X)
         self.y = np.array(y)
@@ -51,6 +53,8 @@ class LogReg:
 
         self.weights = np.random.uniform(low=-0.5, high=0.5, size=num_col)
 
+        C_inv = 1.0 / C
+
         iteration_id = 0
         while iteration_id < max_it:
             iteration_id += 1
@@ -60,6 +64,10 @@ class LogReg:
             error = self.y - predictions
 
             gradient = np.dot(self.X.T, error)
+
+            if penalty:
+                # L2 Regularization
+                gradient += C_inv * self.weights
 
             self.weights += learning_rate * gradient
 
@@ -74,7 +82,7 @@ class LogReg:
 
 
 if __name__ == "__main__":
-    # Test my model against Sklearn model using 10-Fold CV.
+    # Test my model against Sklearn model using k-Fold CV.
     from sklearn.linear_model import LogisticRegression
     from sklearn import datasets
     from sklearn.model_selection import KFold
@@ -85,8 +93,11 @@ if __name__ == "__main__":
     data = (data - data.mean()) / (data.std())
     target = dataset.target
 
-    clf = LogisticRegression(fit_intercept=True, C=1e15)
-    n_splits = 10
+    max_it = 500
+    C = 1
+
+    clf = LogisticRegression(fit_intercept=True, C=C, max_iter=max_it)
+    n_splits = 20
 
     k_fold = KFold(n_splits=n_splits, shuffle=True)
 
@@ -105,9 +116,10 @@ if __name__ == "__main__":
         model = LogReg().fit(
             x_train,
             y_train,
-            max_it=15000,
+            max_it=max_it,
             learning_rate=0.001,
-            add_intercept=True)
+            add_intercept=True,
+            C=C)
 
         clf.fit(x_train, y_train)
 
