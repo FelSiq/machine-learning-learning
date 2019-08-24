@@ -45,6 +45,7 @@ def feat_imp(model,
         base_perf=perf_func(y, model.predict(X)))
 
     if normalize:
+        imp -= imp.min()
         imp /= imp.sum()
 
     return imp.T
