@@ -1,4 +1,8 @@
-"""Sklearn's feature importance calculation."""
+"""Sklearn's feature importance calculation.
+
+Good link:
+https://medium.com/@srnghn/the-mathematics-of-decision-trees-random-forest-and-feature-importance-in-scikit-learn-and-spark-f2861df67e3
+"""
 import typing as t
 
 from sklearn.ensemble import RandomForestClassifier
