@@ -38,6 +38,14 @@ class MLNetwork:
         return flog * (1.0 - flog)
 
     @staticmethod
+    def f_relu(x: np.ndarray) -> np.ndarray:
+        return np.maximum(x, 0.0)
+
+    @staticmethod
+    def f_relu_deriv(x: np.ndarray) -> np.ndarray:
+        return np.heaviside(x, 0.0)
+
+    @staticmethod
     def loss_function(x: np.ndarray, y: np.ndarray) -> np.ndarray:
         """Loss function."""
         return 0.5 * np.power(x - y, 2.0)
@@ -60,6 +68,7 @@ class MLNetwork:
         self._ACTIVATION_FUNCS = {
             "tanh": (self.f_tanh, self.f_tanh_deriv),
             "logistic": (self.f_logistic, self.f_logistic_deriv),
+            "relu": (self.f_relu, self.f_relu_deriv),
         }
 
         if activation not in self._ACTIVATION_FUNCS:
@@ -178,7 +187,7 @@ class MLNetwork:
         return net
 
     def _backward(self, output: np.ndarray, cur_inst: np.ndarray,
-                  cur_label: np.ndarray, momentum: float = 0.0
+                  cur_label: np.ndarray, momentum: float = 0.0,
                   ) -> t.Sequence[np.ndarray]:
         """Apply backpropagation and adjust network weights."""
         deltas = (self.act_fun_deriv(output) * self.loss_function_deriv(
@@ -215,9 +224,6 @@ class MLNetwork:
             adjust_weights.insert(0, cur_weight_adjust)
             deltas = new_deltas
 
-        for i in np.arange(len(self.weights)):
-            self.weights[i] -= adjust_weights[i] + momentum * self.weights[i]
-
         return adjust_weights
 
     def _update_learning_speed(self,
@@ -246,14 +252,16 @@ class MLNetwork:
               alpha: float = 0.0,
               beta: float = 0.0,
               gamma: float = 0.0,
-              momentum: float = 0.0) -> "MLNetwork":
+              momentum: float = 0.0,
+              it_to_print: t.Optional[int] = None) -> "MLNetwork":
         """Train the network weights with fitted data."""
 
         it_num = 0
 
         batch_mean_error = 1.0 + epsilon
 
-        it_to_print = epochs // 10
+        if it_to_print is None:
+            it_to_print = epochs // 10
 
         while it_num < epochs and batch_mean_error > epsilon:
             it_num += 1
@@ -263,6 +271,10 @@ class MLNetwork:
 
             batch_mean_error = 0.0
 
+            adjust_weights = [
+                np.zeros(layer.shape) for layer in self.weights
+            ]
+
             # Stochastic gradient descent
             for i in batch_indexes:
                 cur_inst = self.X[i, :]
@@ -270,24 +282,30 @@ class MLNetwork:
 
                 output = self.forward(cur_inst)
 
-                adjust_weights = self._backward(
+                new_adjust_weights = self._backward(
                     output=output,
                     cur_inst=cur_inst,
                     cur_label=cur_label,
                     momentum=momentum)
 
-                if update_learning_rate:
-                    self._update_learning_speed(
-                        alpha=alpha,
-                        beta=beta,
-                        gamma=gamma,
-                        adjust_weights=adjust_weights)
+                for j in np.arange(len(self.weights)):
+                    adjust_weights[j] += new_adjust_weights[j]
 
                 batch_mean_error += self.loss_function(output, cur_label)
 
+            for i in np.arange(len(self.weights)):
+                self.weights[i] -= adjust_weights[i] + momentum * self.weights[i]
+
+            if update_learning_rate:
+                self._update_learning_speed(
+                    alpha=alpha,
+                    beta=beta,
+                    gamma=gamma,
+                    adjust_weights=adjust_weights)
+
             batch_mean_error = batch_mean_error.sum() / batch_size
 
-            if it_num % it_to_print == 0:
+            if it_to_print and (it_num % it_to_print == 0):
                 print("Iteration id: {} - cur batch error: {}"
                       "".format(it_num, batch_mean_error))
 
@@ -295,7 +313,6 @@ class MLNetwork:
 
 
 if __name__ == "__main__":
-    """
     from sklearn import datasets
     from sklearn import model_selection
     iris = datasets.load_iris()
@@ -312,15 +329,15 @@ if __name__ == "__main__":
         labels = sklearn.preprocessing.OneHotEncoder(
             categories="auto", sparse=False).fit_transform(y.reshape(-1, 1))
 
-        model = MLNetwork(4, activation="tanh")
+        model = MLNetwork(5, activation="tanh")
 
         model.fit(
             X[train, :],
             labels[train, :],
             normalize=False,
-            learning_speed=0.01)
+            learning_speed=0.001)
 
-        model.train(batch_size=train.size, epochs=1000)
+        model.train(batch_size=int(0.1 * train.size), epochs=5000)
 
         cur_acc = 0.0
         for inst, lab in zip(X[test, :], labels[test, :]):
@@ -333,19 +350,38 @@ if __name__ == "__main__":
 
     print("acc:", acc / n_splits)
     """
-    X = np.array([
-        [1, 1],
-        [1, 0],
-        [0, 0],
-        [0, 1],
-    ])
+    func = "tanh"
 
-    y = np.array([-1, 1, -1, 1])
+    if func == "tanh":
+        X = np.array([
+            [ 1,  1],
+            [ 1, -1],
+            [-1, -1],
+            [-1,  1],
+        ])
 
-    model = MLNetwork(2, activation="tanh")
-    model.fit(X, y, learning_speed=0.01, normalize=True)
-    model.train(batch_size=4, epochs=50000)
+        y = np.array([-1, 1, -1, 1])
 
-    X = (X - X.mean(axis=0)) / X.std(axis=0)
+    else:
+        X = np.array([
+            [1, 1],
+            [1, 0],
+            [0, 0],
+            [0, 1],
+        ])
+
+        y = np.array([0, 1, 0, 1])
+
+    model = MLNetwork(2, activation=func)
+    model.fit(X, y, learning_speed=0.01, normalize=False)
+    model.train(batch_size=4,
+                epochs=500000,
+                epsilon=1.0e-3,
+                it_to_print=2000)
+
+    if func == "tanh":
+        X = (X - X.mean(axis=0)) / X.std(axis=0)
+
     for inst in X:
-        print(inst, model.forward(inst))
+        print(inst, model.forward(inst).round())
+    """
