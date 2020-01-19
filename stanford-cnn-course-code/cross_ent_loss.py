@@ -72,7 +72,15 @@ def _test() -> None:
     X = np.random.randint(-5, 6, size=(10, 5))
     y = np.random.randint(3, size=10)
 
-    print("Loss:", cross_ent_loss(X=X, y_inds=y, W=W))
+    loss_val = cross_ent_loss(X=X, y_inds=y, W=W)
+    print("Loss:", loss_val)
+
+    _aux_loss = np.mean(-np.log(
+        scipy.special.softmax(np.dot(W, X.T), axis=0)[y, np.arange(y.size)]))
+    _aux_reg = 0.0001 * np.sum(np.square(W))
+    _total_loss = _aux_loss + _aux_reg
+
+    assert np.isclose(loss_val, _total_loss)
 
 
 if __name__ == "__main__":
