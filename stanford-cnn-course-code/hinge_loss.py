@@ -7,12 +7,12 @@ import typing as t
 import numpy as np
 
 
-def svm_loss(X: np.ndarray,
-             y_inds: np.ndarray,
-             W: np.ndarray,
-             b: t.Optional[np.ndarray] = None,
-             lambda_: float = 0.0001,
-             delta: float = 1.0) -> float:
+def hinge_loss(X: np.ndarray,
+               y_inds: np.ndarray,
+               W: np.ndarray,
+               b: t.Optional[np.ndarray] = None,
+               lambda_: float = 0.0001,
+               delta: float = 1.0) -> float:
     """Calculates the SVM loss for all instances in ``X``.
 
     The `SVM loss` is called `Multiclass Support Vector Machine loss`
@@ -84,7 +84,7 @@ def _test() -> None:
     X = np.random.randint(-5, 6, size=(10, 5))
     y = np.random.randint(3, size=10)
 
-    print("Loss:", svm_loss(X=X, y_inds=y, W=W))
+    print("Loss:", hinge_loss(X=X, y_inds=y, W=W))
 
 
 if __name__ == "__main__":
