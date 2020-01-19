@@ -66,11 +66,26 @@ def svm_loss(X: np.ndarray,
     loss = np.maximum(0, scores - correct_class_score + delta)
 
     if not np.equal(delta, 0):
-        loss[y_ind, _inst_inds] = 0
+        loss[y_inds, _inst_inds] = 0
 
     el_wise_loss = np.sum(loss, axis=0)
 
+    reg_factor = 0
     if not np.equal(lambda_, 0):
         reg_factor = lambda_ * np.sum(np.square(W))
 
     return np.mean(el_wise_loss) + reg_factor
+
+
+def _test() -> None:
+    np.random.seed(16)
+
+    W = np.random.random((3, 5))
+    X = np.random.randint(-5, 6, size=(10, 5))
+    y = np.random.randint(3, size=10)
+
+    print("Loss:", svm_loss(X=X, y_inds=y, W=W))
+
+
+if __name__ == "__main__":
+    _test()
