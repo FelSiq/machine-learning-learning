@@ -71,7 +71,7 @@ def cross_ent_loss(X: np.ndarray,
     return np.mean(loss) + reg_factor
 
 
-def _test() -> None:
+def _test_01() -> None:
     np.random.seed(16)
 
     W = np.random.random((3, 5))
@@ -89,5 +89,18 @@ def _test() -> None:
     assert np.isclose(loss_val, _total_loss)
 
 
+def _test_02() -> None:
+    W = np.array([
+        [0.01, -0.05, 0.1, 0.05, 0],
+        [0.7, 0.2, 0.05, 0.16, 0.2],
+        [0.0, -0.45, -0.2, 0.03, -0.3],
+    ])
+
+    x = np.array([-15, 22, -44, 56, 1]).reshape(1, -1)
+
+    print("Loss:", cross_ent_loss(X=x, y_inds=np.array([2]), W=W))
+
+
 if __name__ == "__main__":
-    _test()
+    _test_01()
+    _test_02()
