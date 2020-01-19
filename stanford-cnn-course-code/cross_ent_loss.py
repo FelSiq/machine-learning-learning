@@ -17,6 +17,12 @@ def cross_ent_loss(X: np.ndarray,
 
     Source: http://cs231n.github.io/linear-classify/
 
+    This loss is used in the `Softmax Classifier`, which is a
+    generalization of the Logistic Regression classifier. This loss
+    is actually just the cross entropy calculated on the softmax
+    function, and assuming that the `True class distribuition` has
+    a value 1 in the true class, and 0 in all other classes.
+
     Arguments
     ---------
     X : :obj:`np.ndarray`
