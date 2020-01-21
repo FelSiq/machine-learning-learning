@@ -15,16 +15,14 @@ VectorizedFuncType = t.Callable[[t.Union[np.ndarray, float]], float]
 class SGDClassifier:
     """."""
 
-    def __init__(
-            self, func_loss: VectorizedFuncType,
-            func_loss_grad: t.Callable[[np.ndarray, np.ndarray], np.ndarray]):
+    def __init__(self, func_loss: t.Callable, func_loss_grad: t.Callable):
         """."""
         self._num_classes = -1
         self._num_inst = -1
         self._num_attr = -1
         self._func_loss = func_loss
         self._func_loss_grad = func_loss_grad
-        self._func_reg = None  # type: VectorizedFuncType
+        self._func_reg = None  # type: t.Optional[VectorizedFuncType]
 
         self.weights = np.array([])  # type: np.ndarray
         self.learning_rate = -1.0
@@ -33,19 +31,27 @@ class SGDClassifier:
         self.max_it = -1
         self.epsilon = -1.0
 
+        self.errors = None  # type: t.Optional[np.ndarray]
+
     @classmethod
     def _add_bias(cls, X: np.ndarray) -> np.ndarray:
         """Concatenate a full column of 1's as the last ``X`` column."""
         return np.hstack((X, np.ones((X.shape[0], 1), dtype=X.dtype)))
 
-    def _optimize(self, X: np.ndarray, y: np.ndarray, verbose: int) -> None:
+    def _optimize(self,
+                  X: np.ndarray,
+                  y: np.ndarray,
+                  verbose: int,
+                  store_errors: bool = False) -> None:
         """."""
         cur_it = 0
         err_cur = 1 + self.epsilon
         err_prev = err_cur
 
+        if store_errors:
+            self.errors = np.zeros(self.max_it, dtype=float)
+
         while cur_it < self.max_it and err_cur > self.epsilon:
-            cur_it += 1
 
             sample_inds = np.random.choice(
                 y.size, size=self.batch_size, replace=False)
@@ -67,24 +73,30 @@ class SGDClassifier:
 
             self.weights -= self.learning_rate * grad
 
+            err_prev = err_cur
+            err_cur = loss_total / self.batch_size
+
+            if store_errors:
+                self.errors[cur_it] = err_cur
+
+            cur_it += 1
+
             if verbose:
                 print("Iteration: {} of {} - Current average loss: {:.6f} "
                       "(relative change of {:.2f}%)".format(
                           cur_it, self.max_it, err_cur,
                           100 * (err_cur - err_prev) / err_prev))
 
-            err_prev = err_cur
-            err_cur = loss_total / self.batch_size
-
     def fit(self,
             X: np.ndarray,
             y: np.ndarray,
             batch_size: int = 256,
-            max_it: int = 1000,
+            max_it: int = 5000,
             learning_rate: float = 0.0001,
             reg_rate: float = 0.0001,
             epsilon: float = 1.0e-6,
             add_bias: bool = True,
+            store_errors: bool = False,
             verbose: int = 0,
             random_state: t.Optional[int] = None) -> "SGDClassifier":
         """."""
@@ -123,7 +135,7 @@ class SGDClassifier:
         self.weights = np.random.uniform(
             low=-1.0, high=1.0, size=(self._num_classes, 1 + self._num_attr))
 
-        self._optimize(X=X, y=y, verbose=verbose)
+        self._optimize(X=X, y=y, verbose=verbose, store_errors=store_errors)
 
         return self
 
@@ -183,7 +195,7 @@ class SoftmaxClassifier(SGDClassifier):
 
 
 def _test() -> None:
-    """."""
+    """Full experiment with the implemented SoftmaxClassifier."""
     import matplotlib.pyplot as plt
     import sklearn.model_selection
 
@@ -193,26 +205,71 @@ def _test() -> None:
 
     np.random.seed(16)
 
-    X = np.vstack((
+    X = 0.85 * np.vstack((
         np.random.multivariate_normal(
             mean=(2, 2), cov=np.eye(2), size=inst_per_class),
         np.random.multivariate_normal(
             mean=(-3, -3), cov=np.eye(2), size=inst_per_class),
         np.random.multivariate_normal(
             mean=(0, 6), cov=np.eye(2), size=inst_per_class),
-    ))
+    )) + 0.15 * np.random.multivariate_normal(
+        mean=(0, 0), cov=np.eye(2), size=3 * inst_per_class)
 
     y = np.repeat(np.arange(3), inst_per_class).astype(int)
 
     X_train, X_test, y_train, y_test = sklearn.model_selection.train_test_split(
         X, y, test_size=0.2, random_state=32)
 
-    model.fit(X_train, y_train, batch_size=20)
+    folds = sklearn.model_selection.StratifiedKFold(n_splits=5)
+
+    learning_rate_candidates = np.logspace(-0.5, 0.2, 10)
+    learning_rate_acc = np.zeros(learning_rate_candidates.size)
+
+    for l_ind, learning_rate in enumerate(learning_rate_candidates):
+        print("Checking {} out of {} learning rates: {}...".format(
+            l_ind, learning_rate_candidates.size, learning_rate))
+        for ind, (inds_train, inds_test) in enumerate(folds.split(X_train, y_train)):
+            model.fit(
+                X_train[inds_train, :],
+                y_train[inds_train],
+                batch_size=32,
+                max_it=3000,
+                verbose=0,
+                learning_rate=learning_rate)
+
+            preds = model.predict(X_train[inds_test, :])
+            learning_rate_acc[ind] += np.sum(
+                preds == y_train[inds_test]) / inds_test.size
+
+    best_learning_rate = learning_rate_candidates[np.argmax(learning_rate_acc)]
+    print("Best learning rate:", best_learning_rate)
+
+    model.fit(
+        X_train,
+        y_train,
+        batch_size=32,
+        verbose=1,
+        store_errors=True,
+        learning_rate=best_learning_rate)
+
     preds = model.predict(X_test)
     print("Accuracy:", np.sum(preds == y_test) / y_test.size)
 
+    plt.suptitle("Step size: {:.8f}".format(best_learning_rate))
+
+    plt.subplot(1, 2, 1)
+    plt.title("Instances Scatter plot")
+    plt.xlabel("X1")
+    plt.ylabel("X2")
     plt.scatter(X_train[:, 0], X_train[:, 1], c=y_train, marker=".")
     plt.scatter(X_test[:, 0], X_test[:, 1], c=preds, marker="X")
+
+    plt.subplot(1, 2, 2)
+    plt.title("Errors per iteration")
+    plt.xlabel("Iteration")
+    plt.ylabel("Cross Entropy Error")
+    plt.plot(model.errors)
+
     plt.show()
 
 
