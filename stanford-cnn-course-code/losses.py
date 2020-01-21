@@ -12,6 +12,7 @@ def cross_ent_loss(X: np.ndarray,
                    y_inds: np.ndarray,
                    W: np.ndarray,
                    b: t.Optional[np.ndarray] = None,
+                   scores: t.Optional[np.ndarray] = None,
                    lambda_: float = 0.0001) -> float:
     """Calculates the Cross Entropy loss.
 
@@ -25,20 +26,25 @@ def cross_ent_loss(X: np.ndarray,
 
     Arguments
     ---------
-    X : :obj:`np.ndarray`
+    X : :obj:`np.ndarray`, shape: (num_inst, num_attr)
         Array of instances. Each row is an instance, and each column is
         an instance attribute.
 
-    y_indss : :obj:`np.ndarray`
+    y_inds : :obj:`np.ndarray`, shape: (num_inst,)
         Indices of the correct class for every instance in ``X``.
 
-    W : :obj:`np.ndarray`
+    W : :obj:`np.ndarray`, shape: (num_classes, num_attr)
         Weights of the previously fitted linear classifier.
 
-    b : :obj:`np.ndarray`, optional
+    b : :obj:`np.ndarray`, optional, shape: (num_inst,)
         Bias vector. If None, then ``X`` is expected to have the intercept
         column, and the bias vector is accordingly codded in within the
         ``W`` matrix.
+
+    scores : :obj:`np.ndarray`, optional, shape: (num_classes, num_inst)
+        Scores of each instance for each classe, calculated as the dot
+        product between W and X.T (X transposed). If not given, then the
+        scores will be calculated inside this function.
 
     lambda_ : :obj:`float`, optional
         Scale factor for the regularization value. Zero value means no
@@ -52,7 +58,8 @@ def cross_ent_loss(X: np.ndarray,
     """
     _inst_inds = np.arange(y_inds.size)
 
-    scores = np.dot(W, X.T)
+    if scores is None:
+        scores = np.dot(W, X.T)
 
     if b is not None:
         scores += b
@@ -75,6 +82,7 @@ def hinge_loss(X: np.ndarray,
                y_inds: np.ndarray,
                W: np.ndarray,
                b: t.Optional[np.ndarray] = None,
+               scores: t.Optional[np.ndarray] = None,
                lambda_: float = 0.0001,
                delta: float = 1.0) -> float:
     """Calculates the SVM loss for all instances in ``X``.
@@ -86,20 +94,25 @@ def hinge_loss(X: np.ndarray,
 
     Arguments
     ---------
-    X : :obj:`np.ndarray`
+    X : :obj:`np.ndarray`, shape: (num_inst, num_attr)
         Array of instances. Each row is an instance, and each column is
         an instance attribute.
 
-    y_inds : :obj:`np.ndarray`
+    y_inds : :obj:`np.ndarray`, shape: (num_inst,)
         Indices of the correct class for every instance in ``X``.
 
-    W : :obj:`np.ndarray`
+    W : :obj:`np.ndarray`, shape: (num_classes, num_attr)
         Weights of the previously fitted linear classifier.
 
-    b : :obj:`np.ndarray`, optional
+    b : :obj:`np.ndarray`, optional, shape: (num_inst,)
         Bias vector. If None, then ``X`` is expected to have the intercept
         column, and the bias vector is accordingly codded in within the
         ``W`` matrix.
+
+    scores : :obj:`np.ndarray`, optional, shape: (num_classes, num_inst)
+        Scores of each instance for each classe, calculated as the dot
+        product between W and X.T (X transposed). If not given, then the
+        scores will be calculated inside this function.
 
     lambda_ : :obj:`float`, optional
         Scale factor for the regularization value. Zero value means no
@@ -119,7 +132,8 @@ def hinge_loss(X: np.ndarray,
 
     # Note: each row in 'X' is an instance
     # Note: each row in 'W' represents a distinct class
-    scores = np.dot(W, X.T)
+    if scores is None:
+        scores = np.dot(W, X.T)
 
     if b is not None:
         scores += b
