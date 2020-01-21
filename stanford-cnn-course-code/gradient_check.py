@@ -53,6 +53,7 @@ def gradient_check(func: TypeVectorizedFunc,
                    x_limits: t.Sequence[t.Tuple[int, int]],
                    delta: float = 1.0e-8,
                    num_it: int = 20000,
+                   verbose: int = 0,
                    random_state: t.Optional[int] = None) -> float:
     """Check if the analytical gradient matches with the numerical.
 
@@ -99,6 +100,9 @@ def gradient_check(func: TypeVectorizedFunc,
     num_it : :obj:`int`, optional
         Number of random tests to be drawn.
 
+    verbose : :obj:`int`, optional
+        Verbosity level of the function.
+
     random_state : :obj:`int`, optional
         If given, set the random seed before any pseudo-random number
         generation. Keeps the results reproducible.
@@ -114,10 +118,14 @@ def gradient_check(func: TypeVectorizedFunc,
 
     error = 0.0
 
-    for inst in x_rand:
+    for cur_it, inst in enumerate(x_rand):
         val_num_grad = numerical_grad(func=func, inst=inst, delta=delta)
         val_ana_grad = analytic_grad(inst)
         error += (val_num_grad - val_ana_grad)**2
+
+        if verbose:
+            print("Current iteration: {} - Current error max norm: {}"
+                  .format(cur_it, np.max(error)))
 
     if not np.isscalar(error):
         error = np.sum(error)
