@@ -7,20 +7,23 @@ import typing as t
 
 import numpy as np
 
+import losses
+
 VectorizedFuncType = t.Callable[[t.Union[np.ndarray, float]], float]
 
 
 class SGDClassifier:
     """."""
 
-    def __init__(self, func_loss: VectorizedFuncType,
-                 func_loss_deriv: VectorizedFuncType):
+    def __init__(
+            self, func_loss: VectorizedFuncType,
+            func_loss_grad: t.Callable[[np.ndarray, np.ndarray], np.ndarray]):
         """."""
         self._num_classes = -1
         self._num_inst = -1
         self._num_attr = -1
         self._func_loss = func_loss
-        self._func_grad = None  # type: VectorizedFuncType
+        self._func_loss_grad = func_loss_grad
         self._func_reg = None  # type: VectorizedFuncType
 
         self.weights = np.array([])  # type: np.ndarray
@@ -29,8 +32,6 @@ class SGDClassifier:
         self.batch_size = -1
         self.max_it = -1
         self.epsilon = -1.0
-
-        self._valid_reg = {"l1", "l2", None}
 
     @classmethod
     def _add_bias(cls, X: np.ndarray) -> np.ndarray:
@@ -52,13 +53,17 @@ class SGDClassifier:
             X_sample = X[sample_inds, :]
             y_sample = y[sample_inds]
 
-            loss_inst = self._func_loss(X=X_sample, W=self.weights, y=y_sample)
-            loss_reg = self.reg_rate * self._func_reg(W=self.weights)
+            scores = self._predict(X=X_sample, add_bias=False)
 
-            loss_total = loss_inst + loss_reg
+            loss_total = self._func_loss(
+                X=X_sample,
+                y_inds=y_sample,
+                W=self.weights,
+                scores=scores,
+                lambda_=self.reg_rate)
 
-            grad = self._func_grad(
-                X=X_sample, W=self.weights, y=y_sample, loss=loss_total)
+            grad = self._func_loss_grad(
+                X=X_sample, y_inds=y_sample, scores=scores)
 
             self.weights -= self.learning_rate * grad
 
@@ -77,16 +82,14 @@ class SGDClassifier:
             batch_size: int = 256,
             max_it: int = 1000,
             learning_rate: float = 0.0001,
-            regularization: t.Optional[str] = "l2",
+            reg_rate: float = 0.0001,
             epsilon: float = 1.0e-6,
             add_bias: bool = True,
             verbose: int = 0,
             random_state: t.Optional[int] = None) -> "SGDClassifier":
         """."""
         if not 0 < batch_size <= y.size:
-            raise ValueError("'batch_size' must be a positive integer "
-                             "smaller than the number of instances (got "
-                             "{}.)".format(batch_size))
+            batch_size = y.size
 
         if X.ndim == 1:
             X = X.reshape(-1, 1)
@@ -96,24 +99,20 @@ class SGDClassifier:
                              "dimensions does not match!".format(
                                  X.shape[0], y.size))
 
-        if regularization not in self._valid_reg:
-            raise ValueError("Invalid 'regularization' value ({}). Choose a "
-                             "value between {}.".format(
-                                 regularization, self._valid_reg))
-
         if learning_rate <= 0:
-            raise ValueError("'learning_rate' must be positive (got {}.)"
-                             .format(learning_rate))
+            raise ValueError("'learning_rate' must be positive (got {}.)".
+                             format(learning_rate))
 
         if epsilon < 0:
-            raise ValueError("'epsilon' must be non-negative (got {}.)"
-                             .format(epsilon))
+            raise ValueError(
+                "'epsilon' must be non-negative (got {}.)".format(epsilon))
 
         self._num_classes = np.unique(y).size
         self._num_inst, self._num_attr = X.shape
         self.learning_rate = learning_rate
         self.batch_size = batch_size
         self.max_it = max_it
+        self.reg_rate = reg_rate
 
         if add_bias:
             X = self._add_bias(X)
@@ -128,7 +127,7 @@ class SGDClassifier:
 
         return self
 
-    def predict(self, X: np.ndarray, add_bias: bool = True) -> np.ndarray:
+    def _predict(self, X: np.ndarray, add_bias: bool = True) -> np.ndarray:
         """Calculate the linear scores based on fitted weights."""
         if X.ndim == 1:
             X = X.reshape(-1, 1)
@@ -136,7 +135,13 @@ class SGDClassifier:
         if add_bias:
             X = self._add_bias(X)
 
-        return np.dot(self.weights, X.T)
+        scores = np.dot(self.weights, X.T)
+
+        return scores
+
+    def predict(self, X: np.ndarray, add_bias: bool = True) -> np.ndarray:
+        """Calculate the linear scores based on fitted weights."""
+        return self._predict(X=X, add_bias=add_bias)
 
 
 class SoftmaxClassifier(SGDClassifier):
@@ -144,24 +149,71 @@ class SoftmaxClassifier(SGDClassifier):
 
     def __init__(self):
         """."""
-        super().__init__(self)
+        super().__init__(
+            func_loss=losses.cross_ent_loss,
+            func_loss_grad=self.cross_ent_grad)
 
     @classmethod
-    def logistic_fun(
-            cls, x: t.Union[np.ndarray, float]) -> t.Union[np.ndarray, float]:
-        """."""
-        return 1.0 / (1.0 + np.exp(-x))
+    def softmax(cls, scores: np.ndarray,
+                axis: t.Optional[int] = None) -> np.ndarray:
+        """Compute the Softmax function."""
+        # Note: subtract the maximum for numeric stability
+        _scores_exp = np.exp(scores - np.max(scores, axis=axis))
+        return _scores_exp / np.sum(_scores_exp, axis=axis)
 
-    @classmethod
-    def logistic_fun_deriv(
-            cls, x: t.Union[np.ndarray, float]) -> t.Union[np.ndarray, float]:
+    def predict(self, X: np.ndarray, add_bias: bool = True) -> np.ndarray:
         """."""
-        _aux = cls.logistic_fun(x)
-        return (1.0 - _aux) * _aux
+        scores = super()._predict(X=X, add_bias=add_bias)
+        scores_norm = self.softmax(scores, axis=0)
+        return np.argmax(scores_norm, axis=0)
+
+    def cross_ent_grad(self, X: np.ndarray, y_inds: np.ndarray,
+                       scores: np.ndarray) -> np.ndarray:
+        """."""
+        _scores = self.softmax(scores=scores, axis=0)
+
+        correct_class_ind = np.zeros((self._num_classes, y_inds.size))
+        correct_class_ind[y_inds, np.arange(y_inds.size)] = 1
+
+        loss_grad_reg = 2 * self.reg_rate * self.weights
+        loss_grad_score = np.dot(_scores - correct_class_ind, X)
+        loss_total = loss_grad_score / y_inds.size + loss_grad_reg
+
+        return loss_total
 
 
 def _test() -> None:
     """."""
+    import matplotlib.pyplot as plt
+    import sklearn.model_selection
+
+    model = SoftmaxClassifier()
+
+    inst_per_class = 200
+
+    np.random.seed(16)
+
+    X = np.vstack((
+        np.random.multivariate_normal(
+            mean=(2, 2), cov=np.eye(2), size=inst_per_class),
+        np.random.multivariate_normal(
+            mean=(-3, -3), cov=np.eye(2), size=inst_per_class),
+        np.random.multivariate_normal(
+            mean=(0, 6), cov=np.eye(2), size=inst_per_class),
+    ))
+
+    y = np.repeat(np.arange(3), inst_per_class).astype(int)
+
+    X_train, X_test, y_train, y_test = sklearn.model_selection.train_test_split(
+        X, y, test_size=0.2, random_state=32)
+
+    model.fit(X_train, y_train, batch_size=20)
+    preds = model.predict(X_test)
+    print("Accuracy:", np.sum(preds == y_test) / y_test.size)
+
+    plt.scatter(X_train[:, 0], X_train[:, 1], c=y_train, marker=".")
+    plt.scatter(X_test[:, 0], X_test[:, 1], c=preds, marker="X")
+    plt.show()
 
 
 if __name__ == "__main__":
