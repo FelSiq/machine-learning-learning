@@ -99,6 +99,24 @@ def _test_02() -> None:
     print("Loss:", hinge_loss(X=x, y_inds=np.array([2]), W=W))
 
 
+def _test_03() -> None:
+    np.random.seed(16)
+
+    NUM_INST = 100
+    NUM_CLASSES = 10
+    IMG_DIM = np.prod((16, 16, 3))
+
+    W = np.full((NUM_CLASSES, IMG_DIM + 1), 1)
+    y = np.random.randint(NUM_CLASSES, size=NUM_INST)
+    X = np.round(
+        np.hstack((np.random.random((NUM_INST, IMG_DIM)), np.ones((NUM_INST,
+                                                                   1)))))
+
+    print("Loss:", hinge_loss(X=X, y_inds=y, W=W, lambda_=0))
+    print("Expected:", NUM_CLASSES - 1)
+
+
 if __name__ == "__main__":
     _test_01()
     _test_02()
+    _test_03()
