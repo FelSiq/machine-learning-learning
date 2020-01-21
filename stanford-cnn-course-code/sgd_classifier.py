@@ -179,9 +179,15 @@ class SoftmaxClassifier(SGDClassifier):
         scores_norm = self.softmax(scores, axis=0)
         return np.argmax(scores_norm, axis=0)
 
-    def cross_ent_grad(self, X: np.ndarray, y_inds: np.ndarray,
-                       scores: np.ndarray) -> np.ndarray:
+    def cross_ent_grad(self,
+                       X: np.ndarray,
+                       y_inds: np.ndarray,
+                       scores: t.Optional[np.ndarray] = None,
+                       add_bias: bool = True) -> np.ndarray:
         """."""
+        if scores is None:
+            scores = super()._predict(X=X, add_bias=add_bias)
+
         _scores = self.softmax(scores=scores, axis=0)
 
         correct_class_ind = np.zeros((self._num_classes, y_inds.size))
@@ -194,17 +200,30 @@ class SoftmaxClassifier(SGDClassifier):
         return loss_total
 
 
-def _test() -> None:
-    """Full experiment with the implemented SoftmaxClassifier."""
-    import matplotlib.pyplot as plt
-    import sklearn.model_selection
+class SupportVectorClassifier(SGDClassifier):
+    """."""
 
-    model = SoftmaxClassifier()
+    def __init__(self):
+        """."""
+        super().__init__(
+            func_loss=losses.hinge_loss, func_loss_grad=self.hinge_loss_grad)
 
-    inst_per_class = 200
+    def predict(self, X: np.ndarray, add_bias: bool = True) -> np.ndarray:
+        """."""
+        return np.argmax(super()._predict(X=X, add_bias=add_bias), axis=0)
 
-    np.random.seed(16)
+    def hinge_loss_grad(self, X: np.ndarray, y_inds: np.ndarray,
+                        scores: np.ndarray) -> np.ndarray:
+        """."""
+        loss_grad_reg = 2 * self.reg_rate * self.weights
+        loss_grad_score = None  # TODO
+        loss_total = loss_grad_score / y_inds.size + loss_grad_reg
 
+        return loss_total
+
+
+def _gen_data(inst_per_class: int = 200) -> t.Tuple[np.ndarray, np.ndarray]:
+    """Generate multimodal data."""
     X = 0.85 * np.vstack((
         np.random.multivariate_normal(
             mean=(2, 2), cov=np.eye(2), size=inst_per_class),
@@ -217,6 +236,21 @@ def _test() -> None:
 
     y = np.repeat(np.arange(3), inst_per_class).astype(int)
 
+    return X, y
+
+
+def _test_softmax_classifier() -> None:
+    """Full experiment with the implemented SoftmaxClassifier."""
+    import matplotlib.pyplot as plt
+    import sklearn.model_selection
+
+    model = SoftmaxClassifier()
+
+    np.random.seed(16)
+
+    inst_per_class = 200
+    X, y = _gen_data(inst_per_class=inst_per_class)
+
     X_train, X_test, y_train, y_test = sklearn.model_selection.train_test_split(
         X, y, test_size=0.2, random_state=32)
 
@@ -228,12 +262,13 @@ def _test() -> None:
     for l_ind, learning_rate in enumerate(learning_rate_candidates):
         print("Checking {} out of {} learning rates: {}...".format(
             l_ind, learning_rate_candidates.size, learning_rate))
-        for ind, (inds_train, inds_test) in enumerate(folds.split(X_train, y_train)):
+        for ind, (inds_train, inds_test) in enumerate(
+                folds.split(X_train, y_train)):
             model.fit(
                 X_train[inds_train, :],
                 y_train[inds_train],
                 batch_size=32,
-                max_it=3000,
+                max_it=2000,
                 verbose=0,
                 learning_rate=learning_rate)
 
@@ -273,5 +308,38 @@ def _test() -> None:
     plt.show()
 
 
+def _test_softmax_grad() -> None:
+    import gradient_check
+
+    model = SoftmaxClassifier()
+
+    np.random.seed(16)
+
+    inst_per_class = 200
+    X, y = _gen_data(inst_per_class=inst_per_class)
+
+    X = np.hstack((X, np.ones((y.size, 1))))
+
+    reg_rate = 0.0001
+
+    func = lambda W: losses.cross_ent_loss(X=X,
+                   y_inds=y,
+                   W=W.reshape((3, 2 + 1)),
+                   lambda_=reg_rate)
+
+    func_grad = lambda W: model.cross_ent_grad(
+        X=X, y_inds=y, scores=np.dot(W, X.T))
+
+    error = gradient_check.gradient_check(
+        func=func,
+        analytic_grad=func_grad,
+        x_limits=np.array([-5, 5] * 9).reshape(-1, 2),
+        random_state=32)
+
+    print("Gradient check error:", error)
+
+
 if __name__ == "__main__":
-    _test()
+    # _test_softmax_grad()
+    _test_softmax_classifier()
+    _test_support_vector_classifier()
