@@ -311,8 +311,6 @@ def _test_softmax_classifier() -> None:
 def _test_softmax_grad() -> None:
     import gradient_check
 
-    model = SoftmaxClassifier()
-
     np.random.seed(16)
 
     inst_per_class = 200
@@ -327,19 +325,23 @@ def _test_softmax_grad() -> None:
                    W=W.reshape((3, 2 + 1)),
                    lambda_=reg_rate)
 
-    func_grad = lambda W: model.cross_ent_grad(
-        X=X, y_inds=y, scores=np.dot(W, X.T))
+    def func_grad(W: np.ndarray):
+        model = SoftmaxClassifier()
+        model.fit(X, y, max_it=0)
+        model.weights = W.reshape((3, 2 + 1))
+        return model.cross_ent_grad(X=X, y_inds=y, add_bias=False).ravel()
 
     error = gradient_check.gradient_check(
         func=func,
         analytic_grad=func_grad,
         x_limits=np.array([-5, 5] * 9).reshape(-1, 2),
-        random_state=32)
+        random_state=32,
+        verbose=1)
 
     print("Gradient check error:", error)
 
 
 if __name__ == "__main__":
-    # _test_softmax_grad()
-    _test_softmax_classifier()
-    _test_support_vector_classifier()
+    _test_softmax_grad()
+    # _test_softmax_classifier()
+    # _test_support_vector_classifier()
