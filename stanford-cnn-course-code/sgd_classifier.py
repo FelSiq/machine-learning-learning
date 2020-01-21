@@ -1,8 +1,4 @@
-"""Implement the Softmax Classifier.
-
-The softmax classifier is a multiclass generalization of the
-logist regression classifier.
-"""
+"""Implement Stochastic Gradient Descent Linear Classifiers."""
 import typing as t
 
 import numpy as np
@@ -13,10 +9,43 @@ VectorizedFuncType = t.Callable[[t.Union[np.ndarray, float]], float]
 
 
 class SGDClassifier:
-    """."""
+    """Implement Stochastic Gradient Descent Linear Classifiers.
+
+    Actually, it is implemented a more general concept of optimization
+    using Mini-Batches. When the Mini-batch has size of 1, then it is
+    the special case of Stochastic Gradient Descent. Nevertheless,
+    while incorrectly used, the technical term `SGD` os much more widely
+    known, and hence this module name.
+
+    The linear model here has the form f(X, W) = W * X^{T}, while W is
+    the weights that must be optimized using Gradient Descent.
+
+    `Gradient Descent` is just the algorithm of iteratively calculating
+    the gradient for each current `W` value, and making small steps in
+    the opposite direction of the gradient (where the function decrease
+    the fastest considering an infinitesimal-sized step). Both algorithm
+    steps are repeated many times, until some convergence criterion is
+    meet.
+    """
 
     def __init__(self, func_loss: t.Callable, func_loss_grad: t.Callable):
-        """."""
+        """Init SGD model.
+
+        Arguments
+        ---------
+        func_loss : :obj:`callable`
+            Loss function, also known as the objective function. This is
+            and extremely important parameter, as it essentially has the
+            power to define which algorithm is used to fit the model.
+            For instance, if ``func_loss`` is the `cross entropy loss,`
+            then the algorithm used is the `Softmax classification`,
+            and if ``func_loss`` is the `hinge loss`, then the algorithm
+            used is the Support Vector Classifier (the Support Vector
+            Machine with Linear Kernel.)
+
+        func_loss_grad : :obj:`callable`
+            Gradient function for the chosen ``func_loss`` function.
+        """
         self._num_classes = -1
         self._num_inst = -1
         self._num_attr = -1
@@ -43,7 +72,7 @@ class SGDClassifier:
                   y: np.ndarray,
                   verbose: int,
                   store_errors: bool = False) -> None:
-        """."""
+        """Optimize the weights using SGD strategy."""
         cur_it = 0
         err_cur = 1 + self.epsilon
         err_prev = err_cur
@@ -52,7 +81,6 @@ class SGDClassifier:
             self.errors = np.zeros(self.max_it, dtype=float)
 
         while cur_it < self.max_it and err_cur > self.epsilon:
-
             sample_inds = np.random.choice(
                 y.size, size=self.batch_size, replace=False)
 
@@ -93,13 +121,63 @@ class SGDClassifier:
             batch_size: int = 256,
             max_it: int = 5000,
             learning_rate: float = 0.0001,
-            reg_rate: float = 0.0001,
-            epsilon: float = 1.0e-6,
+            reg_rate: float = 0.01,
+            epsilon: float = 1e-3,
             add_bias: bool = True,
             store_errors: bool = False,
             verbose: int = 0,
             random_state: t.Optional[int] = None) -> "SGDClassifier":
-        """."""
+        """Use the given train data to optimize the classifier parameters.
+
+        Arguments
+        ---------
+        X : :obj:`np.ndarray`
+            Train instances. Each row is an instance, and each column
+            is an attribute.
+
+        y : :obj:`np.ndarray`
+            Target attribute. Must be an numerical array, and each class
+            must be an integer index starting from 0.
+
+        batch_size : :obj:`int`, optional
+            Batch size for each parameter update. The instances are
+            sampled at random for every batch, without replacement.
+
+        max_it : :obj:`int`, optional
+            Maximum number of parameter updates.
+
+        learning_rate : :obj:`float`, optional
+            Step size in the direction of the negative gradient of the
+            loss function for each parameter update.
+
+        reg_rate : :obj:`float`, optional
+            Regularization power. The regularization used is the L2
+            (Ridge) regularization.
+
+        epsilon : :obj:`float`, optional
+            Maximum average batch loss for early stopping.
+
+        add_bias : :obj:`bool`, optional
+            If True, add a constant column full of 1s as the last column
+            of ``X`` data, to fit the `bias` term alongside the other
+            parameters. This is called `bias trick`, and helps to simplify
+            the calculations.
+
+        store_errors : :obj:`bool`, optional
+            If True, store the errors for every mini-batch (in the
+            ``errors`` instance attribute.)
+
+        verbose : :obj:`int`, optional
+            Set the verbosity level of the fit procedure.
+
+        random_state : :obj:`int`, optional
+            If given, set the random seed before any pseudo-random
+            number generation.
+
+        Returns
+        -------
+        self
+        """
         if not 0 < batch_size <= y.size:
             batch_size = y.size
 
@@ -157,10 +235,14 @@ class SGDClassifier:
 
 
 class SoftmaxClassifier(SGDClassifier):
-    """."""
+    """Softmax Classifier algorithm.
+
+    It is a generalization of the Logistic Regression classifier
+    algorithm for multi-class classification problems.
+    """
 
     def __init__(self):
-        """."""
+        """Init a SGD classifier model with cross entropy loss."""
         super().__init__(
             func_loss=losses.cross_ent_loss,
             func_loss_grad=self.cross_ent_grad)
@@ -174,7 +256,7 @@ class SoftmaxClassifier(SGDClassifier):
         return _scores_exp / np.sum(_scores_exp, axis=axis)
 
     def predict(self, X: np.ndarray, add_bias: bool = True) -> np.ndarray:
-        """."""
+        """Linear predictions with Softmax normalization."""
         scores = super()._predict(X=X, add_bias=add_bias)
         scores_norm = self.softmax(scores, axis=0)
         return np.argmax(scores_norm, axis=0)
@@ -184,7 +266,7 @@ class SoftmaxClassifier(SGDClassifier):
                        y_inds: np.ndarray,
                        scores: t.Optional[np.ndarray] = None,
                        add_bias: bool = True) -> np.ndarray:
-        """."""
+        """Cross entropy loss function gradient."""
         if scores is None:
             scores = super()._predict(X=X, add_bias=add_bias)
 
@@ -256,10 +338,10 @@ def _test_softmax_classifier() -> None:
 
     folds = sklearn.model_selection.StratifiedKFold(n_splits=5)
 
-    learning_rate_candidates = np.logspace(-0.5, 0.2, 10)
+    learning_rate_candidates = np.logspace(-0.5, 0, 6)
     learning_rate_acc = np.zeros(learning_rate_candidates.size)
 
-    for l_ind, learning_rate in enumerate(learning_rate_candidates):
+    for l_ind, learning_rate in enumerate(learning_rate_candidates, 1):
         print("Checking {} out of {} learning rates: {}...".format(
             l_ind, learning_rate_candidates.size, learning_rate))
         for ind, (inds_train, inds_test) in enumerate(
@@ -318,16 +400,17 @@ def _test_softmax_grad() -> None:
 
     X = np.hstack((X, np.ones((y.size, 1))))
 
-    reg_rate = 0.0001
+    reg_rate = 0.01
 
-    func = lambda W: losses.cross_ent_loss(X=X,
-                   y_inds=y,
-                   W=W.reshape((3, 2 + 1)),
-                   lambda_=reg_rate)
+    func = lambda W: losses.cross_ent_loss(
+        X=X,
+        y_inds=y,
+        W=W.reshape((3, 2 + 1)),
+        lambda_=reg_rate)
 
     def func_grad(W: np.ndarray):
         model = SoftmaxClassifier()
-        model.fit(X, y, max_it=0)
+        model.fit(X, y, max_it=0, reg_rate=reg_rate)
         model.weights = W.reshape((3, 2 + 1))
         return model.cross_ent_grad(X=X, y_inds=y, add_bias=False).ravel()
 
@@ -335,6 +418,7 @@ def _test_softmax_grad() -> None:
         func=func,
         analytic_grad=func_grad,
         x_limits=np.array([-5, 5] * 9).reshape(-1, 2),
+        num_it=2000,
         random_state=32,
         verbose=1)
 
@@ -343,5 +427,5 @@ def _test_softmax_grad() -> None:
 
 if __name__ == "__main__":
     _test_softmax_grad()
-    # _test_softmax_classifier()
+    _test_softmax_classifier()
     # _test_support_vector_classifier()
