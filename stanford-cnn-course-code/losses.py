@@ -192,7 +192,7 @@ def _test_hinge_03() -> None:
         np.hstack((np.random.random((NUM_INST, IMG_DIM)), np.ones((NUM_INST,
                                                                    1)))))
 
-    print("Loss:", hinge_loss(X=X, y_inds=y, W=W, lambda_=0))
+    print("Loss:", hinge_loss(X=X, y_inds=y, W=W))
     print("Expected:", NUM_CLASSES - 1)
 
 
@@ -240,7 +240,7 @@ def _test_cross_ent_03() -> None:
             (NUM_INST, IMG_DIM)) * y.reshape(-1, 1) + np.random.random(
                 (NUM_INST, IMG_DIM)), np.ones((NUM_INST, 1)))))
 
-    print("Loss:", cross_ent_loss(X=X, y_inds=y, W=W, lambda_=0))
+    print("Loss:", cross_ent_loss(X=X, y_inds=y, W=W))
     print("Expected:", np.log(NUM_CLASSES))
 
 
