@@ -105,18 +105,18 @@ class SGDClassifier:
             loss_reg = self._func_reg(
                 W=self.weights, lambda_=self.reg_rate, exclude_bias=True)
 
-            loss = self._func_loss(
+            loss_data = self._func_loss(
                 X=X_sample, y_inds=y_sample, W=self.weights, scores=scores)
 
-            loss_total = loss + loss_reg
+            loss_total = loss_data + loss_reg
 
-            grad_reg = self._func_reg_grad(
+            grad_loss_reg = self._func_reg_grad(
                 W=self.weights, lambda_=self.reg_rate, exclude_bias=True)
 
-            grad_loss = self._func_loss_grad(
+            grad_loss_data = self._func_loss_grad(
                 X=X_sample, y_inds=y_sample, scores=scores, add_bias=False)
 
-            grad_total = grad_loss + grad_reg
+            grad_total = grad_loss_data + grad_loss_reg
 
             self.weights -= self.learning_rate * grad_total
 
