@@ -52,6 +52,7 @@ class SGDClassifier:
         self._func_loss = func_loss
         self._func_loss_grad = func_loss_grad
         self._func_reg = None  # type: t.Optional[VectorizedFuncType]
+        self._data_mean = np.array([])
 
         self.weights = np.array([])  # type: np.ndarray
         self.learning_rate = -1.0
@@ -61,7 +62,7 @@ class SGDClassifier:
         self.epsilon = -1.0
         self.patience = -1
 
-        self.errors = None  # type: t.Optional[np.ndarray]
+        self.errors = np.array([])
 
     @classmethod
     def _add_bias(cls, X: np.ndarray) -> np.ndarray:
@@ -95,7 +96,8 @@ class SGDClassifier:
             X_sample = X[sample_inds, :]
             y_sample = y[sample_inds]
 
-            scores = self._predict(X=X_sample, add_bias=False)
+            scores = self._predict(
+                X=X_sample, center_data=False, add_bias=False)
 
             loss_total = self._func_loss(
                 X=X_sample,
@@ -105,7 +107,7 @@ class SGDClassifier:
                 lambda_=self.reg_rate)
 
             grad = self._func_loss_grad(
-                X=X_sample, y_inds=y_sample, scores=scores)
+                X=X_sample, y_inds=y_sample, scores=scores, add_bias=False)
 
             self.weights -= self.learning_rate * grad
 
@@ -139,10 +141,10 @@ class SGDClassifier:
                 early_stop_message = "patience ({}) ran out".format(
                     self.patience)
 
-            elif cur_err <= self.epsilon:
+            elif err_cur <= self.epsilon:
                 early_stop_message = ("iteration loss ({:.4f}) smaller than "
                                       "'epsilon' ({:.4f})".format(
-                                          cur_err, epsilon))
+                                          err_cur, self.epsilon))
 
             else:
                 early_stop_message = "unknown reason"
@@ -257,6 +259,8 @@ class SGDClassifier:
 
         self._num_classes = np.unique(y).size
         self._num_inst, self._num_attr = X.shape
+        self._data_mean = np.mean(X, axis=0)
+
         self.learning_rate = learning_rate
         self.batch_size = batch_size
         self.max_it = max_it
@@ -265,6 +269,12 @@ class SGDClassifier:
 
         if add_bias:
             X = self._add_bias(X)
+            self._data_mean = np.hstack((self._data_mean, 0.0))
+
+        else:
+            self._data_mean[-1] = 0.0
+
+        X = X - self._data_mean
 
         if random_state is not None:
             np.random.seed(random_state)
@@ -281,13 +291,20 @@ class SGDClassifier:
 
         return self
 
-    def _predict(self, X: np.ndarray, add_bias: bool = True) -> np.ndarray:
+    def _predict(self,
+                 X: np.ndarray,
+                 center_data: bool = True,
+                 add_bias: bool = True) -> np.ndarray:
         """Calculate the linear scores based on fitted weights."""
         if X.ndim == 1:
             X = X.reshape(-1, 1)
 
         if add_bias:
             X = self._add_bias(X)
+
+        # Center data based on the training data mean
+        if center_data:
+            X = X - self._data_mean
 
         scores = np.dot(self.weights, X.T)
 
@@ -332,7 +349,8 @@ class SoftmaxClassifier(SGDClassifier):
                        add_bias: bool = True) -> np.ndarray:
         """Cross entropy loss function gradient."""
         if scores is None:
-            scores = super()._predict(X=X, add_bias=add_bias)
+            scores = super()._predict(
+                X=X, center_data=False, add_bias=add_bias)
 
         _scores = self.softmax(scores=scores, axis=0)
 
@@ -358,13 +376,16 @@ class SupportVectorClassifier(SGDClassifier):
         """Predict the class of new instances."""
         return np.argmax(super()._predict(X=X, add_bias=add_bias), axis=0)
 
-    def hinge_loss_grad(self, X: np.ndarray, y_inds: np.ndarray,
-                       scores: t.Optional[np.ndarray] = None,
-                       add_bias: bool = True,
-                       delta: int = 1.0) -> np.ndarray:
+    def hinge_loss_grad(self,
+                        X: np.ndarray,
+                        y_inds: np.ndarray,
+                        scores: t.Optional[np.ndarray] = None,
+                        add_bias: bool = True,
+                        delta: float = 1.0) -> np.ndarray:
         """Gradient of the Hinge loss function."""
         if scores is None:
-            scores = super()._predict(X=X, add_bias=add_bias)
+            scores = super()._predict(
+                X=X, center_data=False, add_bias=add_bias)
 
         _inst_inds = np.arange(y_inds.size)
 
@@ -406,14 +427,15 @@ def _plot(X_train: np.ndarray,
           X_test: np.ndarray,
           y_train: np.ndarray,
           y_test: np.ndarray,
-          model: SoftmaxClassifier,
+          model: SGDClassifier,
           num_bg_inst: int = 75) -> None:
     import matplotlib.pyplot as plt
-    lims = np.quantile(np.vstack((X_train, X_test)), (0, 1), axis=0)
+
     null_model_accuracy = np.max(np.bincount(y_train)) / y_train.size
     preds = model.predict(X_test)
     correctly_classified = preds == y_test
     accuracy = np.sum(correctly_classified) / y_test.size
+    lims = np.quantile(np.vstack((X_train, X_test)), (0, 1), axis=0)
 
     A, B = np.meshgrid(
         np.linspace(*lims[:, 0], num_bg_inst),
@@ -530,15 +552,22 @@ def _test_softmax_classifier_01() -> None:
 def _test_softmax_classifier_02() -> None:
     from sklearn.datasets import load_iris
     iris = load_iris()
-    _test_classifier(model=SoftmaxClassifier(),
-        X=iris.data[:, [0, 1]], y=iris.target, train_patience=100)
+    _test_classifier(
+        model=SoftmaxClassifier(),
+        X=iris.data[:, [0, 1]],
+        y=iris.target,
+        train_patience=100)
 
 
 def _test_softmax_classifier_03() -> None:
     from sklearn.datasets import load_iris
     iris = load_iris()
-    _test_classifier(model=SoftmaxClassifier(),
-        X=iris.data, y=iris.target, train_patience=75, plot=False)
+    _test_classifier(
+        model=SoftmaxClassifier(),
+        X=iris.data,
+        y=iris.target,
+        train_patience=75,
+        plot=False)
 
 
 def _test_softmax_grad() -> None:
@@ -561,7 +590,7 @@ def _test_softmax_grad() -> None:
 
     def func_grad(W: np.ndarray):
         model = SoftmaxClassifier()
-        model.fit(X, y, max_it=0, reg_rate=reg_rate)
+        model.fit(X, y, max_it=0, add_bias=False, reg_rate=reg_rate)
         model.weights = W.reshape((3, 2 + 1))
         return model.cross_ent_grad(X=X, y_inds=y, add_bias=False).ravel()
 
@@ -596,7 +625,7 @@ def _test_hinge_grad() -> None:
 
     def func_grad(W: np.ndarray):
         model = SupportVectorClassifier()
-        model.fit(X, y, max_it=0, reg_rate=reg_rate)
+        model.fit(X, y, max_it=0, add_bias=False, reg_rate=reg_rate)
         model.weights = W.reshape((3, 2 + 1))
         return model.hinge_loss_grad(X=X, y_inds=y, add_bias=False).ravel()
 
@@ -623,15 +652,22 @@ def _test_svc_01() -> None:
 def _test_svc_02() -> None:
     from sklearn.datasets import load_iris
     iris = load_iris()
-    _test_classifier(model=SupportVectorClassifier(),
-        X=iris.data[:, [0, 1]], y=iris.target, train_patience=100)
+    _test_classifier(
+        model=SupportVectorClassifier(),
+        X=iris.data[:, [0, 1]],
+        y=iris.target,
+        train_patience=100)
 
 
 def _test_svc_03() -> None:
     from sklearn.datasets import load_iris
     iris = load_iris()
-    _test_classifier(model=SupportVectorClassifier(),
-        X=iris.data, y=iris.target, train_patience=75, plot=False)
+    _test_classifier(
+        model=SupportVectorClassifier(),
+        X=iris.data,
+        y=iris.target,
+        train_patience=75,
+        plot=False)
 
 
 if __name__ == "__main__":
