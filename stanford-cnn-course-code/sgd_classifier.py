@@ -359,14 +359,27 @@ class SupportVectorClassifier(SGDClassifier):
         return np.argmax(super()._predict(X=X, add_bias=add_bias), axis=0)
 
     def hinge_loss_grad(self, X: np.ndarray, y_inds: np.ndarray,
-                        scores: np.ndarray) -> np.ndarray:
+                       scores: t.Optional[np.ndarray] = None,
+                       add_bias: bool = True,
+                       delta: int = 1.0) -> np.ndarray:
         """Gradient of the Hinge loss function."""
+        if scores is None:
+            scores = super()._predict(X=X, add_bias=add_bias)
+
+        _inst_inds = np.arange(y_inds.size)
+
+        correct_class_score = scores[y_inds, _inst_inds]
+
+        # Incorrect classes
+        _aux = (scores - correct_class_score + delta > 0).astype(int)
+
+        # Correct classes
+        _aux[y_inds, _inst_inds] = 0
+        _aux[y_inds, _inst_inds] = -np.sum(_aux, axis=0)
+
+        loss_grad_score = np.dot(_aux, X)
+
         loss_grad_reg = 2 * self.reg_rate * self.weights
-        loss_grad_score = np.dot(X, X)
-
-        loss_grad_score = np.maximum(0, loss_grad_score)
-        loss_grad_score[y_inds, np.arange(y_inds.size)] = 0
-
         loss_total = loss_grad_score / y_inds.size + loss_grad_reg
 
         return loss_total
@@ -564,9 +577,49 @@ def _test_softmax_grad() -> None:
     print("Gradient check error:", error)
 
 
+def _test_hinge_grad() -> None:
+    import gradient_check
+
+    np.random.seed(16)
+
+    inst_per_class = 200
+    X, y = _gen_data(inst_per_class=inst_per_class)
+
+    X = np.hstack((X, np.ones((y.size, 1))))
+
+    reg_rate = 0.01
+
+    func = lambda W: losses.hinge_loss(
+        X=X,
+        y_inds=y,
+        W=W.reshape((3, 2 + 1)),
+        lambda_=reg_rate)
+
+    def func_grad(W: np.ndarray):
+        model = SupportVectorClassifier()
+        model.fit(X, y, max_it=0, reg_rate=reg_rate)
+        model.weights = W.reshape((3, 2 + 1))
+        return model.hinge_loss_grad(X=X, y_inds=y, add_bias=False).ravel()
+
+    error = gradient_check.gradient_check(
+        func=func,
+        analytic_grad=func_grad,
+        x_limits=np.array([-5, 5] * 9).reshape(-1, 2),
+        num_it=2000,
+        random_state=32,
+        verbose=0)
+
+    print("Gradient check error:", error)
+
+
+def _test_support_vector_classifier_01() -> None:
+    """."""
+
+
 if __name__ == "__main__":
-    _test_softmax_grad()
-    _test_softmax_classifier_01()
-    _test_softmax_classifier_02()
-    _test_softmax_classifier_03()
-    # _test_support_vector_classifier()
+    # _test_softmax_grad()
+    # _test_softmax_classifier_01()
+    # _test_softmax_classifier_02()
+    # _test_softmax_classifier_03()
+    # _test_hinge_grad()
+    _test_support_vector_classifier_01()
