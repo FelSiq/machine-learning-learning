@@ -135,6 +135,28 @@ def hinge_loss(X: np.ndarray,
     return np.mean(el_wise_loss)
 
 
+def log_likelihood(X: np.ndarray,
+                   y_inds: np.ndarray,
+                   W: np.ndarray,
+                   b: t.Optional[np.ndarray] = None,
+                   scores: t.Optional[np.ndarray] = None) -> float:
+    """Log-likelihood loss function."""
+    # Note: each row in 'X' is an instance
+    # Note: each row in 'W' represents a distinct class
+    if scores is None:
+        scores = np.dot(W, X.T)
+
+    if b is not None:
+        scores += b
+
+    sig_out = 1.0 / (1.0 + np.exp(-scores))
+
+    el_wise_loss = (
+        y_inds * np.log(sig_out) + (1 - y_inds) * np.log(1 - sig_out))
+
+    return -np.mean(el_wise_loss)
+
+
 def _test_hinge_01() -> None:
     np.random.seed(16)
 
