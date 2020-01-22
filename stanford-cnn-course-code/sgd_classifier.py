@@ -460,15 +460,14 @@ def _plot(X_train: np.ndarray,
     plt.show()
 
 
-def _test_softmax_classifier(X: np.ndarray,
-                             y: np.ndarray,
-                             train_patience: int = 20,
-                             reg_rate: float = 0.01,
-                             plot: bool = True) -> None:
+def _test_classifier(X: np.ndarray,
+                     y: np.ndarray,
+                     model: SGDClassifier,
+                     train_patience: int = 20,
+                     reg_rate: float = 0.01,
+                     plot: bool = True) -> None:
     """Full experiment with the implemented SoftmaxClassifier."""
     import sklearn.model_selection
-
-    model = SoftmaxClassifier()
 
     X_train, X_test, y_train, y_test = sklearn.model_selection.train_test_split(
         X, y, test_size=0.2, random_state=32)
@@ -525,20 +524,20 @@ def _test_softmax_classifier_01() -> None:
     inst_per_class = 200
     X, y = _gen_data(inst_per_class=inst_per_class)
 
-    _test_softmax_classifier(X=X, y=y)
+    _test_classifier(model=SoftmaxClassifier(), X=X, y=y)
 
 
 def _test_softmax_classifier_02() -> None:
     from sklearn.datasets import load_iris
     iris = load_iris()
-    _test_softmax_classifier(
+    _test_classifier(model=SoftmaxClassifier(),
         X=iris.data[:, [0, 1]], y=iris.target, train_patience=100)
 
 
 def _test_softmax_classifier_03() -> None:
     from sklearn.datasets import load_iris
     iris = load_iris()
-    _test_softmax_classifier(
+    _test_classifier(model=SoftmaxClassifier(),
         X=iris.data, y=iris.target, train_patience=75, plot=False)
 
 
@@ -612,14 +611,37 @@ def _test_hinge_grad() -> None:
     print("Gradient check error:", error)
 
 
-def _test_support_vector_classifier_01() -> None:
-    """."""
+def _test_svc_01() -> None:
+    np.random.seed(16)
+
+    inst_per_class = 200
+    X, y = _gen_data(inst_per_class=inst_per_class)
+
+    _test_classifier(model=SupportVectorClassifier(), X=X, y=y)
+
+
+def _test_svc_02() -> None:
+    from sklearn.datasets import load_iris
+    iris = load_iris()
+    _test_classifier(model=SupportVectorClassifier(),
+        X=iris.data[:, [0, 1]], y=iris.target, train_patience=100)
+
+
+def _test_svc_03() -> None:
+    from sklearn.datasets import load_iris
+    iris = load_iris()
+    _test_classifier(model=SupportVectorClassifier(),
+        X=iris.data, y=iris.target, train_patience=75, plot=False)
 
 
 if __name__ == "__main__":
-    # _test_softmax_grad()
-    # _test_softmax_classifier_01()
-    # _test_softmax_classifier_02()
-    # _test_softmax_classifier_03()
-    # _test_hinge_grad()
-    _test_support_vector_classifier_01()
+    _test_softmax_grad()
+    _test_hinge_grad()
+
+    _test_softmax_classifier_01()
+    _test_softmax_classifier_02()
+    _test_softmax_classifier_03()
+
+    _test_svc_01()
+    _test_svc_02()
+    _test_svc_03()
