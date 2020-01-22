@@ -29,7 +29,11 @@ class SGDClassifier:
     meet.
     """
 
-    def __init__(self, func_loss: t.Callable, func_loss_grad: t.Callable):
+    def __init__(self,
+                 func_loss: t.Callable,
+                 func_loss_grad: t.Callable,
+                 check_data_func: t.Optional[
+                     t.Callable[[np.ndarray, np.ndarray], None]] = None):
         """Init SGD model.
 
         Arguments
@@ -46,11 +50,16 @@ class SGDClassifier:
 
         func_loss_grad : :obj:`callable`
             Gradient function for the chosen ``func_loss`` function.
+
+        check_data_func : :obj:`callable`, optional
+            Function used to verify if the fitted data follows the
+            algorithm standards.
         """
         self._func_loss = func_loss
         self._func_reg = regularization.l2
         self._func_loss_grad = func_loss_grad
         self._func_reg_grad = regularization.l2_grad
+        self._check_data_func = check_data_func
 
         self._num_classes = -1
         self._num_inst = -1
@@ -267,7 +276,14 @@ class SGDClassifier:
             raise ValueError(
                 "'epsilon' must be non-negative (got {}.)".format(epsilon))
 
+        if self._check_data_func is not None:
+            self._check_data_func(X, y)
+
         self._num_classes = np.unique(y).size
+
+        if self._num_classes == 2:
+            self._num_classes -= 1
+
         self._num_inst, self._num_attr = X.shape
         self._data_mean = np.mean(X, axis=0)
 
@@ -409,6 +425,58 @@ class SupportVectorClassifier(SGDClassifier):
         loss_total = np.dot(_aux, X)
 
         return loss_total / y_inds.size
+
+
+class LogisticRegressionClassifier(SGDClassifier):
+    def __init__(self):
+        """Init a SGD classifier with (negative) Log-Likelihood loss function."""
+        super().__init__(
+            func_loss=losses.log_likelihood,
+            func_loss_grad=self.log_likelihood_grad,
+            check_data_func=self._check_binary_problem)
+
+    @staticmethod
+    def _check_binary_problem(X: np.ndarray, y: np.ndarray) -> None:
+        y_unique = np.unique(y)
+
+        if y_unique.size != 2:
+            raise ValueError("'y' must be binary (got {} classes.)".format(
+                y_unique.size))
+
+        if not np.all(np.isin(y_unique, [0, 1])):
+            raise ValueError("'y' classes must be '0' and '1' "
+                             "(got '{}' and '{}'.)".format(*y_unique))
+
+    @classmethod
+    def sigmoid(cls, X: np.ndarray) -> np.ndarray:
+        """Sigmoid function implementation."""
+        return 1.0 / (1.0 + np.exp(-X))
+
+    def predict(self,
+                X: np.ndarray,
+                add_bias: bool = True,
+                return_scores: bool = False) -> np.ndarray:
+        """Linear predictions with Logistic normalization."""
+        scores = super()._predict(X=X, add_bias=add_bias)
+
+        if return_scores:
+            return self.sigmoid(scores)
+
+        # Note: no need to apply logistic function, as
+        # self.sigmoid(x) > 0.5 iff x > 0.
+        return scores.ravel() > 0.0
+
+    def log_likelihood_grad(self,
+                            X: np.ndarray,
+                            y_inds: np.ndarray,
+                            scores: t.Optional[np.ndarray] = None,
+                            add_bias: bool = True) -> np.ndarray:
+        """Gradient of the (negative) Log-likelihood loss function."""
+        if scores is None:
+            scores = super()._predict(
+                X=X, center_data=False, add_bias=add_bias)
+
+        return -np.dot(y_inds - self.sigmoid(scores), X) / y_inds.size
 
 
 def _gen_data(inst_per_class: int = 200) -> t.Tuple[np.ndarray, np.ndarray]:
@@ -636,6 +704,39 @@ def _test_hinge_grad() -> None:
     print("Gradient check error:", error)
 
 
+def _test_log_likelihood_grad() -> None:
+    import gradient_check
+
+    np.random.seed(16)
+
+    inst_per_class = 200
+    X, y = _gen_data(inst_per_class=inst_per_class)
+
+    # Make a binary classification problem
+    X = X[:-inst_per_class, :]
+    y = y[:-inst_per_class]
+
+    X = np.hstack((X, np.ones((y.size, 1))))
+
+    func = lambda W: losses.log_likelihood(X=X, y_inds=y, W=W.reshape((1, 2 + 1)))
+
+    def func_grad(W: np.ndarray):
+        model = LogisticRegressionClassifier()
+        model.fit(X, y, max_it=0, add_bias=False)
+        model.weights = W.reshape((1, 2 + 1))
+        return model.log_likelihood_grad(X=X, y_inds=y, add_bias=False).ravel()
+
+    error = gradient_check.gradient_check(
+        func=func,
+        analytic_grad=func_grad,
+        x_limits=np.array([-1, 1] * 3).reshape(-1, 2),
+        num_it=3000,
+        random_state=32,
+        verbose=0)
+
+    print("Gradient check error:", error)
+
+
 def _test_svc_01() -> None:
     np.random.seed(16)
 
@@ -666,14 +767,30 @@ def _test_svc_03() -> None:
         plot=False)
 
 
+def _test_logistic_classifier_01() -> None:
+    np.random.seed(16)
+
+    inst_per_class = 200
+    X, y = _gen_data(inst_per_class=inst_per_class)
+
+    X = X[:-inst_per_class, :]
+    y = y[:-inst_per_class]
+
+    _test_classifier(
+        model=LogisticRegressionClassifier(), X=X, y=y, train_patience=100)
+
+
 if __name__ == "__main__":
-    _test_softmax_grad()
-    _test_hinge_grad()
+    # _test_softmax_grad()
+    # _test_hinge_grad()
+    # _test_log_likelihood_grad()
 
     _test_softmax_classifier_01()
-    _test_softmax_classifier_02()
-    _test_softmax_classifier_03()
+    # _test_softmax_classifier_02()
+    # _test_softmax_classifier_03()
 
     _test_svc_01()
-    _test_svc_02()
-    _test_svc_03()
+    # _test_svc_02()
+    # _test_svc_03()
+
+    _test_logistic_classifier_01()
