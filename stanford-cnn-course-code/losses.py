@@ -12,8 +12,7 @@ def cross_ent_loss(X: np.ndarray,
                    y_inds: np.ndarray,
                    W: np.ndarray,
                    b: t.Optional[np.ndarray] = None,
-                   scores: t.Optional[np.ndarray] = None,
-                   lambda_: float = 0.0001) -> float:
+                   scores: t.Optional[np.ndarray] = None) -> float:
     """Calculates the Cross Entropy loss.
 
     Source: http://cs231n.github.io/linear-classify/
@@ -46,11 +45,6 @@ def cross_ent_loss(X: np.ndarray,
         product between W and X.T (X transposed). If not given, then the
         scores will be calculated inside this function.
 
-    lambda_ : :obj:`float`, optional
-        Scale factor for the regularization value. Zero value means no
-        regularization. The regularization used is the Ridge regularization
-        (sum of element-wise squared ``W``.)
-
     Returns
     -------
     float
@@ -71,11 +65,7 @@ def cross_ent_loss(X: np.ndarray,
     #   = -f_{y_{i}} + \log\left(\sum_{j}e^{f_{j}}\right)
     loss = -correct_class_score + scipy.special.logsumexp(scores, axis=0)
 
-    reg_factor = 0
-    if not np.equal(0, lambda_):
-        reg_factor = lambda_ * np.sum(np.square(W))
-
-    return np.mean(loss) + reg_factor
+    return np.mean(loss)
 
 
 def hinge_loss(X: np.ndarray,
@@ -83,7 +73,6 @@ def hinge_loss(X: np.ndarray,
                W: np.ndarray,
                b: t.Optional[np.ndarray] = None,
                scores: t.Optional[np.ndarray] = None,
-               lambda_: float = 0.0001,
                delta: float = 1.0) -> float:
     """Calculates the SVM loss for all instances in ``X``.
 
@@ -114,11 +103,6 @@ def hinge_loss(X: np.ndarray,
         product between W and X.T (X transposed). If not given, then the
         scores will be calculated inside this function.
 
-    lambda_ : :obj:`float`, optional
-        Scale factor for the regularization value. Zero value means no
-        regularization. The regularization used is the Ridge regularization
-        (sum of element-wise squared ``W``.)
-
     delta : :obj:`float`, optional
         Size of the margin (distance) demanded between the true class
         score and the other scores.
@@ -148,11 +132,7 @@ def hinge_loss(X: np.ndarray,
 
     el_wise_loss = np.sum(loss, axis=0)
 
-    reg_factor = 0
-    if not np.equal(lambda_, 0):
-        reg_factor = lambda_ * np.sum(np.square(W))
-
-    return np.mean(el_wise_loss) + reg_factor
+    return np.mean(el_wise_loss)
 
 
 def _test_hinge_01() -> None:

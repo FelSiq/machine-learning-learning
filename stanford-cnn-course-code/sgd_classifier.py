@@ -4,6 +4,7 @@ import typing as t
 import numpy as np
 
 import losses
+import regularization
 
 VectorizedFuncType = t.Callable[[t.Union[np.ndarray, float]], float]
 
@@ -46,12 +47,14 @@ class SGDClassifier:
         func_loss_grad : :obj:`callable`
             Gradient function for the chosen ``func_loss`` function.
         """
+        self._func_loss = func_loss
+        self._func_reg = regularization.l2
+        self._func_loss_grad = func_loss_grad
+        self._func_reg_grad = regularization.l2_grad
+
         self._num_classes = -1
         self._num_inst = -1
         self._num_attr = -1
-        self._func_loss = func_loss
-        self._func_loss_grad = func_loss_grad
-        self._func_reg = None  # type: t.Optional[VectorizedFuncType]
         self._data_mean = np.array([])
 
         self.weights = np.array([])  # type: np.ndarray
@@ -99,17 +102,22 @@ class SGDClassifier:
             scores = self._predict(
                 X=X_sample, center_data=False, add_bias=False)
 
-            loss_total = self._func_loss(
-                X=X_sample,
-                y_inds=y_sample,
-                W=self.weights,
-                scores=scores,
-                lambda_=self.reg_rate)
+            loss_reg = self._func_reg(W=self.weights, lambda_=self.reg_rate)
 
-            grad = self._func_loss_grad(
+            loss = self._func_loss(
+                X=X_sample, y_inds=y_sample, W=self.weights, scores=scores)
+
+            loss_total = loss + loss_reg
+
+            grad_reg = self._func_reg_grad(
+                W=self.weights, lambda_=self.reg_rate)
+
+            grad_loss = self._func_loss_grad(
                 X=X_sample, y_inds=y_sample, scores=scores, add_bias=False)
 
-            self.weights -= self.learning_rate * grad
+            grad_total = grad_loss + grad_reg
+
+            self.weights -= self.learning_rate * grad_total
 
             err_prev = err_cur
             err_cur = loss_total / self.batch_size
@@ -202,8 +210,9 @@ class SGDClassifier:
             loss function for each parameter update.
 
         reg_rate : :obj:`float`, optional
-            Regularization power. The regularization used is the L2
-            (Ridge) regularization.
+            Scale factor for the regularization value. Zero value means
+            no regularization. The regularization used is the L2 (Ridge)
+            regularization (sum of element-wise squared ``W``.)
 
         epsilon : :obj:`float`, optional
             Maximum average batch loss for early stopping.
@@ -357,11 +366,9 @@ class SoftmaxClassifier(SGDClassifier):
         correct_class_ind = np.zeros((self._num_classes, y_inds.size))
         correct_class_ind[y_inds, np.arange(y_inds.size)] = 1
 
-        loss_grad_reg = 2 * self.reg_rate * self.weights
-        loss_grad_score = np.dot(_scores - correct_class_ind, X)
-        loss_total = loss_grad_score / y_inds.size + loss_grad_reg
+        loss_total = np.dot(_scores - correct_class_ind, X)
 
-        return loss_total
+        return loss_total / y_inds.size
 
 
 class SupportVectorClassifier(SGDClassifier):
@@ -398,12 +405,9 @@ class SupportVectorClassifier(SGDClassifier):
         _aux[y_inds, _inst_inds] = 0
         _aux[y_inds, _inst_inds] = -np.sum(_aux, axis=0)
 
-        loss_grad_score = np.dot(_aux, X)
+        loss_total = np.dot(_aux, X)
 
-        loss_grad_reg = 2 * self.reg_rate * self.weights
-        loss_total = loss_grad_score / y_inds.size + loss_grad_reg
-
-        return loss_total
+        return loss_total / y_inds.size
 
 
 def _gen_data(inst_per_class: int = 200) -> t.Tuple[np.ndarray, np.ndarray]:
@@ -580,17 +584,14 @@ def _test_softmax_grad() -> None:
 
     X = np.hstack((X, np.ones((y.size, 1))))
 
-    reg_rate = 0.01
-
     func = lambda W: losses.cross_ent_loss(
         X=X,
         y_inds=y,
-        W=W.reshape((3, 2 + 1)),
-        lambda_=reg_rate)
+        W=W.reshape((3, 2 + 1)))
 
     def func_grad(W: np.ndarray):
         model = SoftmaxClassifier()
-        model.fit(X, y, max_it=0, add_bias=False, reg_rate=reg_rate)
+        model.fit(X, y, max_it=0, add_bias=False)
         model.weights = W.reshape((3, 2 + 1))
         return model.cross_ent_grad(X=X, y_inds=y, add_bias=False).ravel()
 
@@ -615,17 +616,11 @@ def _test_hinge_grad() -> None:
 
     X = np.hstack((X, np.ones((y.size, 1))))
 
-    reg_rate = 0.01
-
-    func = lambda W: losses.hinge_loss(
-        X=X,
-        y_inds=y,
-        W=W.reshape((3, 2 + 1)),
-        lambda_=reg_rate)
+    func = lambda W: losses.hinge_loss(X=X, y_inds=y, W=W.reshape((3, 2 + 1)))
 
     def func_grad(W: np.ndarray):
         model = SupportVectorClassifier()
-        model.fit(X, y, max_it=0, add_bias=False, reg_rate=reg_rate)
+        model.fit(X, y, max_it=0, add_bias=False)
         model.weights = W.reshape((3, 2 + 1))
         return model.hinge_loss_grad(X=X, y_inds=y, add_bias=False).ravel()
 
