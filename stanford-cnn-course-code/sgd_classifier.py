@@ -189,7 +189,7 @@ class SGDClassifier:
             max_it: int = 1000,
             learning_rate: float = 0.0001,
             reg_rate: float = 0.01,
-            epsilon: float = 1e-3,
+            epsilon: float = 1e-6,
             patience: int = 10,
             recover_best_weight: bool = True,
             add_bias: bool = True,
@@ -292,6 +292,7 @@ class SGDClassifier:
         self.max_it = max_it
         self.reg_rate = reg_rate
         self.patience = patience
+        self.epsilon = epsilon
 
         if add_bias:
             X = self._add_bias(X)
@@ -794,12 +795,12 @@ if __name__ == "__main__":
     # _test_hinge_grad()
     # _test_log_likelihood_grad()
 
-    # _test_softmax_classifier_03()
-    # _test_svc_03()
+    _test_softmax_classifier_01()
+    _test_svc_01()
+    _test_logistic_classifier_01()
 
     # _test_svc_02()
     # _test_softmax_classifier_02()
 
-    _test_softmax_classifier_01()
-    _test_svc_01()
-    _test_logistic_classifier_01()
+    # _test_softmax_classifier_03()
+    # _test_svc_03()
