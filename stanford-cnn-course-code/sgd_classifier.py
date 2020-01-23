@@ -416,7 +416,7 @@ class SupportVectorClassifier(SGDClassifier):
         correct_class_score = scores[y_inds, _inst_inds]
 
         # Incorrect classes
-        _aux = (scores - correct_class_score + delta > 0).astype(int)
+        _aux = (scores - correct_class_score + delta > 0).astype(np.float64)
 
         # Correct classes
         _aux[y_inds, _inst_inds] = 0
@@ -559,6 +559,7 @@ def _test_classifier(X: np.ndarray,
                      y: np.ndarray,
                      model: SGDClassifier,
                      train_patience: int = 20,
+                     batch_size: int = 32,
                      reg_rate: float = 0.01,
                      plot: bool = True) -> None:
     """Full experiment with the implemented SoftmaxClassifier."""
@@ -580,7 +581,7 @@ def _test_classifier(X: np.ndarray,
             model.fit(
                 X_train[inds_train, :],
                 y_train[inds_train],
-                batch_size=32,
+                batch_size=batch_size,
                 patience=30,
                 reg_rate=reg_rate,
                 learning_rate=learning_rate)
@@ -595,7 +596,7 @@ def _test_classifier(X: np.ndarray,
     model.fit(
         X_train,
         y_train,
-        batch_size=32,
+        batch_size=batch_size,
         verbose=1,
         patience=train_patience,
         store_errors=plot,
@@ -658,9 +659,10 @@ def _test_softmax_grad() -> None:
         y_inds=y,
         W=W.reshape((3, 2 + 1)))
 
+    model = SoftmaxClassifier()
+    model.fit(X, y, max_it=0, add_bias=False)
+
     def func_grad(W: np.ndarray):
-        model = SoftmaxClassifier()
-        model.fit(X, y, max_it=0, add_bias=False)
         model.weights = W.reshape((3, 2 + 1))
         return model.cross_ent_grad(X=X, y_inds=y, add_bias=False).ravel()
 
@@ -670,9 +672,7 @@ def _test_softmax_grad() -> None:
         x_limits=np.array([-5, 5] * 9).reshape(-1, 2),
         num_it=2000,
         random_state=32,
-        verbose=0)
-
-    print("Gradient check error:", error)
+        verbose=1)
 
 
 def _test_hinge_grad() -> None:
@@ -687,9 +687,10 @@ def _test_hinge_grad() -> None:
 
     func = lambda W: losses.hinge_loss(X=X, y_inds=y, W=W.reshape((3, 2 + 1)))
 
+    model = SupportVectorClassifier()
+    model.fit(X, y, max_it=0, add_bias=False)
+
     def func_grad(W: np.ndarray):
-        model = SupportVectorClassifier()
-        model.fit(X, y, max_it=0, add_bias=False)
         model.weights = W.reshape((3, 2 + 1))
         return model.hinge_loss_grad(X=X, y_inds=y, add_bias=False).ravel()
 
@@ -699,9 +700,7 @@ def _test_hinge_grad() -> None:
         x_limits=np.array([-5, 5] * 9).reshape(-1, 2),
         num_it=2000,
         random_state=32,
-        verbose=0)
-
-    print("Gradient check error:", error)
+        verbose=1)
 
 
 def _test_log_likelihood_grad() -> None:
@@ -720,9 +719,10 @@ def _test_log_likelihood_grad() -> None:
 
     func = lambda W: losses.log_likelihood(X=X, y_inds=y, W=W.reshape((1, 2 + 1)))
 
+    model = LogisticRegressionClassifier()
+    model.fit(X, y, max_it=0, add_bias=False)
+
     def func_grad(W: np.ndarray):
-        model = LogisticRegressionClassifier()
-        model.fit(X, y, max_it=0, add_bias=False)
         model.weights = W.reshape((1, 2 + 1))
         return model.log_likelihood_grad(X=X, y_inds=y, add_bias=False).ravel()
 
@@ -732,9 +732,7 @@ def _test_log_likelihood_grad() -> None:
         x_limits=np.array([-1, 1] * 3).reshape(-1, 2),
         num_it=3000,
         random_state=32,
-        verbose=0)
-
-    print("Gradient check error:", error)
+        verbose=1)
 
 
 def _test_svc_01() -> None:
@@ -785,12 +783,12 @@ if __name__ == "__main__":
     # _test_hinge_grad()
     # _test_log_likelihood_grad()
 
-    _test_softmax_classifier_01()
-    # _test_softmax_classifier_02()
     # _test_softmax_classifier_03()
-
-    _test_svc_01()
-    # _test_svc_02()
     # _test_svc_03()
 
+    # _test_svc_02()
+    # _test_softmax_classifier_02()
+
+    _test_softmax_classifier_01()
+    _test_svc_01()
     _test_logistic_classifier_01()
