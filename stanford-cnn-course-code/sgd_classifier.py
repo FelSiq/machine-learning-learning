@@ -449,8 +449,19 @@ class LogisticRegressionClassifier(SGDClassifier):
 
     @classmethod
     def sigmoid(cls, X: np.ndarray) -> np.ndarray:
-        """Sigmoid function implementation."""
-        return 1.0 / (1.0 + np.exp(-X))
+        """Sigmoid function implementation in a numeric stable manner."""
+        sig_vals = np.zeros(X.shape, dtype=np.float64)
+
+        _vals_inst_neg = X < 0
+        _vals_inst_pos = ~_vals_inst_neg
+
+        _exp_X = np.exp(X[_vals_inst_neg])
+
+        # Separating in cases for numeric stability
+        sig_vals[_vals_inst_neg] = _exp_X / (1.0 + _exp_X)
+        sig_vals[_vals_inst_pos] = 1.0 / (1.0 + np.exp(-X[_vals_inst_pos]))
+
+        return sig_vals
 
     def predict(self,
                 X: np.ndarray,
