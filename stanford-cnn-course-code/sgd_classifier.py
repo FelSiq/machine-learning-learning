@@ -544,18 +544,14 @@ def _plot(X_train: np.ndarray,
         edgecolors="black",
         marker=".")
 
-    plt.scatter(
-        X_test[correctly_classified, 0],
-        X_test[correctly_classified, 1],
-        c=y_test[correctly_classified],
-        edgecolors="green",
-        marker="X")
+    edge_colors = np.array(
+        ["green" if cor_cls else "red" for cor_cls in correctly_classified])
 
     plt.scatter(
-        X_test[~correctly_classified, 0],
-        X_test[~correctly_classified, 1],
-        c=y_test[~correctly_classified],
-        edgecolors="red",
+        X_test[:, 0],
+        X_test[:, 1],
+        c=y_test,
+        edgecolors=edge_colors,
         marker="X")
 
     plt.subplot(1, 2, 2)
@@ -570,6 +566,7 @@ def _plot(X_train: np.ndarray,
 def _test_classifier(X: np.ndarray,
                      y: np.ndarray,
                      model: SGDClassifier,
+                     max_it: int = 1000,
                      train_patience: int = 20,
                      batch_size: int = 32,
                      reg_rate: float = 0.01,
@@ -594,7 +591,8 @@ def _test_classifier(X: np.ndarray,
                 X_train[inds_train, :],
                 y_train[inds_train],
                 batch_size=batch_size,
-                patience=30,
+                max_it=max_it,
+                patience=train_patience,
                 reg_rate=reg_rate,
                 learning_rate=learning_rate)
 
@@ -611,8 +609,10 @@ def _test_classifier(X: np.ndarray,
         batch_size=batch_size,
         verbose=1,
         patience=train_patience,
+        max_it=max_it,
         store_errors=plot,
         reg_rate=reg_rate,
+        epsilon=0,
         learning_rate=best_learning_rate)
 
     print("Accuracy:", np.sum(model.predict(X_test) == y_test) / y_test.size)
@@ -652,7 +652,8 @@ def _test_softmax_classifier_03() -> None:
         model=SoftmaxClassifier(),
         X=iris.data,
         y=iris.target,
-        train_patience=75,
+        train_patience=150,
+        reg_rate=0.1,
         plot=False)
 
 
@@ -750,10 +751,15 @@ def _test_log_likelihood_grad() -> None:
 def _test_svc_01() -> None:
     np.random.seed(16)
 
-    inst_per_class = 200
+    inst_per_class = 512
     X, y = _gen_data(inst_per_class=inst_per_class)
 
-    _test_classifier(model=SupportVectorClassifier(), X=X, y=y)
+    _test_classifier(
+        model=SupportVectorClassifier(),
+        batch_size=128,
+        train_patience=20,
+        X=X,
+        y=y)
 
 
 def _test_svc_02() -> None:
@@ -773,7 +779,8 @@ def _test_svc_03() -> None:
         model=SupportVectorClassifier(),
         X=iris.data,
         y=iris.target,
-        train_patience=75,
+        reg_rate=0.05,
+        train_patience=150,
         plot=False)
 
 
@@ -799,8 +806,8 @@ if __name__ == "__main__":
     _test_svc_01()
     _test_logistic_classifier_01()
 
-    # _test_svc_02()
-    # _test_softmax_classifier_02()
+    _test_svc_02()
+    _test_softmax_classifier_02()
 
-    # _test_softmax_classifier_03()
-    # _test_svc_03()
+    _test_softmax_classifier_03()
+    _test_svc_03()
