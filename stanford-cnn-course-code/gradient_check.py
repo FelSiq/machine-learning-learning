@@ -8,19 +8,34 @@ TypeVectorizedFunc = t.Callable[[t.Union[np.ndarray, float]], float]
 
 def numerical_grad(func: TypeVectorizedFunc,
                    inst: t.Union[np.ndarray, float],
-                   delta: float = 1.0e-8) -> float:
-    """Approximate the gradient of ``func`` evaluated on ``inst``."""
-    if not isinstance(inst, np.ndarray):
-        inst = np.array([inst])
+                   delta: float = 1.0e-5) -> np.float64:
+    r"""Approximate the gradient of ``func`` evaluated on ``inst``.
 
-    grad = np.zeros(inst.size, dtype=float)
-    inst_mod = np.copy(inst)
-    func_eval_x = func(inst)
+    The strategy used is the centered formula:
+
+        \frac{df(x)}{dx} = \frac{f(x + h) - f(x - h)}{2h}
+
+    This centered formula has a order of magnitude higher O(h^2) of
+    precision than the traditional finite difference approximation
+    O(h).
+
+        \frac{df(x)}{dx} = \frac{f(x + h) - f(x)}{h}
+    """
+    if not isinstance(inst, np.ndarray):
+        inst = np.array([inst], dtype=np.float64)
+
+    grad = np.zeros(inst.size, dtype=np.float64)
+    inst_mod_a = np.copy(inst)
+    inst_mod_b = np.copy(inst)
+
+    _d_delta = np.float64(2.0 * delta)
 
     for dim_ind in np.arange(inst.size):
-        inst_mod[dim_ind] += delta
-        grad[dim_ind] = (func(inst_mod) - func_eval_x) / delta
-        inst_mod[dim_ind] -= delta
+        inst_mod_a[dim_ind] += delta
+        inst_mod_b[dim_ind] -= delta
+        grad[dim_ind] = (func(inst_mod_a) - func(inst_mod_b)) / _d_delta
+        inst_mod_a[dim_ind] -= delta
+        inst_mod_b[dim_ind] += delta
 
     if inst.size == 1:
         return grad[0]
@@ -45,13 +60,13 @@ def _gen_random_data(x_limits: t.Sequence[t.Tuple[int, int]],
             for lim_low, lim_upper in x_limits
         ])
 
-    return x_rand
+    return x_rand.astype(np.float64)
 
 
 def gradient_check(func: TypeVectorizedFunc,
                    analytic_grad: TypeVectorizedFunc,
                    x_limits: t.Sequence[t.Tuple[int, int]],
-                   delta: float = 1.0e-8,
+                   delta: float = 1.0e-5,
                    num_it: int = 20000,
                    verbose: int = 0,
                    random_state: t.Optional[int] = None) -> float:
@@ -110,27 +125,57 @@ def gradient_check(func: TypeVectorizedFunc,
     Returns
     -------
     float
-        Average euclidean distance between analytical and numeric
-        gradient strategies.
+        Average max norm between analytical and numerical gradient
+        strategies.
     """
     x_rand = _gen_random_data(
         x_limits=x_limits, num_it=num_it, random_state=random_state)
 
-    error = 0.0
+    rel_total_err = np.float64(0.0)
 
     for cur_it, inst in enumerate(x_rand):
         val_num_grad = numerical_grad(func=func, inst=inst, delta=delta)
         val_ana_grad = analytic_grad(inst)
-        error += (val_num_grad - val_ana_grad)**2
 
-        if verbose:
-            print("Current iteration: {} - Current error max norm: {}"
-                  .format(cur_it, np.max(error)))
+        abs_diff = np.abs(
+            val_num_grad.astype(np.float64) - val_ana_grad.astype(np.float64))
 
-    if not np.isscalar(error):
-        error = np.sum(error)
+        max_el_wise = np.maximum(np.abs(val_num_grad), np.abs(val_ana_grad))
 
-    return np.sqrt(error) / num_it
+        _non_zero_inds = np.logical_and(abs_diff > 1e-9, max_el_wise > 1e-8)
+
+        abs_diff[_non_zero_inds] /= np.maximum(
+            np.abs(val_num_grad[_non_zero_inds]),
+            np.abs(val_ana_grad[_non_zero_inds]))
+
+        rel_total_err += abs_diff
+
+        if verbose >= 2:
+            print("Current iteration: {} - Current total relative error "
+                  "maximum norm: {}".format(cur_it, np.max(rel_total_err)))
+
+    avg_max_norm_err = np.max(rel_total_err) / num_it
+
+    if verbose:
+        if avg_max_norm_err > 1e-2:
+            _err_msg = "The analytical gradient is probably wrong"
+
+        elif 1e-2 >= avg_max_norm_err > 1e-4:
+            _err_msg = "Something may be wrong with the analytical gradient"
+
+        elif 1e-4 >= avg_max_norm_err > 1e-7:
+            _err_msg = ("If the function is simple, then error is too "
+                        "high. Otherwise, it is ok")
+
+        else:
+            _err_msg = "Gradient is ok"
+
+        print("Average relative error maximum norm: {:.10f}".format(
+            avg_max_norm_err))
+
+        print("Conclusion: {}.".format(_err_msg))
+
+    return avg_max_norm_err
 
 
 def _test_01() -> None:
@@ -146,7 +191,8 @@ def _test_01() -> None:
 def _test_02() -> None:
     error = gradient_check(
         func=lambda x: 5 * x[0]**3 - 3 * x[1]**2 + 1,  # type: ignore
-        analytic_grad=lambda x: np.array([15 * x[0]**2, -6 * x[1]]),  # type: ignore
+        analytic_grad=
+        lambda x: np.array([15 * x[0]**2, -6 * x[1]]),  # type: ignore
         x_limits=[(-5, 5), (-10, 10)],
         random_state=32)
 
