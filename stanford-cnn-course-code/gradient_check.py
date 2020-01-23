@@ -64,7 +64,8 @@ def _gen_random_data(x_limits: t.Sequence[t.Tuple[int, int]],
 
 
 def gradient_check(func: TypeVectorizedFunc,
-                   analytic_grad: TypeVectorizedFunc,
+                   analytic_grad: t.Optional[TypeVectorizedFunc] = None,
+                   analytic_grad_vals: t.Optional[np.ndarray] = None,
                    X: t.Optional[np.ndarray] = None,
                    x_limits: t.Sequence[t.Tuple[int, int]] = None,
                    delta: float = 1.0e-5,
@@ -86,7 +87,7 @@ def gradient_check(func: TypeVectorizedFunc,
         receive an p-dimensional value as the first argument, and
         return a corresponding scalar as the function image.
 
-    analytic_grad : :obj:`callable`
+    analytic_grad : :obj:`callable`, optional
         Analytical gradient of ``func``. Must receive a p-dimensional
         value `x` as first argument, and return the corresponding
         gradient vector of `x`. For instance, suppose that
@@ -97,6 +98,14 @@ def gradient_check(func: TypeVectorizedFunc,
         vector with the following partial derivatives:
 
             analytic_grad = lambda x: [6 * x[0]**2, -10 * x[1]]
+
+        Used only if ``analytic_grad_vals`` is None.
+
+    analytic_grad_vals : :obj:`np.ndarray`, optional
+        Analytical gradient values. Each row represents a instance,
+        and each column, a different attribute. If not given, then
+        use ``analytic_grad`` function to calculate the analytical
+        gradient within the function.
 
     X : :obj:`np.ndarray`, optional
         Test data to be used. If not given, random data will be
@@ -135,6 +144,9 @@ def gradient_check(func: TypeVectorizedFunc,
         Average max norm between analytical and numerical gradient
         strategies.
     """
+    if analytic_grad is None and analytic_grad_vals is None:
+        raise TypeError("'analytic_grad' and 'analytic_grad_vals' are "
+                        "both None.")
     if X is None:
         if x_limits is None:
             raise TypeError("'X' and 'x_limits' are both None.")
@@ -146,10 +158,15 @@ def gradient_check(func: TypeVectorizedFunc,
 
     for cur_it, inst in enumerate(X):
         val_num_grad = numerical_grad(func=func, inst=inst, delta=delta)
-        val_ana_grad = analytic_grad(inst)
 
-        abs_diff = np.abs(
-            val_num_grad.astype(np.float64) - val_ana_grad.astype(np.float64))
+        if analytic_grad_vals is None:
+            val_ana_grad = np.asarray(analytic_grad(inst))
+
+        else:
+            val_ana_grad = analytic_grad_vals[cur_it]
+
+        abs_diff = np.asarray(np.abs(
+            val_num_grad.astype(np.float64) - val_ana_grad.astype(np.float64)))
 
         max_el_wise = np.maximum(np.abs(val_num_grad), np.abs(val_ana_grad))
 
