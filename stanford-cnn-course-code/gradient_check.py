@@ -65,7 +65,8 @@ def _gen_random_data(x_limits: t.Sequence[t.Tuple[int, int]],
 
 def gradient_check(func: TypeVectorizedFunc,
                    analytic_grad: TypeVectorizedFunc,
-                   x_limits: t.Sequence[t.Tuple[int, int]],
+                   X: t.Optional[np.ndarray] = None,
+                   x_limits: t.Sequence[t.Tuple[int, int]] = None,
                    delta: float = 1.0e-5,
                    num_it: int = 20000,
                    verbose: int = 0,
@@ -75,8 +76,8 @@ def gradient_check(func: TypeVectorizedFunc,
     This is a debugging tool to check if the analitical gradient
     was calculated correctly.
 
-    The strategy adopted is a monte-carlo test, where a huge number
-    of random tests are tried.
+    If ``X`` is None, then the strategy adopted is a monte-carlo test,
+    where a huge number of random tests are tried.
 
     Arguments
     ---------
@@ -97,11 +98,15 @@ def gradient_check(func: TypeVectorizedFunc,
 
             analytic_grad = lambda x: [6 * x[0]**2, -10 * x[1]]
 
+    X : :obj:`np.ndarray`, optional
+        Test data to be used. If not given, random data will be
+        sampled.
+
     x_limits : :obj:`sequence` of :obj:`tuple` (int, int)
         Sequence of numerical limits for every dimension of `func`
         to be tested. Each entry of this sequence corresponds to
         one dimension, and every entry is a pair of values in the
-        form `(lower_limit, upper_limit).`
+        form `(lower_limit, upper_limit).` Used only if ``X`` is None.
 
     delta : :obj:`float`, optional
         A tiny value to calculate the numerical gradient of the form
@@ -110,17 +115,19 @@ def gradient_check(func: TypeVectorizedFunc,
             num_grad(x) = (func(x + delta) - func(x)) / delta
 
         For p-dimensional instances, p > 1, the formula above is
-        repeated for every dimension separately.
+        repeated for every dimension separately. Used only if ``X``
+        is None.
 
     num_it : :obj:`int`, optional
-        Number of random tests to be drawn.
+        Number of random tests to be drawn. Used only if ``X`` is None.
 
     verbose : :obj:`int`, optional
         Verbosity level of the function.
 
     random_state : :obj:`int`, optional
         If given, set the random seed before any pseudo-random number
-        generation. Keeps the results reproducible.
+        generation. Keeps the results reproducible. Used only if ``X``
+        is None.
 
     Returns
     -------
@@ -128,12 +135,16 @@ def gradient_check(func: TypeVectorizedFunc,
         Average max norm between analytical and numerical gradient
         strategies.
     """
-    x_rand = _gen_random_data(
-        x_limits=x_limits, num_it=num_it, random_state=random_state)
+    if X is None:
+        if x_limits is None:
+            raise TypeError("'X' and 'x_limits' are both None.")
+
+        X = _gen_random_data(
+            x_limits=x_limits, num_it=num_it, random_state=random_state)
 
     rel_total_err = np.float64(0.0)
 
-    for cur_it, inst in enumerate(x_rand):
+    for cur_it, inst in enumerate(X):
         val_num_grad = numerical_grad(func=func, inst=inst, delta=delta)
         val_ana_grad = analytic_grad(inst)
 
