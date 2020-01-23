@@ -70,9 +70,11 @@ class SGDClassifier:
         self.learning_rate = -1.0
         self.reg_rate = -1.0
         self.batch_size = -1
-        self.max_it = -1
+        self.max_epochs = -1
         self.epsilon = -1.0
         self.patience = -1
+        self.patience_margin = 0.001
+        self.epochs = -1
 
         self.errors = np.array([])
 
@@ -88,9 +90,10 @@ class SGDClassifier:
                   recover_best_weight: bool = False,
                   store_errors: bool = False) -> None:
         """Optimize the weights using SGD strategy."""
-        cur_it = 0
-        err_cur = 1 + self.epsilon
-        err_prev = err_cur
+        epoch_count = 0
+        err_cumulative = 0.0
+        err_epoch_mean = 1.0 + self.epsilon
+        err_prev = err_epoch_mean
         err_best = np.inf
         patience_ticks = 0
 
@@ -98,9 +101,9 @@ class SGDClassifier:
             best_weights = np.copy(self.weights)
 
         if store_errors:
-            self.errors = np.zeros(self.max_it, dtype=float)
+            self.errors = np.zeros(self.max_epochs, dtype=float)
 
-        while (cur_it < self.max_it and err_cur > self.epsilon
+        while (self.epochs < self.max_epochs and err_epoch_mean > self.epsilon
                and patience_ticks < self.patience):
             sample_inds = np.random.choice(
                 y.size, size=self.batch_size, replace=False)
@@ -129,40 +132,46 @@ class SGDClassifier:
 
             self.weights -= self.learning_rate * grad_total
 
-            err_prev = err_cur
-            err_cur = loss_total / self.batch_size
+            err_cumulative += loss_total
+            epoch_count += self.batch_size
 
-            if err_cur >= err_best:
-                patience_ticks += 1
+            if epoch_count >= self._num_inst:
+                err_epoch_mean = err_cumulative / self.batch_size
 
-            else:
-                err_best = err_cur
-                patience_ticks = 0
+                if store_errors:
+                    self.errors[self.epochs] = err_epoch_mean
 
-                if recover_best_weight:
-                    best_weights = np.copy(self.weights)
+                if err_epoch_mean >= (1.0 - self.patience_margin) * err_best:
+                    patience_ticks += 1
 
-            if store_errors:
-                self.errors[cur_it] = err_cur
+                else:
+                    err_best = err_epoch_mean
+                    patience_ticks = 0
 
-            cur_it += 1
+                    if recover_best_weight:
+                        best_weights = np.copy(self.weights)
 
-            if verbose:
-                print(
-                    "Iteration: {} of {} - Average loss: {:.6f} (best: {:.6f}) "
-                    "(relative change of {:.2f}%)".format(
-                        cur_it, self.max_it, err_cur, err_best,
-                        100 * (err_cur - err_prev) / err_prev))
+                if verbose:
+                    print("Epoch: {} out of {} - Avg. epoch loss: {:.6f} "
+                          "(best: {:.6f}) (rel. change of {:.2f}%)".format(
+                              self.epochs, self.max_epochs, err_epoch_mean,
+                              err_best,
+                              100 * (err_epoch_mean - err_prev) / err_prev))
 
-        if verbose and cur_it < self.max_it:
+                epoch_count -= self._num_inst
+                err_prev = err_epoch_mean
+                err_cumulative = 0.0
+                self.epochs += 1
+
+        if verbose and self.epochs < self.max_epochs:
             if patience_ticks == self.patience:
                 early_stop_message = "patience ({}) ran out".format(
                     self.patience)
 
             elif err_cur <= self.epsilon:
-                early_stop_message = ("iteration loss ({:.4f}) smaller than "
-                                      "'epsilon' ({:.4f})".format(
-                                          err_cur, self.epsilon))
+                early_stop_message = ("epoch average loss ({:.4f}) smaller "
+                                      "than 'epsilon' ({:.4f})".format(
+                                          err_epoch_mean, self.epsilon))
 
             else:
                 early_stop_message = "unknown reason"
@@ -174,11 +183,11 @@ class SGDClassifier:
             if verbose:
                 print("Recovered best weights with loss of {:.6f} (currently "
                       "loss was {:.6f}, relative change of {:.2f}%)".format(
-                          err_best, err_cur,
-                          100 * (err_best - err_cur) / err_cur))
+                          err_best, err_epoch_mean,
+                          100 * (err_best - err_epoch_mean) / err_epoch_mean))
 
         if store_errors:
-            self.errors = self.errors[:cur_it]
+            self.errors = self.errors[:self.epochs]
 
         return None
 
@@ -186,11 +195,12 @@ class SGDClassifier:
             X: np.ndarray,
             y: np.ndarray,
             batch_size: int = 256,
-            max_it: int = 1000,
+            max_epochs: int = 1000,
             learning_rate: float = 0.0001,
             reg_rate: float = 0.01,
             epsilon: float = 1e-6,
             patience: int = 10,
+            patience_margin: float = 0.001,
             recover_best_weight: bool = True,
             add_bias: bool = True,
             store_errors: bool = False,
@@ -212,8 +222,9 @@ class SGDClassifier:
             Batch size for each parameter update. The instances are
             sampled at random for every batch, without replacement.
 
-        max_it : :obj:`int`, optional
-            Maximum number of parameter updates.
+        max_epochs : :obj:`int`, optional
+            Maximum number of epochs (one epoch means that every training
+            example has been seen once, in expectation.)
 
         learning_rate : :obj:`float`, optional
             Step size in the direction of the negative gradient of the
@@ -228,9 +239,14 @@ class SGDClassifier:
             Maximum average batch loss for early stopping.
 
         patience : :obj:`int`, optional
-            Maximum number of iterations past the best current loss value
-            (i.e., iterations where the error function does not get better)
-            before early stopping.
+            Maximum number of epochs past the best current loss value
+            (i.e., epochs where the average epoch loss does not get
+            better than the best value so far) before early stopping.
+
+        patience_margin : :obj:`float`, optional
+            Percentage of improvement of the current average epoch loss
+            over the best average epoch loss so far in order to consider
+            as a real loss improvement.
 
         recover_best_weight : :obj:`bool`, optional
             If True, recover the weights with minimal loss before early
@@ -289,10 +305,11 @@ class SGDClassifier:
 
         self.learning_rate = learning_rate
         self.batch_size = batch_size
-        self.max_it = max_it
+        self.max_epochs = max_epochs
         self.reg_rate = reg_rate
         self.patience = patience
         self.epsilon = epsilon
+        self.epochs = 0
 
         if add_bias:
             X = self._add_bias(X)
@@ -556,7 +573,7 @@ def _plot(X_train: np.ndarray,
 
     plt.subplot(1, 2, 2)
     plt.title("Errors per iteration")
-    plt.xlabel("Iteration")
+    plt.xlabel("Epoch")
     plt.ylabel("Cross Entropy Error")
     plt.plot(model.errors)
 
@@ -566,8 +583,9 @@ def _plot(X_train: np.ndarray,
 def _test_classifier(X: np.ndarray,
                      y: np.ndarray,
                      model: SGDClassifier,
-                     max_it: int = 1000,
-                     train_patience: int = 20,
+                     learning_rate: t.Optional[float] = None,
+                     max_epochs: int = 1000,
+                     train_patience: int = 5,
                      batch_size: int = 32,
                      reg_rate: float = 0.01,
                      plot: bool = True) -> None:
@@ -577,31 +595,32 @@ def _test_classifier(X: np.ndarray,
     X_train, X_test, y_train, y_test = sklearn.model_selection.train_test_split(
         X, y, test_size=0.2, random_state=32)
 
-    folds = sklearn.model_selection.StratifiedKFold(n_splits=5)
+    if learning_rate is None:
+        folds = sklearn.model_selection.StratifiedKFold(n_splits=5)
 
-    learning_rate_candidates = np.logspace(-2, 0, 15)
-    learning_rate_acc = np.zeros(learning_rate_candidates.size)
+        learning_rate_candidates = np.logspace(-2, 0, 15)
+        learning_rate_acc = np.zeros(learning_rate_candidates.size)
 
-    for l_ind, learning_rate in enumerate(learning_rate_candidates, 1):
-        print("Checking {} out of {} learning rates: {}...".format(
-            l_ind, learning_rate_candidates.size, learning_rate))
-        for ind, (inds_train, inds_test) in enumerate(
-                folds.split(X_train, y_train)):
-            model.fit(
-                X_train[inds_train, :],
-                y_train[inds_train],
-                batch_size=batch_size,
-                max_it=max_it,
-                patience=train_patience,
-                reg_rate=reg_rate,
-                learning_rate=learning_rate)
+        for l_ind, learning_rate in enumerate(learning_rate_candidates, 1):
+            print("Checking {} out of {} learning rates: {}...".format(
+                l_ind, learning_rate_candidates.size, learning_rate))
+            for ind, (inds_train, inds_test) in enumerate(
+                    folds.split(X_train, y_train)):
+                model.fit(
+                    X_train[inds_train, :],
+                    y_train[inds_train],
+                    batch_size=batch_size,
+                    max_epochs=max_epochs,
+                    patience=train_patience,
+                    reg_rate=reg_rate,
+                    learning_rate=learning_rate)
 
-            preds = model.predict(X_train[inds_test, :])
-            learning_rate_acc[ind] += np.sum(
-                preds == y_train[inds_test]) / inds_test.size
+                preds = model.predict(X_train[inds_test, :])
+                learning_rate_acc[ind] += np.sum(
+                    preds == y_train[inds_test]) / inds_test.size
 
-    best_learning_rate = learning_rate_candidates[np.argmax(learning_rate_acc)]
-    print("Best learning rate:", best_learning_rate)
+        learning_rate = learning_rate_candidates[np.argmax(learning_rate_acc)]
+        print("Best learning rate:", learning_rate)
 
     model.fit(
         X_train,
@@ -609,11 +628,11 @@ def _test_classifier(X: np.ndarray,
         batch_size=batch_size,
         verbose=1,
         patience=train_patience,
-        max_it=max_it,
+        max_epochs=max_epochs,
         store_errors=plot,
         reg_rate=reg_rate,
         epsilon=0,
-        learning_rate=best_learning_rate)
+        learning_rate=learning_rate)
 
     print("Accuracy:", np.sum(model.predict(X_test) == y_test) / y_test.size)
 
@@ -632,7 +651,7 @@ def _test_softmax_classifier_01() -> None:
     inst_per_class = 200
     X, y = _gen_data(inst_per_class=inst_per_class)
 
-    _test_classifier(model=SoftmaxClassifier(), X=X, y=y)
+    _test_classifier(model=SoftmaxClassifier(), X=X, y=y, learning_rate=0.014)
 
 
 def _test_softmax_classifier_02() -> None:
@@ -640,9 +659,11 @@ def _test_softmax_classifier_02() -> None:
     iris = load_iris()
     _test_classifier(
         model=SoftmaxClassifier(),
+        learning_rate=0.25,
+        batch_size=50,
         X=iris.data[:, [0, 1]],
         y=iris.target,
-        train_patience=100)
+        train_patience=5)
 
 
 def _test_softmax_classifier_03() -> None:
@@ -652,7 +673,9 @@ def _test_softmax_classifier_03() -> None:
         model=SoftmaxClassifier(),
         X=iris.data,
         y=iris.target,
-        train_patience=150,
+        learning_rate=0.25,
+        batch_size=50,
+        train_patience=20,
         reg_rate=0.1,
         plot=False)
 
@@ -673,7 +696,7 @@ def _test_softmax_grad() -> None:
         W=W.reshape((3, 2 + 1)))
 
     model = SoftmaxClassifier()
-    model.fit(X, y, max_it=0, add_bias=False)
+    model.fit(X, y, max_epochs=0, add_bias=False)
 
     def func_grad(W: np.ndarray):
         model.weights = W.reshape((3, 2 + 1))
@@ -701,7 +724,7 @@ def _test_hinge_grad() -> None:
     func = lambda W: losses.hinge_loss(X=X, y_inds=y, W=W.reshape((3, 2 + 1)))
 
     model = SupportVectorClassifier()
-    model.fit(X, y, max_it=0, add_bias=False)
+    model.fit(X, y, max_epochs=0, add_bias=False)
 
     def func_grad(W: np.ndarray):
         model.weights = W.reshape((3, 2 + 1))
@@ -733,7 +756,7 @@ def _test_log_likelihood_grad() -> None:
     func = lambda W: losses.log_likelihood(X=X, y_inds=y, W=W.reshape((1, 2 + 1)))
 
     model = LogisticRegressionClassifier()
-    model.fit(X, y, max_it=0, add_bias=False)
+    model.fit(X, y, max_epochs=0, add_bias=False)
 
     def func_grad(W: np.ndarray):
         model.weights = W.reshape((1, 2 + 1))
@@ -756,8 +779,9 @@ def _test_svc_01() -> None:
 
     _test_classifier(
         model=SupportVectorClassifier(),
+        learning_rate=0.01,
         batch_size=128,
-        train_patience=20,
+        train_patience=5,
         X=X,
         y=y)
 
@@ -769,7 +793,9 @@ def _test_svc_02() -> None:
         model=SupportVectorClassifier(),
         X=iris.data[:, [0, 1]],
         y=iris.target,
-        train_patience=100)
+        batch_size=75,
+        learning_rate=0.1,
+        train_patience=10)
 
 
 def _test_svc_03() -> None:
@@ -780,7 +806,7 @@ def _test_svc_03() -> None:
         X=iris.data,
         y=iris.target,
         reg_rate=0.05,
-        train_patience=150,
+        train_patience=20,
         plot=False)
 
 
@@ -794,7 +820,11 @@ def _test_logistic_classifier_01() -> None:
     y = y[:-inst_per_class]
 
     _test_classifier(
-        model=LogisticRegressionClassifier(), X=X, y=y, train_patience=100)
+        model=LogisticRegressionClassifier(),
+        X=X,
+        y=y,
+        train_patience=5,
+        learning_rate=0.01)
 
 
 if __name__ == "__main__":
@@ -806,8 +836,8 @@ if __name__ == "__main__":
     _test_svc_01()
     _test_logistic_classifier_01()
 
-    _test_svc_02()
     _test_softmax_classifier_02()
+    _test_svc_02()
 
     _test_softmax_classifier_03()
     _test_svc_03()
