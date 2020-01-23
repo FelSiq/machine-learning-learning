@@ -62,6 +62,12 @@ def plot(model: sgd_classifier.SGDClassifier) -> None:
 
     plt.show()
 
+    plt.plot(model.errors)
+    plt.title("Loss per epoch")
+    plt.xlabel("Epochs")
+    plt.ylabel("Average epoch loss")
+    plt.show()
+
 
 def _test() -> None:
     """Plot the representation of each CIFAR-10 class by a linear model."""
@@ -82,11 +88,12 @@ def _test() -> None:
     model.fit(
         X,
         y,
-        patience=50,
+        patience=5,
         verbose=1,
         reg_rate=0.7,
         learning_rate=0.015,
-        max_it=5000,
+        max_epochs=1000,
+        store_errors=True,
         random_state=16)
 
     plot(model)
