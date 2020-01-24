@@ -1,5 +1,6 @@
 """Implement Stochastic Gradient Descent Linear Classifiers."""
 import typing as t
+import warnings
 
 import numpy as np
 import sklearn.model_selection
@@ -11,6 +12,14 @@ VectorizedFuncType = t.Callable[[t.Union[np.ndarray, float]], float]
 
 
 class SGDClassifier:
+    # Disable 'Too many instance attributes'
+    # pylint: disable=R0902
+
+    # Disable 'Too many arguments'
+    # pylint: disable=R0913
+
+    # Disable 'Snake-case variable format'
+    # pylint: disable=C0103
     """Implement Stochastic Gradient Descent Linear Classifiers.
 
     Actually, it is implemented a more general concept of optimization
@@ -65,7 +74,9 @@ class SGDClassifier:
         self._num_classes = -1
         self._num_inst = -1
         self._num_attr = -1
-        self._data_mean = np.array([])
+        self._train_data_mean = np.array([])
+        self._best_weights = np.array([])
+        self._patience_ticks = -1
 
         self.weights = np.array([])  # type: np.ndarray
         self.learning_rate = -1.0
@@ -76,6 +87,7 @@ class SGDClassifier:
         self.patience = -1
         self.patience_margin = 0.001
         self.epochs = -1
+        self.recover_best_weight = False
 
         self.errors = np.array([])
 
@@ -116,34 +128,97 @@ class SGDClassifier:
 
         return grad_loss_data + grad_loss_reg
 
+    def _perform_epoch_end_calcs(self,
+                                 X_val: t.Optional[np.ndarray],
+                                 err_train_cumulative: float,
+                                 err_val_cumulative: float,
+                                 err_val_best: float,
+                                 err_val_prev: float,
+                                 verbose: int = 0) -> t.Tuple[float, float]:
+        """."""
+        err_train_epoch_mean = err_train_cumulative / self._num_inst
+
+        if X_val is not None:
+            err_val_epoch_mean = err_val_cumulative / self._num_inst
+
+            if err_val_epoch_mean >= (
+                    1.0 - self.patience_margin) * err_val_best:
+                self._patience_ticks += 1
+
+            else:
+                err_val_best = err_val_epoch_mean
+                self._patience_ticks = 0
+
+                if self.recover_best_weight:
+                    self._best_weights = np.copy(self.weights)
+
+        if self.errors is not None and self.errors.size:
+            self.errors[:, self.epochs] = (err_train_epoch_mean,
+                                           err_val_epoch_mean)
+
+        self.epochs += 1
+
+        if verbose:
+            print(
+                "Epoch: {} out of {} - Avg. epoch loss: [train] {:.6f}".format(
+                    self.epochs, self.max_epochs, err_train_epoch_mean),
+                ("[val.] {:.6f} (best: {:.6f}, rel. change of {:.2f}%)".format(
+                    err_val_epoch_mean, err_val_best,
+                    100 * (err_val_epoch_mean - err_val_prev) / err_val_prev)
+                 if X_val is not None else ""),
+                sep=" ")
+
+        return err_val_epoch_mean, err_val_best
+
+    def _verbose_early_stop(self, err_val_epoch_mean: float) -> None:
+        """."""
+        if self.epochs < self.max_epochs:
+            if self._patience_ticks == self.patience:
+                _early_stop_message = "patience ({}) ran out".format(
+                    self.patience)
+
+            elif err_val_epoch_mean <= self.epsilon:
+                _early_stop_message = (
+                    "epoch average validation loss ({:.4f}) smaller "
+                    "than 'epsilon' ({:.4f})".format(err_val_epoch_mean,
+                                                     self.epsilon))
+
+            else:
+                _early_stop_message = "unknown reason"
+
+            print("Early stopped due to {}.".format(_early_stop_message))
+
     def _optimize(self,
                   X_train: np.ndarray,
                   y_train: np.ndarray,
                   X_val: t.Optional[np.ndarray] = None,
                   y_val: t.Optional[np.ndarray] = None,
                   verbose: int = 0,
-                  recover_best_weight: bool = False,
                   store_errors: bool = False) -> None:
         """Optimize the weights using SGD strategy."""
         epoch_inst_count = 0
-        patience_ticks = 0
+        self._patience_ticks = 0
 
         err_train_cumulative = 0.0
 
         err_val_cumulative = 0.0
-        err_val_epoch_mean = self._calc_loss_total(X=X_val, y=y_val)
+        err_val_epoch_mean = 1 + self.epsilon
+
+        if X_val is not None:
+            err_val_epoch_mean = self._calc_loss_total(X=X_val, y=y_val)
+
+            if self.recover_best_weight:
+                self._best_weights = np.copy(self.weights)
+
         err_val_prev = err_val_epoch_mean
         err_val_best = err_val_epoch_mean
-
-        if recover_best_weight:
-            best_weights = np.copy(self.weights)
 
         if store_errors:
             self.errors = np.zeros((2, self.max_epochs), dtype=float)
 
         while (self.epochs < self.max_epochs
                and err_val_epoch_mean > self.epsilon
-               and patience_ticks < self.patience):
+               and self._patience_ticks < self.patience):
             sample_inds = np.random.choice(
                 y_train.size, size=self.batch_size, replace=False)
 
@@ -161,63 +236,31 @@ class SGDClassifier:
             self.weights -= self.learning_rate * grad_total
 
             err_train_cumulative += loss_total
-            err_val_cumulative += self._calc_loss_total(X=X_val, y=y_val)
+
+            if X_val is not None:
+                err_val_cumulative += self._calc_loss_total(X=X_val, y=y_val)
 
             epoch_inst_count += self.batch_size
 
             if epoch_inst_count >= self._num_inst:
-                err_train_epoch_mean = err_train_cumulative / self.batch_size
-                err_val_epoch_mean = err_val_cumulative / self.batch_size
-
-                if store_errors:
-                    self.errors[:, self.
-                                epochs] = err_train_epoch_mean, err_val_epoch_mean
-
-                if err_val_epoch_mean >= (
-                        1.0 - self.patience_margin) * err_val_best:
-                    patience_ticks += 1
-
-                else:
-                    err_val_best = err_val_epoch_mean
-                    patience_ticks = 0
-
-                    if recover_best_weight:
-                        best_weights = np.copy(self.weights)
-
-                if verbose:
-                    print(
-                        "Epoch: {} out of {} - Avg. epoch loss: [train] {:.6f} "
-                        "[val.] {:.6f} (best: {:.6f}, rel. change of {:.2f}%)".
-                        format(
-                            self.epochs, self.max_epochs, err_train_epoch_mean,
-                            err_val_epoch_mean, err_val_best,
-                            100 * (err_val_epoch_mean - err_val_prev) /
-                            err_val_prev))
+                err_val_epoch_mean, err_val_best = self._perform_epoch_end_calcs(
+                    X_val=X_val,
+                    err_train_cumulative=err_train_cumulative,
+                    err_val_cumulative=err_val_cumulative,
+                    err_val_best=err_val_best,
+                    err_val_prev=err_val_prev,
+                    verbose=verbose)
 
                 epoch_inst_count -= self._num_inst
                 err_val_prev = err_val_epoch_mean
                 err_train_cumulative = 0.0
                 err_val_cumulative = 0.0
-                self.epochs += 1
 
-        if verbose and self.epochs < self.max_epochs:
-            if patience_ticks == self.patience:
-                early_stop_message = "patience ({}) ran out".format(
-                    self.patience)
+        if verbose:
+            self._verbose_early_stop(err_val_epoch_mean=err_val_epoch_mean)
 
-            elif err_val_epoch_mean <= self.epsilon:
-                early_stop_message = (
-                    "epoch average validation loss ({:.4f}) smaller "
-                    "than 'epsilon' ({:.4f})".format(err_val_epoch_mean,
-                                                     self.epsilon))
-
-            else:
-                early_stop_message = "unknown reason"
-
-            print("Early stopped due to {}.".format(early_stop_message))
-
-        if recover_best_weight:
-            self.weights = best_weights
+        if X_val is not None and self.recover_best_weight:
+            self.weights = self._best_weights
             if verbose:
                 print(
                     "Recovered best weights with validation loss of {:.6f} "
@@ -228,15 +271,17 @@ class SGDClassifier:
                         err_val_epoch_mean))
 
         if store_errors:
-            self.errors = self.errors[:, :self.epochs]
+            if X_val is not None:
+                self.errors = self.errors[:, :self.epochs]
 
-        return None
+            else:
+                self.errors = self.errors[0, :self.epochs]
 
     def fit(self,
             X: np.ndarray,
             y: np.ndarray,
             batch_size: int = 256,
-            max_epochs: int = 1000,
+            max_epochs: int = 128,
             learning_rate: float = 0.0001,
             validation_frac: float = 0.1,
             reg_rate: float = 0.01,
@@ -295,7 +340,7 @@ class SGDClassifier:
             over the best average epoch loss so far in order to consider
             as a real loss improvement.
 
-        recover_best_weight : :obj:`bool`, optional
+        self.recover_best_weight : :obj:`bool`, optional
             If True, recover the weights with minimal validation loss after
             the training process.
 
@@ -325,7 +370,9 @@ class SGDClassifier:
         if not 0 < batch_size <= y.size:
             batch_size = y.size
 
-        _val_data_size = int(y.size * validation_frac)
+        if validation_frac > 0.0 and int(y.size * validation_frac) == 0:
+            validation_frac = 0.0
+            warnings.warn("validation set has 0 instances.", UserWarning)
 
         if not 0 <= validation_frac < 1:
             raise ValueError("'validation_frac must be in [0, 1) (got "
@@ -355,27 +402,30 @@ class SGDClassifier:
         if self._num_classes == 2:
             self._num_classes -= 1
 
-        X_train, X_val, y_train, y_val = X, y, None, None
+        X_train, X_val, y_train, y_val = X, None, y, None
 
         if validation_frac > 0.0:
-            X_train, X_val, y_train, y_val = sklearn.model_selection.train_test_split(
-                X,
-                y,
-                shuffle=True,
-                stratify=y,
-                test_size=validation_frac,
-                random_state=random_state)
+            X_train, X_val, y_train, y_val = (
+                sklearn.model_selection.train_test_split(
+                    X,
+                    y,
+                    shuffle=True,
+                    stratify=y,
+                    test_size=validation_frac,
+                    random_state=random_state))
 
         self._num_inst, self._num_attr = X_train.shape
-        self._data_mean = np.mean(X_train, axis=0)
+        self._train_data_mean = np.mean(X_train, axis=0)
 
         self.learning_rate = learning_rate
         self.batch_size = batch_size
         self.max_epochs = max_epochs
         self.reg_rate = reg_rate
         self.patience = patience
+        self.patience_margin = patience_margin
         self.epsilon = epsilon
         self.epochs = 0
+        self.recover_best_weight = recover_best_weight
 
         if add_bias:
             X_train = self._add_bias(X_train)
@@ -383,13 +433,15 @@ class SGDClassifier:
             if X_val is not None:
                 X_val = self._add_bias(X_val)
 
-            self._data_mean = np.hstack((self._data_mean, 0.0))
+            self._train_data_mean = np.hstack((self._train_data_mean, 0.0))
 
         else:
-            self._data_mean[-1] = 0.0
+            self._train_data_mean[-1] = 0.0
 
-        X_train = X_train - self._data_mean
-        X_val = X_val - self._data_mean
+        X_train = X_train - self._train_data_mean
+
+        if X_val is not None:
+            X_val = X_val - self._train_data_mean
 
         if random_state is not None:
             np.random.seed(random_state)
@@ -403,8 +455,7 @@ class SGDClassifier:
             X_val=X_val,
             y_val=y_val,
             verbose=verbose,
-            store_errors=store_errors,
-            recover_best_weight=recover_best_weight)
+            store_errors=store_errors)
 
         return self
 
@@ -421,7 +472,7 @@ class SGDClassifier:
 
         # Center data based on the training data mean
         if center_data:
-            X = X - self._data_mean
+            X = X - self._train_data_mean
 
         scores = np.dot(self.weights, X.T)
 
@@ -519,6 +570,8 @@ class SupportVectorClassifier(SGDClassifier):
 
 
 class LogisticRegressionClassifier(SGDClassifier):
+    """Binary logistic regression classifier."""
+
     def __init__(self):
         """Init a SGD classifier with (negative) Log-Likelihood loss function."""
         super().__init__(
@@ -648,9 +701,18 @@ def _plot(X_train: np.ndarray,
     plt.title("Loss per epochs")
     plt.xlabel("Epoch")
     plt.ylabel("Loss")
-    plt.plot(model.errors[0, :], linestyle="-", color="red", label="Train")
-    plt.plot(
-        model.errors[1, :], linestyle="-.", color="blue", label="Validation")
+
+    if model.errors.ndim > 1:
+        plt.plot(model.errors[0, :], linestyle="-", color="red", label="Train")
+        plt.plot(
+            model.errors[1, :],
+            linestyle="-.",
+            color="blue",
+            label="Validation")
+
+    else:
+        plt.plot(model.errors, linestyle="-", color="red", label="Train")
+
     plt.legend()
 
     plt.show()
@@ -660,7 +722,7 @@ def _test_classifier(X: np.ndarray,
                      y: np.ndarray,
                      model: SGDClassifier,
                      learning_rate: t.Optional[float] = None,
-                     max_epochs: int = 1000,
+                     max_epochs: int = 128,
                      train_patience: int = 5,
                      batch_size: int = 32,
                      reg_rate: float = 0.01,
