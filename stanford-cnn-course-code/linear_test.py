@@ -62,10 +62,14 @@ def plot(model: sgd_classifier.SGDClassifier) -> None:
 
     plt.show()
 
-    plt.plot(model.errors)
     plt.title("Loss per epoch")
     plt.xlabel("Epochs")
     plt.ylabel("Average epoch loss")
+    plt.plot(model.errors[0, :], linestyle="-", color="red", label="Train")
+    plt.plot(
+        model.errors[1, :], linestyle="-.", color="blue", label="Validation")
+    plt.legend()
+
     plt.show()
 
 
