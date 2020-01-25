@@ -79,10 +79,10 @@ def _test() -> None:
         "/home/felipe/Documentos/cnn-stanford/data/cifar-10-batches-py",
         keep_classes=None)
 
-    # It is highly important to center the data.
-    # Note: for images, it is common to subtract the same value for every
-    # pixel, or to separate by color channel.
-    X -= X.mean()
+    np.random.seed(16)
+    sample_inds = np.random.choice(y.size, y.size // 2, replace=False)
+    X = X[sample_inds, :]
+    y = y[sample_inds]
 
     # Scaling data into [-1, 1] is less important, but still helpful.
     scaler = sklearn.preprocessing.MinMaxScaler((-1, 1))
@@ -94,9 +94,9 @@ def _test() -> None:
         y,
         patience=5,
         verbose=1,
-        reg_rate=0.7,
+        reg_rate=0.85,
         learning_rate=0.015,
-        max_epochs=1000,
+        max_epochs=16,
         store_errors=True,
         random_state=16)
 
