@@ -80,6 +80,7 @@ class SGDClassifier:
 
         self.weights = np.array([])  # type: np.ndarray
         self.learning_rate = -1.0
+        self.momentum_rate = -1
         self.reg_rate = -1.0
         self.batch_size = -1
         self.max_epochs = -1
@@ -135,7 +136,7 @@ class SGDClassifier:
                                  err_val_best: float,
                                  err_val_prev: float,
                                  verbose: int = 0) -> t.Tuple[float, float]:
-        """."""
+        """Calculate statistics at the end of each epoch."""
         err_train_epoch_mean = err_train_cumulative / self._num_inst
 
         if X_val is not None:
@@ -171,7 +172,7 @@ class SGDClassifier:
         return err_val_epoch_mean, err_val_best
 
     def _verbose_early_stop(self, err_val_epoch_mean: float) -> None:
-        """."""
+        """Verbose messages related to early stopping."""
         if self.epochs < self.max_epochs:
             if self._patience_ticks == self.patience:
                 _early_stop_message = "patience ({}) ran out".format(
@@ -216,6 +217,8 @@ class SGDClassifier:
         if store_errors:
             self.errors = np.zeros((2, self.max_epochs), dtype=float)
 
+        momentum = np.zeros(self.weights.shape, dtype=float)
+
         while (self.epochs < self.max_epochs
                and err_val_epoch_mean > self.epsilon
                and self._patience_ticks < self.patience):
@@ -233,7 +236,9 @@ class SGDClassifier:
             grad_total = self._calc_grad_total(
                 X=X_sample, y=y_sample, scores=scores)
 
-            self.weights -= self.learning_rate * grad_total
+            momentum = self.momentum_rate * momentum + grad_total
+
+            self.weights -= self.learning_rate * momentum
 
             err_train_cumulative += loss_total
 
@@ -285,9 +290,10 @@ class SGDClassifier:
             learning_rate: float = 0.0001,
             validation_frac: float = 0.1,
             reg_rate: float = 0.01,
-            epsilon: float = 1e-6,
+            momentum_rate: float = 0.9,
+            epsilon: float = 1e-5,
             patience: int = 10,
-            patience_margin: float = 0.001,
+            patience_margin: float = 0.01,
             recover_best_weight: bool = True,
             add_bias: bool = True,
             store_errors: bool = False,
@@ -326,6 +332,13 @@ class SGDClassifier:
             Scale factor for the regularization value. Zero value means
             no regularization. The regularization used is the L2 (Ridge)
             regularization (sum of element-wise squared ``W``.)
+
+        momentum_rate : :obj:`float`, optional
+            Rate of decay of the momentum factor in the parameter updates.
+            0 value means no momentum is applied. Generally, a large value
+            of ``momentum_rate`` is applied (0.9 or 0.99) when using the
+            momentum factor. The momentum helps the SGD algorithm against
+            local minima and saddle points in the loss function surface.
 
         epsilon : :obj:`float`, optional
             Maximum average batch loss for early stopping.
@@ -390,6 +403,10 @@ class SGDClassifier:
             raise ValueError("'learning_rate' must be positive (got {}.)".
                              format(learning_rate))
 
+        if not 0 <= momentum_rate < 1:
+            raise ValueError("'momentum_rate' must be in [0, 1) (got {}.)".
+                             format(momentum_rate))
+
         if epsilon < 0:
             raise ValueError(
                 "'epsilon' must be non-negative (got {}.)".format(epsilon))
@@ -426,6 +443,7 @@ class SGDClassifier:
         self.epsilon = epsilon
         self.epochs = 0
         self.recover_best_weight = recover_best_weight
+        self.momentum_rate = momentum_rate
 
         if add_bias:
             X_train = self._add_bias(X_train)
@@ -943,7 +961,7 @@ def _test_svc_03() -> None:
         y=iris.target,
         reg_rate=0.05,
         learning_rate=0.02,
-        train_patience=20,
+        train_patience=10,
         plot=False)
 
 
