@@ -7,6 +7,7 @@ import sklearn.model_selection
 
 import losses
 import regularization
+import opt_momentum
 
 VectorizedFuncType = t.Callable[[t.Union[np.ndarray, float]], float]
 
@@ -69,6 +70,7 @@ class SGDClassifier:
         self._func_reg = regularization.l2
         self._func_loss_grad = func_loss_grad
         self._func_reg_grad = regularization.l2_grad
+        self._func_momentum = opt_momentum.momentum_nesterov
         self._check_data_func = check_data_func
 
         self._num_classes = -1
@@ -236,9 +238,13 @@ class SGDClassifier:
             grad_total = self._calc_grad_total(
                 X=X_sample, y=y_sample, scores=scores)
 
-            momentum = self.momentum_rate * momentum + grad_total
+            total_change = self._func_momentum(
+                momentum=momentum,
+                grad=grad_total,
+                learning_rate=self.learning_rate,
+                momentum_rate=self.momentum_rate)
 
-            self.weights -= self.learning_rate * momentum
+            self.weights -= total_change
 
             err_train_cumulative += loss_total
 
@@ -339,6 +345,7 @@ class SGDClassifier:
             of ``momentum_rate`` is applied (0.9 or 0.99) when using the
             momentum factor. The momentum helps the SGD algorithm against
             local minima and saddle points in the loss function surface.
+            The momentum used is the `Nesterov momentum.`
 
         epsilon : :obj:`float`, optional
             Maximum average batch loss for early stopping.
