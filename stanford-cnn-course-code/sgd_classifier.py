@@ -8,6 +8,7 @@ import sklearn.model_selection
 import losses
 import regularization
 import opt_momentum
+import lr_decay
 
 VectorizedFuncType = t.Callable[[t.Union[np.ndarray, float]], float]
 
@@ -80,9 +81,17 @@ class SGDClassifier:
         self._best_weights = np.array([])
         self._patience_ticks = -1
 
+        self._LR_DECAY_OPTS = {
+            "exp": lr_decay.exp,
+            "inv": lr_decay.inv,
+            None: lr_decay.identity,
+        }
+
+        self._lr_decay_option = self._LR_DECAY_OPTS[None]
+
         self.weights = np.array([])  # type: np.ndarray
         self.learning_rate = -1.0
-        self.momentum_rate = -1
+        self.momentum_rate = -1.0
         self.reg_rate = -1.0
         self.batch_size = -1
         self.max_epochs = -1
@@ -91,6 +100,7 @@ class SGDClassifier:
         self.patience_margin = 0.001
         self.epochs = -1
         self.recover_best_weight = False
+        self.lr_decay_rate = -1.0
 
         self.errors = np.array([])
 
@@ -262,6 +272,11 @@ class SGDClassifier:
                     err_val_prev=err_val_prev,
                     verbose=verbose)
 
+                self.learning_rate = self._lr_decay_option(
+                    learning_rate=self.learning_rate,
+                    decay_rate=self.lr_decay_rate,
+                    epoch_num=self.epochs)
+
                 epoch_inst_count -= self._num_inst
                 err_val_prev = err_val_epoch_mean
                 err_train_cumulative = 0.0
@@ -294,6 +309,8 @@ class SGDClassifier:
             batch_size: int = 256,
             max_epochs: int = 128,
             learning_rate: float = 0.0001,
+            lr_decay_option: t.Optional[str] = None,
+            lr_decay_rate: float = 0.01,
             validation_frac: float = 0.1,
             reg_rate: float = 0.01,
             momentum_rate: float = 0.9,
@@ -329,6 +346,20 @@ class SGDClassifier:
             Step size in the direction of the negative gradient of the
             loss function for each parameter update.
 
+        lr_decay_option : :obj:`str`, optional
+            Select the learning_rate_delay strategy. Must be None (which
+            means no decay) or a string with value between `exp` (decay
+            is exponential by the number of epochs) or `inv` (decay is
+            inversely proportional to the number of epochs.) Use the
+            argument ``lr_decay_rate`` to select the constant factor
+            which controls the power of the learning rate decay rate.
+
+        lr_decay_rate : :obj:`float`, optional
+            Learning rate decay rate constant factor, which controls the
+            decay power. A value of 0 means no learning rate decay. The
+            higher the value is, the faster the learning rate will
+            decrease.
+
         validation_frac : :obj:`float`, optional
             Fraction of the train data that must be separated as a
             validation set. Used for early stopping. If 0, all data is
@@ -348,7 +379,7 @@ class SGDClassifier:
             The momentum used is the `Nesterov momentum.`
 
         epsilon : :obj:`float`, optional
-            Maximum average batch loss for early stopping.
+            Minimum average batch loss for early stopping.
 
         patience : :obj:`int`, optional
             Maximum number of epochs past the best current loss value
@@ -389,6 +420,16 @@ class SGDClassifier:
         """
         if not 0 < batch_size <= y.size:
             batch_size = y.size
+
+        if (lr_decay_option is not None
+                and lr_decay_option not in {"exp", "inv"}):
+            raise ValueError(
+                "Unknown option for 'lr_decay_option' (got "
+                "'{}'.) Choose 'exp' or 'inv'.".format(lr_decay_option))
+
+        if lr_decay_rate < 0:
+            raise ValueError("'lr_decay_rate' must be non-negative (got {}.)".
+                             format(lr_decay_rate))
 
         if validation_frac > 0.0 and int(y.size * validation_frac) == 0:
             validation_frac = 0.0
@@ -440,6 +481,7 @@ class SGDClassifier:
 
         self._num_inst, self._num_attr = X_train.shape
         self._train_data_mean = np.mean(X_train, axis=0)
+        self._lr_decay_option = self._LR_DECAY_OPTS[lr_decay_option]
 
         self.learning_rate = learning_rate
         self.batch_size = batch_size
@@ -451,6 +493,7 @@ class SGDClassifier:
         self.epochs = 0
         self.recover_best_weight = recover_best_weight
         self.momentum_rate = momentum_rate
+        self.lr_decay_rate = lr_decay_rate
 
         if add_bias:
             X_train = self._add_bias(X_train)
@@ -793,7 +836,7 @@ def _test_classifier(X: np.ndarray,
         store_errors=plot,
         reg_rate=reg_rate,
         epsilon=0,
-        learning_rate=learning_rate)
+        learning_rate=learning_rate)  # type: ignore
 
     print("Accuracy:", np.sum(model.predict(X_test) == y_test) / y_test.size)
 
