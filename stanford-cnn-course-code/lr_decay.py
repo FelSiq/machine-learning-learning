@@ -12,6 +12,17 @@ def identity(learning_rate: _LRType, decay_rate: float,
     return learning_rate
 
 
+def step(learning_rate: _LRType,
+         decay_rate: float,
+         epoch_num: int,
+         step_delay: int = 10) -> _LRType:
+    """Reduce learning rate after every ``step_delay`` epochs."""
+    if (epoch_num + 1) % step_delay == 0:
+        return decay_rate * learning_rate
+
+    return learning_rate
+
+
 def exp(learning_rate: _LRType, decay_rate: float, epoch_num: int) -> _LRType:
     """Exponential learning rate decay."""
     return learning_rate * np.exp(-decay_rate * epoch_num)
