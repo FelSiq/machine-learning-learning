@@ -160,13 +160,15 @@ def gradient_check(func: TypeVectorizedFunc,
         val_num_grad = numerical_grad(func=func, inst=inst, delta=delta)
 
         if analytic_grad_vals is None:
-            val_ana_grad = np.asarray(analytic_grad(inst))
+            val_ana_grad = np.asarray(analytic_grad(inst))  # type: ignore
 
         else:
             val_ana_grad = analytic_grad_vals[cur_it]
 
-        abs_diff = np.asarray(np.abs(
-            val_num_grad.astype(np.float64) - val_ana_grad.astype(np.float64)))
+        abs_diff = np.asarray(
+            np.abs(
+                val_num_grad.astype(np.float64) -
+                val_ana_grad.astype(np.float64)))
 
         max_el_wise = np.maximum(np.abs(val_num_grad), np.abs(val_ana_grad))
 
