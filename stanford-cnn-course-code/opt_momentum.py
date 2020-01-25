@@ -100,3 +100,28 @@ def opt_rmsprop(grad_sqr: np.ndarray,
     total_change = learning_rate * grad / (np.sqrt(grad_sqr) + 1e-7)
 
     return total_change
+
+
+def opt_adam(moment_first: np.ndarray,
+             moment_second: np.ndarray,
+             grad: np.ndarray,
+             learning_rate: float,
+             epoch_num: int,
+             beta1: float = 0.9,
+             beta2: float = 0.999) -> np.ndarray:
+    """."""
+    # Change first moment in-place
+    moment_first *= beta1
+    moment_first += (1 - beta1) * grad
+
+    # Change second moment in-place
+    moment_second *= beta2
+    moment_second += (1 - beta2) * np.square(grad)
+
+    moment_unbiased_first = moment_first / (1 - beta1**epoch_num)
+    moment_unbiased_second = moment_second / (1 - beta2**epoch_num)
+
+    total_change = (learning_rate * moment_unbiased_first /
+                    (np.sqrt(moment_unbiased_second) + 1e-7))
+
+    return total_change
