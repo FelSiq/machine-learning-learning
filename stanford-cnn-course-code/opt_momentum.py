@@ -94,7 +94,7 @@ def opt_rmsprop(grad_sqr: np.ndarray,
                 learning_rate: float,
                 decay_rate: float = 0.1) -> np.ndarray:
     """."""
-    grad_sqrt *= decay_rate
+    grad_sqr *= decay_rate
     grad_sqr += (1 - decay_rate) * np.square(grad)
 
     total_change = learning_rate * grad / (np.sqrt(grad_sqr) + 1e-7)
