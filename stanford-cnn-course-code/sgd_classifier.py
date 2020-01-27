@@ -7,7 +7,7 @@ import sklearn.model_selection
 
 import losses
 import regularization
-import opt_momentum
+import optimizers
 import lr_decay
 
 VectorizedFuncType = t.Callable[[t.Union[np.ndarray, float]], float]
@@ -71,7 +71,6 @@ class SGDClassifier:
         self._func_reg = regularization.l2
         self._func_loss_grad = func_loss_grad
         self._func_reg_grad = regularization.l2_grad
-        self._func_momentum = opt_momentum.momentum_nesterov
         self._check_data_func = check_data_func
 
         self._num_classes = -1
@@ -81,17 +80,10 @@ class SGDClassifier:
         self._best_weights = np.array([])
         self._patience_ticks = -1
 
-        self._LR_DECAY_OPTS = {
-            "exp": lr_decay.exp,
-            "inv": lr_decay.inv,
-            None: lr_decay.identity,
-        }
-
-        self._lr_decay_option = self._LR_DECAY_OPTS[None]
-
         self.weights = np.array([])  # type: np.ndarray
         self.learning_rate = -1.0
-        self.momentum_rate = -1.0
+        self.adam_beta1 = -1.0
+        self.adam_beta2 = -1.0
         self.reg_rate = -1.0
         self.batch_size = -1
         self.max_epochs = -1
@@ -207,7 +199,8 @@ class SGDClassifier:
                   X_val: t.Optional[np.ndarray] = None,
                   y_val: t.Optional[np.ndarray] = None,
                   verbose: int = 0,
-                  store_errors: bool = False) -> None:
+                  store_errors: bool = False,
+                  store_lr: bool = False) -> None:
         """Optimize the weights using SGD strategy."""
         epoch_inst_count = 0
         self._patience_ticks = 0
@@ -229,7 +222,11 @@ class SGDClassifier:
         if store_errors:
             self.errors = np.zeros((2, self.max_epochs), dtype=float)
 
-        momentum = np.zeros(self.weights.shape, dtype=float)
+        if store_lr:
+            self.lr_hist = np.zeros(self.max_epochs, dtype=float)
+
+        moment_first = np.zeros(self.weights.shape, dtype=float)
+        moment_second = np.zeros(self.weights.shape, dtype=float)
 
         while (self.epochs < self.max_epochs
                and err_val_epoch_mean > self.epsilon
@@ -248,11 +245,14 @@ class SGDClassifier:
             grad_total = self._calc_grad_total(
                 X=X_sample, y=y_sample, scores=scores)
 
-            total_change = self._func_momentum(
-                momentum=momentum,
+            total_change = optimizers.opt_adam(
+                moment_first=moment_first,
+                moment_second=moment_second,
                 grad=grad_total,
                 learning_rate=self.learning_rate,
-                momentum_rate=self.momentum_rate)
+                epoch_num=self.epochs,
+                beta1=self.adam_beta1,
+                beta2=self.adam_beta2)
 
             self.weights -= total_change
 
@@ -272,10 +272,15 @@ class SGDClassifier:
                     err_val_prev=err_val_prev,
                     verbose=verbose)
 
-                self.learning_rate = self._lr_decay_option(
+                self.learning_rate = lr_decay.val_step(
                     learning_rate=self.learning_rate,
                     decay_rate=self.lr_decay_rate,
-                    epoch_num=self.epochs)
+                    loss_val_cur=err_val_epoch_mean,
+                    loss_val_prev=err_val_prev,
+                    min_diff_frac=self.patience_margin)
+
+                if store_lr:
+                    self.lr_hist[self.epochs - 1] = self.learning_rate
 
                 epoch_inst_count -= self._num_inst
                 err_val_prev = err_val_epoch_mean
@@ -303,23 +308,27 @@ class SGDClassifier:
             else:
                 self.errors = self.errors[0, :self.epochs]
 
+        if store_lr:
+            self.lr_hist = self.lr_hist[:self.epochs]
+
     def fit(self,
             X: np.ndarray,
             y: np.ndarray,
             batch_size: int = 256,
             max_epochs: int = 128,
             learning_rate: float = 0.0001,
-            lr_decay_option: t.Optional[str] = None,
-            lr_decay_rate: float = 0.01,
+            lr_decay_rate: float = 0.95,
             validation_frac: float = 0.1,
             reg_rate: float = 0.01,
-            momentum_rate: float = 0.9,
+            adam_beta1: float = 0.9,
+            adam_beta2: float = 0.999,
             epsilon: float = 1e-5,
             patience: int = 10,
             patience_margin: float = 0.01,
             recover_best_weight: bool = True,
             add_bias: bool = True,
             store_errors: bool = False,
+            store_lr: bool = False,
             verbose: int = 0,
             random_state: t.Optional[int] = None) -> "SGDClassifier":
         """Use the given train data to optimize the classifier parameters.
@@ -346,19 +355,12 @@ class SGDClassifier:
             Step size in the direction of the negative gradient of the
             loss function for each parameter update.
 
-        lr_decay_option : :obj:`str`, optional
-            Select the learning_rate_delay strategy. Must be None (which
-            means no decay) or a string with value between `exp` (decay
-            is exponential by the number of epochs) or `inv` (decay is
-            inversely proportional to the number of epochs.) Use the
-            argument ``lr_decay_rate`` to select the constant factor
-            which controls the power of the learning rate decay rate.
-
         lr_decay_rate : :obj:`float`, optional
             Learning rate decay rate constant factor, which controls the
-            decay power. A value of 0 means no learning rate decay. The
-            higher the value is, the faster the learning rate will
-            decrease.
+            decay power. A value of 1.0 means no learning rate decay. The
+            lower the value is, the faster the learning rate will decrease.
+            It is used an automatic learning rate decay based on the
+            validation loss.
 
         validation_frac : :obj:`float`, optional
             Fraction of the train data that must be separated as a
@@ -370,13 +372,13 @@ class SGDClassifier:
             no regularization. The regularization used is the L2 (Ridge)
             regularization (sum of element-wise squared ``W``.)
 
-        momentum_rate : :obj:`float`, optional
-            Rate of decay of the momentum factor in the parameter updates.
-            0 value means no momentum is applied. Generally, a large value
-            of ``momentum_rate`` is applied (0.9 or 0.99) when using the
-            momentum factor. The momentum helps the SGD algorithm against
-            local minima and saddle points in the loss function surface.
-            The momentum used is the `Nesterov momentum.`
+        adam_beta1 : :obj:`float`, optional
+            Adam optimizer linear factor. Usually it is used the default
+            value of 0.9.
+
+        adam_beta2 : :obj:`float`, optional
+            Adam optimizer second order factor. Usually it is used the
+            default value of 0.999.
 
         epsilon : :obj:`float`, optional
             Minimum average batch loss for early stopping.
@@ -391,7 +393,7 @@ class SGDClassifier:
             over the best average epoch loss so far in order to consider
             as a real loss improvement.
 
-        self.recover_best_weight : :obj:`bool`, optional
+        recover_best_weight : :obj:`bool`, optional
             If True, recover the weights with minimal validation loss after
             the training process.
 
@@ -407,6 +409,12 @@ class SGDClassifier:
             the training erros, while the second row correspond to the
             validation errors.
 
+        store_lr : :obj:`bool`, optional
+            If True, store the learning rates for each epoch. Useful when
+            learning rate decay is used. The learning rates are stored in
+            the attribute ``lr_hist`` (which is a numpy array with all
+            learning rate values by epoch.)
+
         verbose : :obj:`int`, optional
             Set the verbosity level of the fit procedure.
 
@@ -420,12 +428,6 @@ class SGDClassifier:
         """
         if not 0 < batch_size <= y.size:
             batch_size = y.size
-
-        if (lr_decay_option is not None
-                and lr_decay_option not in {"exp", "inv"}):
-            raise ValueError(
-                "Unknown option for 'lr_decay_option' (got "
-                "'{}'.) Choose 'exp' or 'inv'.".format(lr_decay_option))
 
         if lr_decay_rate < 0:
             raise ValueError("'lr_decay_rate' must be non-negative (got {}.)".
@@ -451,9 +453,13 @@ class SGDClassifier:
             raise ValueError("'learning_rate' must be positive (got {}.)".
                              format(learning_rate))
 
-        if not 0 <= momentum_rate < 1:
-            raise ValueError("'momentum_rate' must be in [0, 1) (got {}.)".
-                             format(momentum_rate))
+        if not 0 <= adam_beta1 < 1:
+            raise ValueError(
+                "'adam_beta1' must be in [0, 1) (got {}.)".format(adam_beta1))
+
+        if not 0 <= adam_beta2 < 1:
+            raise ValueError(
+                "'adam_beta2' must be in [0, 1) (got {}.)".format(adam_beta2))
 
         if epsilon < 0:
             raise ValueError(
@@ -481,7 +487,6 @@ class SGDClassifier:
 
         self._num_inst, self._num_attr = X_train.shape
         self._train_data_mean = np.mean(X_train, axis=0)
-        self._lr_decay_option = self._LR_DECAY_OPTS[lr_decay_option]
 
         self.learning_rate = learning_rate
         self.batch_size = batch_size
@@ -492,7 +497,8 @@ class SGDClassifier:
         self.epsilon = epsilon
         self.epochs = 0
         self.recover_best_weight = recover_best_weight
-        self.momentum_rate = momentum_rate
+        self.adam_beta1 = adam_beta1
+        self.adam_beta2 = adam_beta2
         self.lr_decay_rate = lr_decay_rate
 
         if add_bias:
@@ -523,7 +529,8 @@ class SGDClassifier:
             X_val=X_val,
             y_val=y_val,
             verbose=verbose,
-            store_errors=store_errors)
+            store_errors=store_errors,
+            store_lr=store_lr)
 
         return self
 
@@ -781,6 +788,7 @@ def _plot(X_train: np.ndarray,
     else:
         plt.plot(model.errors, linestyle="-", color="red", label="Train")
 
+    plt.plot(model.lr_hist, linestyle="--", color="black", label="LR")
     plt.legend()
 
     plt.show()
@@ -834,6 +842,7 @@ def _test_classifier(X: np.ndarray,
         patience=train_patience,
         max_epochs=max_epochs,
         store_errors=plot,
+        store_lr=plot,
         reg_rate=reg_rate,
         epsilon=0,
         learning_rate=learning_rate)  # type: ignore
