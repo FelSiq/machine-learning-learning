@@ -118,8 +118,8 @@ def opt_adam(moment_first: np.ndarray,
     moment_second *= beta2
     moment_second += (1 - beta2) * np.square(grad)
 
-    moment_unbiased_first = moment_first / (1 - beta1**epoch_num)
-    moment_unbiased_second = moment_second / (1 - beta2**epoch_num)
+    moment_unbiased_first = moment_first / (1 - beta1**(epoch_num + 1))
+    moment_unbiased_second = moment_second / (1 - beta2**(epoch_num + 1))
 
     total_change = (learning_rate * moment_unbiased_first /
                     (np.sqrt(moment_unbiased_second) + 1e-7))
