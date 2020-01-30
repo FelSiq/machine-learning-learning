@@ -32,9 +32,9 @@ def momentum_vanilla(momentum: np.ndarray,
     """
     # Update momentum in-place
     momentum *= momentum_rate
-    momentum += grad
+    momentum += learning_rate * grad
 
-    total_change = learning_rate * (momentum_rate * momentum + grad)
+    total_change = momentum
 
     return total_change
 
