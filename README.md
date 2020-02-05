@@ -27,9 +27,6 @@ This is a repository about my process of learning machine learning. Here I clust
     - Exams: https://ocw.mit.edu/courses/mathematics/18-02-multivariable-calculus-fall-2007/exams/
 - Stanford CS229 Machine Learning course
     - Lecture notes: http://cs229.stanford.edu/syllabus.html
-- University of California, Berkeley, CS285 Deep Reinforcement Learning
-    - Course link (w/ slides and assignments): http://rail.eecs.berkeley.edu/deeprlcourse/
-    - Lectures: https://www.youtube.com/playlist?list=PLkFD6_40KJIwhWJpGazJ9VSj9CFMkb79A
 
 #### Advanced
 - MIT Introduction to Deep Learning
@@ -39,6 +36,9 @@ This is a repository about my process of learning machine learning. Here I clust
     - Course notes: http://cs231n.github.io/
     - Lectures: https://www.youtube.com/playlist?list=PL3FW7Lu3i5JvHM8ljYj-zLfQRF3EO8sYv
     - Lecture notes + assignments: http://cs231n.github.io/
+- University of California, Berkeley, CS285 Deep Reinforcement Learning
+    - Course link (w/ slides and assignments): http://rail.eecs.berkeley.edu/deeprlcourse/
+    - Lectures: https://www.youtube.com/playlist?list=PLkFD6_40KJIwhWJpGazJ9VSj9CFMkb79A
 
 ## Books
 #### Basic
