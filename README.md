@@ -33,7 +33,7 @@ This is a repository about my process of learning machine learning. Here I clust
     - Lectures: https://www.youtube.com/playlist?list=PLtBw6njQRU-rwp5__7C0oIVt26ZgjG9NI
 - (Recommended) Stanford CS231n Convolutional Neural Networks for Visual Recognition (Spring 2017) course
     - Course website: http://cs231n.stanford.edu/
-        - Course notes: http://cs231n.github.io/
+    - Course notes: http://cs231n.github.io/
     - Lectures: https://www.youtube.com/playlist?list=PL3FW7Lu3i5JvHM8ljYj-zLfQRF3EO8sYv
     - Lecture notes + assignments: http://cs231n.github.io/
 
@@ -46,7 +46,8 @@ This is a repository about my process of learning machine learning. Here I clust
 
 ### Mixed (from basic to advanced)
 - Machine Learning: A Practical Approach on the Statistical Learning Theory
-    - Authors:  Rodrigo F. Mello and Moacir Antonelli Ponti
+    - Authors: Rodrigo F. Mello and Moacir Antonelli Ponti
+    - Year: 2018
     - Link to amazon: https://www.amazon.com/Machine-Learning-Practical-Approach-Statistical-dp-3319949888/dp/3319949888
 
 ### Advanced
