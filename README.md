@@ -49,6 +49,8 @@ This is a repository about my process of learning machine learning. Here I clust
     - Authors: Rodrigo F. Mello and Moacir Antonelli Ponti
     - Year: 2018
     - Link to amazon: https://www.amazon.com/Machine-Learning-Practical-Approach-Statistical-dp-3319949888/dp/3319949888
+- (free) Reinforcement Learning: An Introduction
+    - Download at: http://incompleteideas.net/book/the-book.html
 
 #### Advanced
 - (free) The Elements of Statistical Learning
