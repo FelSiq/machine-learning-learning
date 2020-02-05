@@ -1,9 +1,9 @@
-# machine-learning-learning
-This is a repository about my process of learning machine learning. Here I cluster some of my machine learning related code. All code here are not supposed to follow the state-of-art implementations, nor offer any sort of guarantees or have any sort of optimizations.
+# A personal & messy repository about Machine Learning
+This is a repository about my process of learning machine learning. Here I cluster some of my machine learning related code. All code here is not supposed to follow the state-of-art implementations, nor offer any sort of guarantees or have any sort of optimizations.
 
 # Useful stuff
 ## University lectures, lecture notes, exams, assignments etc
-### Basic
+#### Basic
 - (Recommended) MIT Artificial Intelligence course (2010)
     - Professor: Patrick Henry Winston
     - Course main page: https://ocw.mit.edu/courses/electrical-engineering-and-computer-science/6-034-artificial-intelligence-fall-2010/
@@ -28,7 +28,7 @@ This is a repository about my process of learning machine learning. Here I clust
 - Stanford CS229 Machine Learning course
     - Lecture notes: http://cs229.stanford.edu/syllabus.html
 
-### Advanced
+#### Advanced
 - MIT Introduction to Deep Learning
     - Lectures: https://www.youtube.com/playlist?list=PLtBw6njQRU-rwp5__7C0oIVt26ZgjG9NI
 - (Recommended) Stanford CS231n Convolutional Neural Networks for Visual Recognition (Spring 2017) course
@@ -38,19 +38,19 @@ This is a repository about my process of learning machine learning. Here I clust
     - Lecture notes + assignments: http://cs231n.github.io/
 
 ## Books
-### Basic
+#### Basic
 - (Recommended) (free) An Introduction to Statistical Learning
     - Authors: Gareth James, Daniela Witten, Trevor Hastie and Robert Tibshirani
     - Year: 2013
     - Download at: http://faculty.marshall.usc.edu/gareth-james/ISL/index.html
 
-### Mixed (from basic to advanced)
+#### Mixed (from basic to advanced)
 - Machine Learning: A Practical Approach on the Statistical Learning Theory
     - Authors: Rodrigo F. Mello and Moacir Antonelli Ponti
     - Year: 2018
     - Link to amazon: https://www.amazon.com/Machine-Learning-Practical-Approach-Statistical-dp-3319949888/dp/3319949888
 
-### Advanced
+#### Advanced
 - (free) The Elements of Statistical Learning
     - Authors: Trevor Hastie, Robert Tibshirani, and Jerome Friedman
     - Edition: Second Edition
@@ -58,15 +58,15 @@ This is a repository about my process of learning machine learning. Here I clust
     - Download at: https://web.stanford.edu/~hastie/ElemStatLearn/
 
 ## Tutorials
-### Basic
+#### Basic
 - Kaggle tutorials
     - Link: https://www.kaggle.com/learn/overview
 
-## Mixed (from basic to more advanced)
+#### Mixed (from basic to more advanced)
 - (Recommended) Machine Learning Mastery website tutorials
     - Link: https://machinelearningmastery.com/start-here/#lstm
 
-### Advanced
+#### Advanced
 - UCL Course on Reinforcement Learning
     - Author: David Silver
     - Course material: http://www0.cs.ucl.ac.uk/staff/d.silver/web/Teaching.html
@@ -76,7 +76,7 @@ This is a repository about my process of learning machine learning. Here I clust
     - Link: http://karpathy.github.io/2016/05/31/rl/
 
 ## Youtube channels
-### Basic
+#### Basic
 - (Recommended) ML4U (in Portuguese): https://tinyurl.com/ybkw2cmk
 
 ## Basic resources
