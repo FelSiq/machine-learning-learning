@@ -9,7 +9,7 @@ class DecisionTreeClassifier:
 
     def __init__(self,
                  max_depth: t.Optional[int] = None,
-                 min_impurity: float = 0.0):
+                 min_impurity: float = 1e-7):
         """Init a Decision Tree Classifier model."""
         self.max_depth = np.inf if max_depth is None else max_depth
         self.min_impurity = min_impurity
@@ -69,7 +69,7 @@ class DecisionTreeNumeric(DecisionTreeClassifier):
     def __init__(self,
                  max_depth: t.Optional[int] = None,
                  stride_frac: float = 0.1,
-                 min_impurity: float = 0.0):
+                 min_impurity: float = 1e-7):
         """Init a Decision Tree Classifier model for numeric data."""
         if not 0 < stride_frac <= 0.5:
             raise ValueError("'stride_frac' must be in (0, 0.5] (got {}.)".
@@ -184,7 +184,8 @@ class DecisionTreeNumeric(DecisionTreeClassifier):
 
             if (self._node_impurity[cur_node_ind] <= self.min_impurity
                     or self._node_depth[cur_node_ind] >= self.max_depth
-                    or available_attrs.size == 0):
+                    or available_attrs.size == 0
+                    or inst_inds_node.size <= 1):
                 continue
 
             attr_num_split = max(
