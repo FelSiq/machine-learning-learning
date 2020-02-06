@@ -98,7 +98,10 @@ class DecisionTreeNumeric(DecisionTreeClassifier):
         self._node_impurity += node_num * [np.inf]
 
     def _create_split(
-            self, X: np.ndarray, y: np.ndarray
+            self,
+            X: np.ndarray,
+            y: np.ndarray,
+            stride: int = 1,
     ) -> t.Tuple[int, float, np.ndarray, np.ndarray, float, float]:
         """Get the current best binary split on the given data."""
         best_impurity = np.inf
@@ -114,7 +117,7 @@ class DecisionTreeNumeric(DecisionTreeClassifier):
             X_sorted = X[sorted_inds, :]
             y_sorted = y[sorted_inds]
 
-            for cut_ind in np.arange(1, sorted_inds.size):
+            for cut_ind in np.arange(1, sorted_inds.size, stride):
                 class_l_inds = sorted_inds[:cut_ind]
                 class_r_inds = sorted_inds[cut_ind:]
 
@@ -140,17 +143,19 @@ class DecisionTreeNumeric(DecisionTreeClassifier):
             X: np.ndarray,
             y: np.ndarray,
             attr_sample_frac: float = 1.0,
+            stride_frac: float = 0.1,
             random_state: t.Optional[int] = None) -> "DecisionTreeClassifier":
         """Build a Decision Tree Classifier model using given training data."""
         if not 0 < attr_sample_frac <= 1.0:
             raise ValueError("'attr_sample_frac' must be in (0, 1] (got {}.)".
                              format(attr_sample_frac))
 
+        if not 0 < stride_frac <= 0.5:
+            raise ValueError("'stride_frac' must be in (0, 0.5] (got {}.)".
+                             format(stride_frac))
+
         if random_state is not None:
             np.random.seed(random_state)
-
-        X = np.copy(X)
-        y = np.copy(y)
 
         self._child_l = []
         self._child_r = []
@@ -182,13 +187,16 @@ class DecisionTreeNumeric(DecisionTreeClassifier):
 
             attr_num_split = max(
                 1, round(attr_sample_frac * available_attrs.size))
+
+            stride = max(1, round(stride_frac * inst_inds_node.size))
+
             attrs_sample = np.random.choice(
                 a=available_attrs, size=attr_num_split, replace=False)
 
             X_sample = X[inst_inds_node, :][:, attrs_sample]
 
             used_attr_ind, threshold, inds_inst_l, inds_inst_r, imp_l, imp_r = (
-                self._create_split(X=X_sample, y=y))
+                self._create_split(X=X_sample, y=y, stride=stride))
 
             used_attrs = np.hstack((used_attrs, attrs_sample[used_attr_ind]))
             split_stack.append((next_ind + 1, inst_inds_node[inds_inst_l],
