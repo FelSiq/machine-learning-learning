@@ -54,14 +54,12 @@ class DecisionTreeClassifier:
             attr_sample_frac: float = 1.0,
             random_state: t.Optional[int] = None) -> "DecisionTreeClassifier":
         """Method to be overwritten by the subclasses."""
-        pass
-
+        # pylint: disable=W0613
         return self
 
     def predict(self, X: np.ndarray) -> np.ndarray:
         """Method to be overwritten by the subclasses."""
-        pass
-
+        # pylint: disable=W0613, R0201
         return np.array([])
 
 
@@ -89,9 +87,6 @@ class DecisionTreeNumeric(DecisionTreeClassifier):
         self._node_attr = np.array(
             [], dtype=int)  # type: t.Union[np.ndarray, t.List[int]]
 
-        self._classes = np.array(
-            [], dtype=object)  # type: t.Union[np.ndarray, t.List[int]]
-
     def _create_nodes(self, node_num: int) -> None:
         """Create a new node on the tree model."""
         self._node_cls += node_num * [None]
@@ -102,8 +97,9 @@ class DecisionTreeNumeric(DecisionTreeClassifier):
         self._node_attr += node_num * [-1]
         self._node_impurity += node_num * [np.inf]
 
-    def _create_split(self, X: np.ndarray, y: np.ndarray
-                      ) -> t.Tuple[int, float, np.ndarray, np.ndarray, float, float]:
+    def _create_split(
+            self, X: np.ndarray, y: np.ndarray
+    ) -> t.Tuple[int, float, np.ndarray, np.ndarray, float, float]:
         """Get the current best binary split on the given data."""
         best_impurity = np.inf
         best_imp_l = np.inf
@@ -155,8 +151,6 @@ class DecisionTreeNumeric(DecisionTreeClassifier):
 
         X = np.copy(X)
         y = np.copy(y)
-
-        self._classes = np.unique(y)
 
         self._child_l = []
         self._child_r = []
@@ -283,6 +277,7 @@ class DecisionTreeMixed(DecisionTreeClassifier):
 
 
 def _test_01() -> None:
+    # pylint: disable=E1101, C0415
     from sklearn.datasets import load_iris
 
     iris = load_iris()
@@ -293,6 +288,7 @@ def _test_01() -> None:
 
 
 def _test_02() -> None:
+    # pylint: disable=E1101, C0415
     from sklearn.datasets import load_iris
 
     iris = load_iris()
@@ -303,16 +299,17 @@ def _test_02() -> None:
 
 
 def _test_03() -> None:
+    # pylint: disable=E1101, C0415
     from sklearn.datasets import load_iris
     from sklearn.model_selection import StratifiedKFold
-    from sklearn.tree import DecisionTreeClassifier
+    from sklearn.tree import DecisionTreeClassifier as SklearnDT
 
     iris = load_iris()
     n_splits = 10
     splitter = StratifiedKFold(n_splits=n_splits)
 
     model = DecisionTreeNumeric()
-    model_skl = DecisionTreeClassifier()
+    model_skl = SklearnDT()
 
     acc = 0
     acc_skl = 0
