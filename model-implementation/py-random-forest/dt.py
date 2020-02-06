@@ -68,9 +68,16 @@ class DecisionTreeNumeric(DecisionTreeClassifier):
 
     def __init__(self,
                  max_depth: t.Optional[int] = None,
+                 stride_frac: float = 0.1,
                  min_impurity: float = 0.0):
         """Init a Decision Tree Classifier model for numeric data."""
+        if not 0 < stride_frac <= 0.5:
+            raise ValueError("'stride_frac' must be in (0, 0.5] (got {}.)".
+                             format(stride_frac))
+
         super().__init__(max_depth=max_depth, min_impurity=min_impurity)
+
+        self.stride_frac = stride_frac
 
         self._child_l = np.array(
             [], dtype=np.uint16)  # type: t.Union[np.ndarray, t.List[int]]
@@ -143,16 +150,11 @@ class DecisionTreeNumeric(DecisionTreeClassifier):
             X: np.ndarray,
             y: np.ndarray,
             attr_sample_frac: float = 1.0,
-            stride_frac: float = 0.1,
             random_state: t.Optional[int] = None) -> "DecisionTreeClassifier":
         """Build a Decision Tree Classifier model using given training data."""
         if not 0 < attr_sample_frac <= 1.0:
             raise ValueError("'attr_sample_frac' must be in (0, 1] (got {}.)".
                              format(attr_sample_frac))
-
-        if not 0 < stride_frac <= 0.5:
-            raise ValueError("'stride_frac' must be in (0, 0.5] (got {}.)".
-                             format(stride_frac))
 
         if random_state is not None:
             np.random.seed(random_state)
@@ -188,7 +190,7 @@ class DecisionTreeNumeric(DecisionTreeClassifier):
             attr_num_split = max(
                 1, round(attr_sample_frac * available_attrs.size))
 
-            stride = max(1, round(stride_frac * inst_inds_node.size))
+            stride = max(1, round(self.stride_frac * inst_inds_node.size))
 
             attrs_sample = np.random.choice(
                 a=available_attrs, size=attr_num_split, replace=False)
