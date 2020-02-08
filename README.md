@@ -39,6 +39,9 @@ This is a repository about my process of learning machine learning. Here I clust
 - University of California, Berkeley, CS285 Deep Reinforcement Learning
     - Course link (w/ slides and assignments): http://rail.eecs.berkeley.edu/deeprlcourse/
     - Lectures: https://www.youtube.com/playlist?list=PLkFD6_40KJIwhWJpGazJ9VSj9CFMkb79A
+- Stanford CS244n: Natural Language Processing with Deep Learning (Winter 2019) course
+    - Course website (info + materials + links): http://web.stanford.edu/class/cs224n/index.html
+    - Lecture notes: https://www.youtube.com/playlist?list=PLoROMvodv4rOhcuXMZkNm7j3fVwBBY42z
 
 ## Books
 #### Basic
@@ -66,10 +69,14 @@ This is a repository about my process of learning machine learning. Here I clust
 #### Basic
 - Kaggle tutorials
     - Link: https://www.kaggle.com/learn/overview
+- Justin Johnson's Pytorch tutorial & examples
+    - Link: https://github.com/jcjohnson/pytorch-examples
 
 #### Mixed (from basic to more advanced)
 - (Recommended) Machine Learning Mastery website tutorials
     - Link: https://machinelearningmastery.com/start-here/#lstm
+- Links to more Machine learning tutorials (medium post by Robbie Allen)
+    - Link: https://medium.com/machine-learning-in-practice/over-200-of-the-best-machine-learning-nlp-and-python-tutorials-2018-edition-dd8cf53cb7dc
 
 #### Advanced
 - UCL Course on Reinforcement Learning
