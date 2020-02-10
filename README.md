@@ -57,13 +57,15 @@ This is a repository about my process of learning machine learning. Here I clust
     - Link to amazon: https://www.amazon.com/Machine-Learning-Practical-Approach-Statistical-dp-3319949888/dp/3319949888
 - (free) Reinforcement Learning: An Introduction
     - Download at: http://incompleteideas.net/book/the-book.html
-
-#### Advanced
 - (free) The Elements of Statistical Learning
     - Authors: Trevor Hastie, Robert Tibshirani, and Jerome Friedman
     - Edition: Second Edition
     - Year: February 2009
     - Download at: https://web.stanford.edu/~hastie/ElemStatLearn/
+- (free) Deep Learning
+    - Authors: Ian Goodfellow, Yoshua Bengio, and Aaron Courville
+    - Year: 2016
+    - See book at: http://www.deeplearningbook.org/
 
 ## Tutorials
 #### Basic
