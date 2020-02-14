@@ -28,7 +28,7 @@ This is a repository about my process of learning machine learning. Here I clust
 - Stanford CS229 Machine Learning course
     - Lecture notes: http://cs229.stanford.edu/syllabus.html
 
-#### Advanced
+#### Advanced?
 - MIT Introduction to Deep Learning
     - Lectures: https://www.youtube.com/playlist?list=PLtBw6njQRU-rwp5__7C0oIVt26ZgjG9NI
 - (Recommended) Stanford CS231n Convolutional Neural Networks for Visual Recognition (Spring 2017) course
@@ -80,7 +80,7 @@ This is a repository about my process of learning machine learning. Here I clust
 - Links to more Machine learning tutorials (medium post by Robbie Allen)
     - Link: https://medium.com/machine-learning-in-practice/over-200-of-the-best-machine-learning-nlp-and-python-tutorials-2018-edition-dd8cf53cb7dc
 
-#### Advanced
+#### Advanced?
 - UCL Course on Reinforcement Learning
     - Author: David Silver
     - Course material: http://www0.cs.ucl.ac.uk/staff/d.silver/web/Teaching.html
@@ -88,6 +88,18 @@ This is a repository about my process of learning machine learning. Here I clust
 - Deep Reinforcement Learning: Pong from Pixels
     - Author: Andrej Karpathy
     - Link: http://karpathy.github.io/2016/05/31/rl/
+- Understanding LSTMs
+    - Author: Christopher Olah
+    - Link: http://colah.github.io/posts/2015-08-Understanding-LSTMs/
+- Implementing vanilla LSTMs
+    - Author: Agustinus Kristladl
+    - Link: https://wiseodd.github.io/techblog/2016/08/12/lstm-backprop/
+- NIPS 2016: Generative Adversarial Networks
+    - Author: Ian Goodfellow
+    - Link: https://arxiv.org/pdf/1701.00160.pdf
+- 17 tips - "ganhacks" - about how to train GANs
+    - Authors: Soumith Chintala, Emily Denton, Martin Arjovsky, and Michael Mathieu
+    - Link: https://github.com/soumith/ganhacks
 
 ## Youtube channels
 #### Basic
