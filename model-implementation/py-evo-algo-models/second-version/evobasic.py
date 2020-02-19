@@ -19,16 +19,17 @@ class EvoBasic:
                      t.Callable[[], t.Union[int, float]]] = None,
                  gen_num: int = 10,
                  inst_dim: int = 2,
-                 size_pop: int = 128):
+                 pop_size_parent: int = 128,
+                 pop_size_offspring: t.Optional[int] = None):
         """."""
         self.fitness_func = fitness_func
 
         if not np.isscalar(fitness_func(np.zeros(inst_dim, dtype=float))):
             raise TypeError("'fitness_func' must return a scalar.")
 
-        if size_pop <= 0:
-            raise ValueError(
-                "'size_pop' must be positive (got {}.)".format(size_pop))
+        if pop_size_parent <= 0:
+            raise ValueError("'pop_size_parent' must be positive (got {}.)".
+                             format(pop_size_parent))
 
         if inst_dim <= 0:
             raise ValueError(
@@ -54,7 +55,15 @@ class EvoBasic:
                              "'inst_dim' argument.".format(
                                  inst_range_high.size, inst_dim))
 
-        self.size_pop = size_pop
+        if pop_size_offspring is None:
+            pop_size_offspring = pop_size_parent
+
+        if pop_size_offspring <= 0:
+            raise ValueError("'pop_size_offspring' must be positive "
+                             "(got {}.)".format(pop_size_offspring))
+
+        self.pop_size_parent = pop_size_parent
+        self.pop_size_offspring = pop_size_offspring
         self.inst_dim = inst_dim
         self.gen_num = gen_num
 
@@ -70,6 +79,8 @@ class EvoBasic:
         self.best_inst_fitness = -1.0
 
         self._online_plot = False
+        self._time = -1
+        self._alg_name = None
 
         if mutation_prob is None:
             mutation_prob = 1.0 / self.inst_dim
@@ -100,9 +111,10 @@ class EvoBasic:
         self.population = np.random.uniform(
             low=self.inst_range_low,
             high=self.inst_range_high,
-            size=(self.size_pop, self.inst_dim))
+            size=(self.pop_size_parent, self.inst_dim))
 
-        self.timestamps = np.zeros(shape=self.size_pop, dtype=np.uint)
+        self.timestamps = np.arange(self.pop_size_parent, dtype=np.uint)
+        self._time = self.pop_size_parent
 
         self.fitness = np.array(
             [self.fitness_func(inst) for inst in self.population], dtype=float)
@@ -111,35 +123,30 @@ class EvoBasic:
             self._config_plot(online=True)
             self.plot(pause=pause)
 
-        for gen_ind in np.arange(self.gen_num):
-            killed_num = 0
+        gen_ind = 0
+        current_it = 0
+        killed_num = 0
 
-            for time, (id_parent, id_kill) in enumerate(
-                    np.random.randint(self.size_pop, size=(self.size_pop, 2))):
-                offspring = np.copy(self.population[id_parent])
+        while gen_ind < self.gen_num:
+            self.population, cur_killed_num = self._gen_pop()
 
-                offspring += [(p < self.mutation_prob[attr_ind]) *
-                              self.mutation_delta_func()
-                              for attr_ind, p in enumerate(
-                                  np.random.random(size=self.inst_dim))]
+            current_it += self.pop_size_offspring
+            killed_num += cur_killed_num
 
-                offspring = np.minimum(offspring, self.inst_range_high)
-                offspring = np.maximum(offspring, self.inst_range_low)
+            if current_it >= self.pop_size_parent:
+                gen_ind += current_it // self.pop_size_parent
+                current_it %= self.pop_size_parent
 
-                offspring_fitness = self.fitness_func(offspring)
+                if verbose:
+                    print(
+                        "Generation {} finished.".format(gen_ind),
+                        "{} new instances.".format(killed_num)
+                        if killed_num else "")
 
-                if self.fitness[id_kill] < offspring_fitness:
-                    self.population[id_kill, :] = offspring
-                    self.fitness[id_kill] = offspring_fitness
-                    self.timestamps[id_kill] = time
-                    killed_num += 1
+                killed_num = 0
 
-            if verbose:
-                print("Generation {} finished. {} new instances.".format(
-                    gen_ind, killed_num))
-
-            if plot:
-                self._plot_timestep(pause=pause)
+                if plot:
+                    self._plot_timestep(pause=pause)
 
         self.best_inst_id = np.argmax(self.fitness)
         self.best_inst = self.population[self.best_inst_id]
@@ -219,6 +226,8 @@ class EvoBasic:
             self._plt_con = self._plt_ax.plot(
                 vals, [self.fitness_func(val) for val in vals])
 
+        plt.suptitle("Algorithm: {}".format(self._alg_name if self.
+                                            _alg_name else "Unknown"))
         plt.title("Population countour plot" + (" (best fit: {:.4f})".format(
             self.best_inst_fitness) if not self._online_plot else ""))
         plt.xlabel("First dimension")
@@ -239,13 +248,6 @@ class EvoBasic:
         except Exception:
             pass
 
-
-def _test() -> None:
-    model = EvoBasic(
-        -5, 5, lambda inst: np.sum(inst * np.sin(inst)), inst_dim=1)
-    model.run(verbose=True, plot=True)
-    model.plot(pause=0)
-
-
-if __name__ == "__main__":
-    _test()
+    def _gen_pop(self) -> t.Tuple[np.ndarray, int]:
+        """."""
+        return self.population, 0
