@@ -33,7 +33,13 @@ class EvoBasic:
             mutation_func_args: t.Optional[
                 t.Union[_DictArgType, t.Sequence[_DictArgType]]] = None,
             gen_range_low: t.Optional[_InstType] = None,
-            gen_range_high: t.Optional[_InstType] = None):
+            gen_range_high: t.Optional[_InstType] = None,
+            overlapping_pops: bool = True,
+            selection_parent: str = "uniform",
+            selection_parent_args: t.Optional[_DictArgType] = None,
+            selection_target: str = "uniform",
+            selection_target_args: t.Optional[_DictArgType] = None,
+    ):
         """Init the basic evolutionary algorithm framework.
 
         Arguments
@@ -124,7 +130,24 @@ class EvoBasic:
         gen_range_high : :obj:`np.ndarray` or :obj:`float`, optional
             Same as ``gen_range_low``, but using ``inst_range_high`` as
             reference.
+
+        overlapping_pops : :obj:`bool`, optional
+        selection_parent : :obj:`str`, optional
+        selection_parent_args : dict, optional
+        selection_target : :obj:`str`, optional
+        selection_target_args : dict, optional
         """
+        VALID_SELECTIONS = ("uniform", "fitness-prop", "tournament", "ranking",
+                            "truncation")
+
+        if selection_parent not in VALID_SELECTIONS:
+            raise ValueError("'selection_parent' ({}) not in {}.".format(
+                selection_parent, VALID_SELECTIONS))
+
+        if selection_target not in VALID_SELECTIONS:
+            raise ValueError("'selection_target' ({}) not in {}.".format(
+                selection_target, VALID_SELECTIONS))
+
         self.fitness_func = fitness_func
 
         if not np.isscalar(fitness_func(np.zeros(gene_num, dtype=float))):
@@ -184,6 +207,15 @@ class EvoBasic:
         self.inst_range_low = np.copy(inst_range_low)
         self.inst_range_high = np.copy(inst_range_high)
 
+        self.selection_parent = selection_parent
+        self.selection_target = selection_target
+
+        self.selection_parent_args = self._build_selection_args(
+            args=selection_parent_args, scheme=self.selection_parent)
+
+        self.selection_target_args = self._build_selection_args(
+            args=selection_target_args, scheme=self.selection_target)
+
         if gen_range_low is None:
             gen_range_low = self.inst_range_low
 
@@ -241,6 +273,21 @@ class EvoBasic:
                                  len(self.mutation_func_args),
                                  len(self.mutation_delta_func)))
 
+    @classmethod
+    def _build_selection_args(cls, args: t.Optional[t.Dict[str, t.Any]],
+                              scheme: str) -> t.Dict[str, t.Any]:
+        """Build default argument list for selection schemes."""
+        if args is not None: args = args.copy()
+        else: args = {}
+
+        if scheme == "tournament":
+            args.setdefault("size", 2)
+
+        elif scheme == "ranking":
+            args.setdefault("power", 1)
+
+        return args
+
     def run(self,
             random_state: t.Optional[int] = None,
             verbose: bool = False,
@@ -292,7 +339,8 @@ class EvoBasic:
         self.fitness = np.array([
             self.fitness_func(inst, **self.fitness_func_args)
             for inst in self.population
-        ], dtype=float)
+        ],
+                                dtype=float)
 
         if plot:
             self._config_plot(online=True)
@@ -418,7 +466,7 @@ class EvoBasic:
                     Z[i, j] = self.fitness_func(inst)
 
             self._plt_con = self._plt_ax.contour(
-                X, Y, Z, levels=32, cmap="BuPu")
+                X, Y, Z, levels=16, cmap="BuPu")
 
         else:
             vals = np.linspace(self.inst_range_low, self.inst_range_high,
@@ -465,3 +513,53 @@ class EvoBasic:
                 parent population.
         """
         return self.population, 0
+
+    def _get_inst_ids(self, scheme: str, pick_best: bool,
+                      args: t.Dict[str, t.Any]) -> np.ndarray:
+        """."""
+        if scheme == "tournament":
+            tournament_size = args.get("size", 2)
+            tournament_decision = np.argmax if pick_best else np.argmin
+
+            tournament_ids = np.random.randint(
+                self.pop_size_parent,
+                size=(self.pop_size_offspring, tournament_size))
+
+            chosen_ids = tournement_decision(
+                self.fitness[tournament_ids], axis=1)
+
+            return tournament_ids[np.arange(self.
+                                            pop_size_offspring), chosen_ids]
+
+        if scheme == "fitness-prop":
+            probs = self.fitness / np.sum(self.fitness)
+            return np.random.choice(
+                self.pop_size_parent,
+                replace=True,
+                p=probs if pick_best else 1.0 - probs)
+
+        if scheme == "ranking":
+            power = args.get("power", 1)
+            ranks = np.arange(self.fitness.size - 1, -1, -1) ** power
+
+            ranks[np.argsort(self.
+                             fitness if pick_best else -self.fitness)] = ranks
+
+            probs = self.ranks / np.sum(self.ranks)
+
+            return np.random.choice(
+                self.pop_size_parent, replace=True, p=probs)
+
+        if scheme == "truncation":
+            ranks = np.argsort(self.fitness if pick_best else -self.fitness)
+
+            if self.pop_size_offspring > self.pop_size_parent:
+                ranks = np.tile(
+                    A=ranks,
+                    reps=self.pop_size_offspring // self.pop_size_parent + 1)
+
+            return ranks[:self.pop_size_offspring]
+
+        # Default: uniform
+        return np.random.randint(
+            self.pop_size_parent, size=self.pop_size_offspring)
