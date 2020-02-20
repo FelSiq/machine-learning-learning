@@ -374,6 +374,10 @@ class EvoBasic:
         self.best_inst_id = np.argmax(self.fitness)
         self.best_inst = self.population[self.best_inst_id]
         self.best_inst_fitness = self.fitness[self.best_inst_id]
+
+        if plot:
+            self._plot_timestep(pause=0)
+
         self._online_plot = False
 
         if return_solution:
@@ -421,7 +425,11 @@ class EvoBasic:
             self._plt_sct = self._plt_ax.scatter(
                 self.population, self.fitness, color="blue")
 
-        plt.pause(pause)
+        try:
+            plt.pause(pause)
+
+        except Exception:
+            pass
 
     def plot(self, num_points: int = 64, pause: float = 0.0) -> None:
         """Plot the fitness curve contour plot with the population scatter plot.
@@ -478,7 +486,7 @@ class EvoBasic:
         plt.suptitle("Algorithm: {}".format(self._alg_name if self.
                                             _alg_name else "Unknown"))
         plt.title("Population countour plot" + (" (best fit: {:.4f})".format(
-            self.best_inst_fitness) if not self._online_plot else ""))
+            self.best_inst_fitness) if self.best_inst_id >= 0 else ""))
         plt.xlabel("First dimension")
         plt.ylabel("Second dimension")
 
@@ -490,12 +498,8 @@ class EvoBasic:
             plt.xlim(self.inst_range_low, self.inst_range_high)
             plt.ylim(self.inst_range_low, self.inst_range_high)
 
-        try:
-            self._plot_timestep(pause=pause)
-            plt.show()
-
-        except Exception:
-            pass
+        self._plot_timestep(pause=pause)
+        plt.show()
 
     @abc.abstractmethod
     def _gen_pop(self) -> t.Tuple[np.ndarray, int]:
@@ -525,30 +529,37 @@ class EvoBasic:
                 self.pop_size_parent,
                 size=(self.pop_size_offspring, tournament_size))
 
-            chosen_ids = tournement_decision(
+            chosen_ids = tournament_decision(
                 self.fitness[tournament_ids], axis=1)
 
             return tournament_ids[np.arange(self.
                                             pop_size_offspring), chosen_ids]
 
         if scheme == "fitness-prop":
-            probs = self.fitness / np.sum(self.fitness)
+            fitness = self.fitness if pick_best else -self.fitness
+            shifted_fitness = fitness - np.min(fitness)
+            probs = shifted_fitness / np.sum(shifted_fitness)
+
             return np.random.choice(
                 self.pop_size_parent,
+                size=self.pop_size_offspring,
                 replace=True,
-                p=probs if pick_best else 1.0 - probs)
+                p=probs)
 
         if scheme == "ranking":
             power = args.get("power", 1)
-            ranks = np.arange(self.fitness.size - 1, -1, -1) ** power
+            ranks = np.arange(self.fitness.size - 1, -1, -1)**power
 
             ranks[np.argsort(self.
                              fitness if pick_best else -self.fitness)] = ranks
 
-            probs = self.ranks / np.sum(self.ranks)
+            probs = ranks / np.sum(ranks)
 
             return np.random.choice(
-                self.pop_size_parent, replace=True, p=probs)
+                self.pop_size_parent,
+                size=self.pop_size_offspring,
+                replace=True,
+                p=probs)
 
         if scheme == "truncation":
             ranks = np.argsort(self.fitness if pick_best else -self.fitness)
@@ -563,3 +574,58 @@ class EvoBasic:
         # Default: uniform
         return np.random.randint(
             self.pop_size_parent, size=self.pop_size_offspring)
+
+    def __str__(self) -> str:
+        info = [
+            ["Algorithm chosen:", self._alg_name],
+            ["Population size:", str(self.pop_size_parent)],
+            ["Population offspring:",
+             str(self.pop_size_offspring)],
+            [
+                "On average, {:.4f} offsprings per parent.".format(
+                    self.pop_size_offspring / self.pop_size_parent)
+            ],
+            [],
+        ]
+
+        info += [
+            ["Selection mechanisms:"],
+            [" - Parent selection:", self.selection_parent],
+            [
+                "    List of arguments:",
+                "" if self.selection_parent_args else "None."
+            ],
+        ]
+
+        for key, val in self.selection_parent_args.items():
+            info[-1].append("\n    * {} = {}".format(key, str(val)))
+
+        info += [
+            ["Selection mechanisms:"],
+            [" - Parent selection:", self.selection_target],
+            [
+                "    List of arguments:",
+                "" if self.selection_target_args else "None."
+            ],
+        ]
+
+        for key, val in self.selection_target_args.items():
+            info[-1].append("\n    * {} = {}".format(key, str(val)))
+
+        if self.best_inst_id >= 0:
+            info += [
+                [],
+                ["Solution data:"],
+                [
+                    " - Best fitness found: {:.4f}".format(
+                        self.best_inst_fitness)
+                ],
+                [" - Best instance index:",
+                 str(self.best_inst_id)],
+                [
+                    " - Total epochs run:",
+                    str(self._time // self.pop_size_parent)
+                ],
+            ]
+
+        return "\n".join(map(" ".join, info))
