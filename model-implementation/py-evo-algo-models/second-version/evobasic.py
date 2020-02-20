@@ -195,6 +195,7 @@ class EvoBasic:
         self.pop_size_offspring = pop_size_offspring
         self.gene_num = gene_num
         self.gen_num = gen_num
+        self.overlapping_pops = overlapping_pops
         self.fitness_func_args = fitness_func_args.copy()
 
         if mutation_prob is None:
@@ -518,7 +519,8 @@ class EvoBasic:
         """
         return self.population, 0
 
-    def _get_inst_ids(self, scheme: str, pick_best: bool,
+    def _get_inst_ids(self, pop_size_source: int, pop_size_target: int,
+                      fitness_source: np.ndarray, scheme: str, pick_best: bool,
                       args: t.Dict[str, t.Any]) -> np.ndarray:
         """."""
         if scheme == "tournament":
@@ -526,17 +528,16 @@ class EvoBasic:
             tournament_decision = np.argmax if pick_best else np.argmin
 
             tournament_ids = np.random.randint(
-                self.pop_size_parent,
-                size=(self.pop_size_offspring, tournament_size))
+                pop_size_source, size=(pop_size_target, tournament_size))
 
             chosen_ids = tournament_decision(
-                self.fitness[tournament_ids], axis=1)
+                fitness_source[tournament_ids], axis=1)
 
             return tournament_ids[np.arange(self.
                                             pop_size_offspring), chosen_ids]
 
         if scheme == "fitness-prop":
-            fitness = self.fitness if pick_best else -self.fitness
+            fitness = fitness_source if pick_best else -fitness_source
             shifted_fitness = fitness - np.min(fitness)
             sum_fitness = np.sum(shifted_fitness)
 
@@ -546,39 +547,32 @@ class EvoBasic:
                 probs = None
 
             return np.random.choice(
-                self.pop_size_parent,
-                size=self.pop_size_offspring,
-                replace=True,
-                p=probs)
+                pop_size_source, size=pop_size_target, replace=True, p=probs)
 
         if scheme == "ranking":
             power = args.get("power", 1)
-            ranks = np.arange(self.fitness.size - 1, -1, -1)**power
+            ranks = np.arange(fitness_source.size - 1, -1, -1)**power
 
-            ranks[np.argsort(self.
-                             fitness if pick_best else -self.fitness)] = ranks
+            ranks[np.argsort(
+                self.fitness if pick_best else -fitness_source)] = ranks
 
             probs = ranks / np.sum(ranks)
 
             return np.random.choice(
-                self.pop_size_parent,
-                size=self.pop_size_offspring,
-                replace=True,
-                p=probs)
+                pop_size_source, size=pop_size_target, replace=True, p=probs)
 
         if scheme == "truncation":
-            ranks = np.argsort(self.fitness if pick_best else -self.fitness)
+            ranks = np.argsort(
+                fitness_source if pick_best else -fitness_source)
 
-            if self.pop_size_offspring > self.pop_size_parent:
+            if pop_size_target > pop_size_source:
                 ranks = np.tile(
-                    A=ranks,
-                    reps=self.pop_size_offspring // self.pop_size_parent + 1)
+                    A=ranks, reps=pop_size_target // pop_size_source + 1)
 
-            return ranks[:self.pop_size_offspring]
+            return ranks[:pop_size_target]
 
         # Default: uniform
-        return np.random.randint(
-            self.pop_size_parent, size=self.pop_size_offspring)
+        return np.random.randint(pop_size_source, size=pop_size_target)
 
     def __str__(self) -> str:
         info = [
