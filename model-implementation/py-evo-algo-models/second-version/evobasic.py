@@ -538,7 +538,12 @@ class EvoBasic:
         if scheme == "fitness-prop":
             fitness = self.fitness if pick_best else -self.fitness
             shifted_fitness = fitness - np.min(fitness)
-            probs = shifted_fitness / np.sum(shifted_fitness)
+            sum_fitness = np.sum(shifted_fitness)
+
+            if not np.equal(sum_fitness, 0):
+                probs = shifted_fitness / sum_fitness
+            else:
+                probs = None
 
             return np.random.choice(
                 self.pop_size_parent,
