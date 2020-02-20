@@ -9,29 +9,31 @@ import abc
 import matplotlib.pyplot as plt
 import numpy as np
 
-InstType = t.Union[float, np.ndarray, np.number, int]
-DeltaFuncType = t.Callable[[], t.Union[int, float]]
-DeltaArgType = t.Dict[str, t.Any]
+_InstType = t.Union[float, np.ndarray, np.number, int]
+_DeltaFuncType = t.Callable[[], t.Union[int, float]]
+_DictArgType = t.Dict[str, t.Any]
 
 
 class EvoBasic:
     """Basic evolutionary model framework."""
 
-    def __init__(self,
-                 inst_range_low: InstType,
-                 inst_range_high: InstType,
-                 fitness_func: t.Callable[[InstType], t.Union[int, float]],
-                 gene_num: int = 2,
-                 pop_size_parent: int = 128,
-                 pop_size_offspring: t.Optional[int] = None,
-                 gen_num: int = 10,
-                 mutation_prob: t.Optional[InstType] = None,
-                 mutation_delta_func: t.Optional[
-                     t.Union[DeltaFuncType, t.Sequence[DeltaFuncType]]] = None,
-                 mutation_func_args: t.Optional[
-                     t.Union[DeltaArgType, t.Sequence[DeltaArgType]]] = None,
-                 gen_range_low: t.Optional[InstType] = None,
-                 gen_range_high: t.Optional[InstType] = None):
+    def __init__(
+            self,
+            inst_range_low: _InstType,
+            inst_range_high: _InstType,
+            fitness_func: t.Callable[[_InstType], t.Union[int, float]],
+            fitness_func_args: t.Optional[_DictArgType] = None,
+            gene_num: int = 2,
+            pop_size_parent: int = 128,
+            pop_size_offspring: t.Optional[int] = None,
+            gen_num: int = 10,
+            mutation_prob: t.Optional[_InstType] = None,
+            mutation_delta_func: t.Optional[
+                t.Union[_DeltaFuncType, t.Sequence[_DeltaFuncType]]] = None,
+            mutation_func_args: t.Optional[
+                t.Union[_DictArgType, t.Sequence[_DictArgType]]] = None,
+            gen_range_low: t.Optional[_InstType] = None,
+            gen_range_high: t.Optional[_InstType] = None):
         """Init the basic evolutionary algorithm framework.
 
         Arguments
@@ -51,6 +53,10 @@ class EvoBasic:
         fitness_func : callable
             Fitness function. Must receive a chromosome (instance) and
             return its respective fitness as a scalar value.
+
+        fitness_func_args : dict, optional
+            Extra arguments to the fitness function. If None, only the
+            chromosome will be passed as argument to ``fitness_func``.
 
         gene_num : :obj:`int`, optional
             Number of genes for each chromosome, or the dimension of each
@@ -159,10 +165,14 @@ class EvoBasic:
             raise ValueError("'pop_size_offspring' must be positive "
                              "(got {}.)".format(pop_size_offspring))
 
+        if fitness_func_args is None:
+            fitness_func_args = {}
+
         self.pop_size_parent = pop_size_parent
         self.pop_size_offspring = pop_size_offspring
         self.gene_num = gene_num
         self.gen_num = gen_num
+        self.fitness_func_args = fitness_func_args.copy()
 
         if mutation_prob is None:
             mutation_prob = 1.0 / self.gene_num
@@ -217,6 +227,7 @@ class EvoBasic:
             self.mutation_delta_func = mutation_delta_func
 
         if isinstance(mutation_func_args, dict):
+            mutation_func_args = mutation_func_args.copy()
             self.mutation_func_args = [
                 mutation_func_args for _ in np.arange(self.gene_num)
             ]
@@ -278,8 +289,10 @@ class EvoBasic:
         self.timestamps = np.arange(self.pop_size_parent, dtype=np.uint)
         self._time = self.pop_size_parent
 
-        self.fitness = np.array(
-            [self.fitness_func(inst) for inst in self.population], dtype=float)
+        self.fitness = np.array([
+            self.fitness_func(inst, **self.fitness_func_args)
+            for inst in self.population
+        ], dtype=float)
 
         if plot:
             self._config_plot(online=True)

@@ -45,7 +45,8 @@ class EvoBatch(evobasic.EvoBasic):
             offspring = offspring_pop[id_offspring, :]
             offspring_ts = offspring_timestamps[id_offspring]
 
-            offspring_fitness = self.fitness_func(offspring)
+            offspring_fitness = self.fitness_func(offspring,
+                                                  **self.fitness_func_args)
 
             if self.fitness[id_kill] < offspring_fitness:
                 self.population[id_kill, :] = offspring
