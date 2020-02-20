@@ -1,4 +1,4 @@
-"""."""
+"""Batch and Steady State evolutionary algorithms."""
 import typing as t
 
 import numpy as np
@@ -7,18 +7,18 @@ import evobasic
 
 
 class EvoBatch(evobasic.EvoBasic):
-    """."""
+    """Batch (Generational) evolutionary algorithm."""
 
     def __init__(self, *args, **kwargs):
-        """."""
+        """Init a Batch (Generational) evolutionary model."""
         super().__init__(*args, **kwargs)
         self._alg_name = "Batch/Gerational"
 
     def _gen_pop(self) -> t.Tuple[np.ndarray, int]:
-        """."""
+        """Generate an entire batch of offsprings."""
         killed_num = 0
 
-        offspring_pop = np.zeros((self.pop_size_offspring, self.inst_dim),
+        offspring_pop = np.zeros((self.pop_size_offspring, self.gene_num),
                                  dtype=float)
         offspring_timestamps = np.zeros(self.pop_size_offspring, dtype=np.uint)
 
@@ -29,9 +29,10 @@ class EvoBatch(evobasic.EvoBasic):
             offspring = np.copy(self.population[id_parent])
 
             offspring += [(p < self.mutation_prob[attr_ind]) *
-                          self.mutation_delta_func()
+                          self.mutation_delta_func[attr_ind](
+                              **self.mutation_func_args[attr_ind])
                           for attr_ind, p in enumerate(
-                              np.random.random(size=self.inst_dim))]
+                              np.random.random(size=self.gene_num))]
 
             offspring = np.minimum(offspring, self.inst_range_high)
             offspring = np.maximum(offspring, self.inst_range_low)
@@ -56,10 +57,10 @@ class EvoBatch(evobasic.EvoBasic):
 
 
 class EvoSteadyState(EvoBatch):
-    """."""
+    """Steady State (batch size = 1) evolutionary algorithm."""
 
     def __init__(self, *args, **kwargs):
-        """."""
+        """Init a Steady State (batch size = 1) evolutionary model."""
         super().__init__(pop_size_offspring=1, *args, **kwargs)
         self._alg_name = "Steady State/Incremental"
 
@@ -69,7 +70,7 @@ def _test() -> None:
         -8,
         8,
         lambda inst: np.sum(inst[0] * np.sin(inst[1])),
-        inst_dim=2,
+        gene_num=2,
         gen_num=16)
     model.run(verbose=True, plot=True)
     model.plot(pause=0)
