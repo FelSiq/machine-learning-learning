@@ -132,10 +132,48 @@ class EvoBasic:
             reference.
 
         overlapping_pops : :obj:`bool`, optional
+            If True, make the offsprings compete with the parent generation
+            a place into the next generation. If False, all the parent
+            generation is replaced with a subset of the offspring generation.
+
         selection_parent : :obj:`str`, optional
+            Scheme used to select individuals from the parent generation to
+            reproduce. In order of increasing competition pressure, this
+            argument must assume one value from the following list:
+                1. `uniform` (least pressure applied)
+                2. `fitness-prop`
+                3. `k-power Ranking`
+                4. `k-sized Tournament`
+                5. `truncation` (tipically the most pressure applied)
+
         selection_parent_args : dict, optional
+            Arguments for the ``selection_parent`` selected selection scheme.
+            The following arguments can be customized:
+                3. K-power Ranking:
+                    - `power`: exponent coeffiecient to the ranking values. The
+                        higher is this value, the more probability mass will
+                        be focused on the chromosomes with larger fitness,
+                        thus increasing the elitism factor in the selection.
+
+                3. K-sized tournament:
+                    - `size`: Size of the subsample of the current population to
+                        choose the chromosome with the largest fitness, which
+                        will be the chromosome chosen to reproduce.
+
         selection_target : :obj:`str`, optional
+            The same as ``selection_parent``, but focused on:
+                - If ``overlapping_pops`` is True, this argument defines the
+                selection scheme used to select the target instances, selected
+                to compete with the newly generated offsprings.
+                - If ``overlapping_pops`` is False, this argument defines the
+                selection scheme used to selected the offspring that will
+                compete for a place into the next generation, with replacement
+                (i.e., the same offspring chromosome may be replicated in the
+                next generation, depending on the selection scheme chosen.)
+
         selection_target_args : dict, optional
+            The same as ``selection_parent_args``, but for the ``selection_target``
+            argument.
         """
         VALID_SELECTIONS = ("uniform", "fitness-prop", "tournament", "ranking",
                             "truncation")
@@ -237,6 +275,11 @@ class EvoBasic:
         self._online_plot = False
         self._time = -1
         self._alg_name = None
+
+        self._plt_fig = None
+        self._plt_ax = None
+        self._plt_con = None
+        self._plt_sct = None
 
         if np.isscalar(mutation_prob):
             self.mutation_prob = np.full(
@@ -522,7 +565,7 @@ class EvoBasic:
     def _get_inst_ids(self, pop_size_source: int, pop_size_target: int,
                       fitness_source: np.ndarray, scheme: str, pick_best: bool,
                       args: t.Dict[str, t.Any]) -> np.ndarray:
-        """."""
+        """Get population indices based on the chosen selection ``scheme``."""
         if scheme == "tournament":
             tournament_size = args.get("size", 2)
             tournament_decision = np.argmax if pick_best else np.argmin
