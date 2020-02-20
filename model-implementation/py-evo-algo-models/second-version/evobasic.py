@@ -276,10 +276,11 @@ class EvoBasic:
         self._time = -1
         self._alg_name = None
 
+        self._plt_fitness_avg = []  # type: t.List[float]
+        self._plt_fitness_std = []  # type: t.List[float]
+
         self._plt_fig = None
-        self._plt_ax = None
-        self._plt_con = None
-        self._plt_sct = None
+        self._config_plot(online=False)
 
         if np.isscalar(mutation_prob):
             self.mutation_prob = np.full(
@@ -337,6 +338,7 @@ class EvoBasic:
             verbose: bool = False,
             plot: bool = False,
             pause: float = 0.2,
+            avg_range: int = 16,
             return_solution: bool = False) -> np.ndarray:
         """Run the selected evolutionary algorithm.
 
@@ -355,6 +357,10 @@ class EvoBasic:
         pause : :obj:`float`, optional
             Used only if ``plot`` is True. Number of seconds to wait
             before every epoch plot.
+
+        avg_range : :obj:`int`, optional
+            Number of most recent parent population fitness average and
+            standard deviation to be kept.
 
         return_solution : :obj:`np.ndarray`, optional
             If True, return the chromosome (instance) with the best fitness.
@@ -379,6 +385,12 @@ class EvoBasic:
 
         self.timestamps = np.arange(self.pop_size_parent, dtype=np.uint)
         self._time = self.pop_size_parent
+
+        if not self._plt_fitness_avg:
+            self._plt_fitness_avg = avg_range * [0.0]
+
+        if not self._plt_fitness_std:
+            self._plt_fitness_std = avg_range * [0.0]
 
         self.fitness = np.array([
             self.fitness_func(inst, **self.fitness_func_args)
@@ -412,6 +424,11 @@ class EvoBasic:
 
                 killed_num = 0
 
+                self._plt_fitness_avg.pop(0)
+                self._plt_fitness_std.pop(0)
+                self._plt_fitness_avg.append(np.mean(self.fitness))
+                self._plt_fitness_std.append(np.std(self.fitness))
+
                 if plot:
                     self._plot_timestep(pause=pause)
 
@@ -421,6 +438,7 @@ class EvoBasic:
 
         if plot:
             self._plot_timestep(pause=0)
+            self._plt_fig = None
 
         self._online_plot = False
 
@@ -445,10 +463,14 @@ class EvoBasic:
         else:
             self._online_plot = False
 
-        self._plt_fig = plt.figure()
-        self._plt_ax = self._plt_fig.add_subplot(111)
+        if not self._plt_fig:
+            self._plt_fig = plt.figure()
+            self._plt_ax1 = self._plt_fig.add_subplot(121)
+            self._plt_ax2 = self._plt_fig.add_subplot(122)
+
         self._plt_con = None
         self._plt_sct = None
+        self._plt_avg_lines = None
 
     def _plot_timestep(self, pause: float = 0.2):
         """Plot the current population scatter plot.
@@ -462,12 +484,21 @@ class EvoBasic:
         if self._plt_sct:
             self._plt_sct.remove()
 
+        if self._plt_avg_lines:
+            self._plt_avg_lines.remove()
+
         if self.gene_num == 2:
-            self._plt_sct = self._plt_ax.scatter(
+            self._plt_sct = self._plt_ax1.scatter(
                 self.population[:, 0], self.population[:, 1], color="blue")
         else:
-            self._plt_sct = self._plt_ax.scatter(
+            self._plt_sct = self._plt_ax1.scatter(
                 self.population, self.fitness, color="blue")
+
+        self._plt_avg_lines = self._plt_ax2.errorbar(
+            x=np.arange(len(self._plt_fitness_avg)),
+            y=self._plt_fitness_avg,
+            yerr=self._plt_fitness_std,
+            color="black")
 
         try:
             plt.pause(pause)
@@ -517,33 +548,45 @@ class EvoBasic:
                     inst = np.array([X[i, j], Y[i, j]], dtype=float)
                     Z[i, j] = self.fitness_func(inst)
 
-            self._plt_con = self._plt_ax.contour(
+            self._plt_con = self._plt_ax1.contour(
                 X, Y, Z, levels=16, cmap="BuPu")
 
         else:
             vals = np.linspace(self.inst_range_low, self.inst_range_high,
                                num_points)
 
-            self._plt_con = self._plt_ax.plot(
+            self._plt_con = self._plt_ax1.plot(
                 vals, [self.fitness_func(val) for val in vals])
 
         plt.suptitle("Algorithm: {}".format(self._alg_name if self.
                                             _alg_name else "Unknown"))
-        plt.title("Population countour plot" + (" (best fit: {:.4f})".format(
-            self.best_inst_fitness) if self.best_inst_id >= 0 else ""))
-        plt.xlabel("First dimension")
-        plt.ylabel("Second dimension")
+        self._plt_ax1.set_title("Population countour plot" + (
+            " (best fit: {:.4f})".
+            format(self.best_inst_fitness) if self.best_inst_id >= 0 else ""))
+        self._plt_ax1.set_xlabel("First dimension")
+        self._plt_ax1.set_ylabel("Second dimension")
+
+        self._plt_ax2.set_title("Fitness local average")
+        self._plt_ax2.set_xlabel("# of algorithm executions")
+        self._plt_ax2.set_ylabel("Average local fitness")
 
         if self.inst_range_low.size > 1:
-            plt.xlim(self.inst_range_low[0], self.inst_range_high[0])
-            plt.ylim(self.inst_range_low[1], self.inst_range_high[1])
+            self._plt_ax1.set_xlim(self.inst_range_low[0],
+                                   self.inst_range_high[0])
+            self._plt_ax1.set_ylim(self.inst_range_low[1],
+                                   self.inst_range_high[1])
 
         else:
-            plt.xlim(self.inst_range_low, self.inst_range_high)
-            plt.ylim(self.inst_range_low, self.inst_range_high)
+            self._plt_ax1.set_xlim(self.inst_range_low, self.inst_range_high)
+            self._plt_ax1.set_ylim(self.inst_range_low, self.inst_range_high)
 
         self._plot_timestep(pause=pause)
-        plt.show()
+
+        if not self._online_plot:
+            plt.show()
+
+        else:
+            plt.draw()
 
     @abc.abstractmethod
     def _gen_pop(self) -> t.Tuple[np.ndarray, int]:
