@@ -142,7 +142,8 @@ class EvoSteadyState(EvoBatch):
 
     def __init__(self, *args, **kwargs):
         """Init a Steady State (batch size = 1) evolutionary model."""
-        super().__init__(overlapping_pops=True, pop_size_offspring=1, *args, **kwargs)
+        super().__init__(
+            overlapping_pops=True, pop_size_offspring=1, *args, **kwargs)
         self._alg_name = "Steady State/Incremental"
 
 

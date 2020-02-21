@@ -26,9 +26,7 @@ class EvoProg(evobatch.EvoBatch):
     +------------------------------+----------------+
     """
 
-    def __init__(self,
-                 *args,
-                 **kwargs):
+    def __init__(self, *args, **kwargs):
         """."""
         kwargs.setdefault("pop_size_parent", 1)
         kwargs.setdefault("pop_size_parent", 256)
