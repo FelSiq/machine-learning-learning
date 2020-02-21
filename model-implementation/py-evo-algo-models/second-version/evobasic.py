@@ -514,6 +514,27 @@ class EvoBasic:
         """
         return self.population, 0
 
+    def _create_mutation(self, num_offsprings: int = 1,
+                         dtype=np.float) -> np.ndarray:
+        """Create mutation for numeric types."""
+        mutation_delta = np.zeros((num_offsprings, self.gene_num), dtype=dtype)
+
+        for attr_ind, attr_p in enumerate(
+                np.random.random(size=(self.gene_num, num_offsprings))):
+            mutation_delta[:, attr_ind] = attr_p < self.mutation_prob[attr_ind]
+
+            attr_noise = np.fromiter((self.mutation_delta_func[attr_ind](
+                **self.mutation_func_args[attr_ind])
+                                      for _ in np.arange(num_offsprings)),
+                                     dtype=dtype)
+
+            mutation_delta[:, attr_ind] *= attr_noise
+
+        if num_offsprings == 1:
+            return mutation_delta.ravel()
+
+        return mutation_delta
+
     def _get_inst_ids(self, pop_size_target: int, fitness_source: np.ndarray,
                       scheme: str, pick_best: bool,
                       args: t.Dict[str, t.Any]) -> np.ndarray:
@@ -778,9 +799,10 @@ class EvoBasic:
             plt.draw()
 
     def __str__(self) -> str:
-        info = [["Algorithm chosen:", self._alg_name],
-                ["Population size:",
-                 str(self.pop_size_parent)],
+        info = [[
+            "Algorithm chosen:",
+            self._alg_name if self._alg_name else "Unknown"
+        ], ["Population size:", str(self.pop_size_parent)],
                 [
                     "Using", ("" if self.overlapping_pops else "Non-") +
                     "overlapping population."
@@ -797,7 +819,7 @@ class EvoBasic:
                 [
                     "    List of arguments:",
                     "" if self.reproduction_func_args else "None."
-                ]]
+                ]]  # type: t.List[t.List[str]]
 
         for key, val in self.reproduction_func_args.items():
             info[-1].append("\n    * {} = {}".format(key, str(val)))
