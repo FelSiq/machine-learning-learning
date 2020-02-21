@@ -47,7 +47,7 @@ class EvoBatch(evobasic.EvoBasic):
 
     def _reproduce(self) -> None:
         """Choose parents to reproduce."""
-        num_parents_per_offspring = (1 + int(self.reproduction == "sexual"))
+        num_parents_per_offspring = int(1 + int(self.reproduction == "sexual"))
         num_offsprings = num_parents_per_offspring * self.pop_size_offspring
 
         id_parents = self._get_inst_ids(
@@ -58,17 +58,16 @@ class EvoBatch(evobasic.EvoBasic):
             args=self.selection_parent_args)
 
         if num_parents_per_offspring > 1:
-            id_parents.reshape(-1, num_parents_per_offspring)
+            id_parents = id_parents.reshape(-1, num_parents_per_offspring)
 
-        for id_offspring, id_parents in enumerate(id_parents):
-            offspring = self.reproduction_func(self.population[id_parents, :],
-                                               **self.reproduction_func_args)
+        for id_offspring, id_chosen_parents in enumerate(id_parents):
+            offspring = self.reproduction_func(
+                self.population[id_chosen_parents, :],
+                **self.reproduction_func_args)
 
-            offspring += [(p < self.mutation_prob[attr_ind]) *
-                          self.mutation_delta_func[attr_ind](
-                              **self.mutation_func_args[attr_ind])
-                          for attr_ind, p in enumerate(
-                              np.random.random(size=self.gene_num))]
+            offspring += self._create_mutation(
+                num_offsprings=1 if offspring.ndim == 1 else offspring.
+                shape[0])
 
             offspring = np.minimum(offspring, self.inst_range_high)
             offspring = np.maximum(offspring, self.inst_range_low)
@@ -144,7 +143,7 @@ class EvoBatch(evobasic.EvoBasic):
         return self.population, killed_num
 
 
-def _test_01() -> None:
+def _test() -> None:
     model = EvoBatch(
         -8,
         8,
@@ -164,49 +163,5 @@ def _test_01() -> None:
     print(model)
 
 
-def _test_02() -> None:
-    def fitness(inst):
-        x, y = inst
-        if 0 < y <= 1 and 0 < x <= 4:
-            return x + y
-        if 3.75 <= x <= 4 and 0 <= y <= 4:
-            return x + y
-
-        x0, y0 = 3.75, 6
-        r1 = 2
-        r2 = 3
-        x1 = np.sqrt(r1**2 - (y - y0)**2) + x0
-        x2 = np.sqrt(r2**2 - (y - y0)**2) + x0
-        if x1 <= x <= x2 and y0 - r1 <= y <= y0 + r2:
-            return x + y
-
-        if 5.0 <= x and 8 <= y <= 9:
-            return 50 - 8 * x + y
-
-        if 1.0 <= x < 5 and 8 <= y <= 8.5:
-            return 30 - x
-
-        return 0
-
-    model = EvoBatch(
-        np.array([0, 0]),
-        np.array([7, 9]),
-        fitness_func=fitness,
-        selection_parent="uniform",
-        selection_target="fitness-prop",
-        selection_target_args={"size": 32},
-        mutation_delta_func=lambda: np.random.normal(0, 0.5),
-        pop_size_parent=1024,
-        pop_size_offspring=512,
-        gen_range_low=[0, 1],
-        gen_range_high=[0, 1],
-        gene_num=2,
-        gen_num=64)
-
-    model.run(verbose=True, plot=True, pause=0.01)
-    print(model)
-
-
 if __name__ == "__main__":
-    _test_01()
-    _test_02()
+    _test()
