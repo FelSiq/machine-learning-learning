@@ -35,7 +35,7 @@ class EvoBasic:
             gen_range_low: t.Optional[_InstType] = None,
             gen_range_high: t.Optional[_InstType] = None,
             overlapping_pops: bool = True,
-            merge_populations: bool = True,
+            merge_populations: bool = False,
             selection_parent: str = "uniform",
             selection_parent_args: t.Optional[_DictArgType] = None,
             selection_target: str = "uniform",
