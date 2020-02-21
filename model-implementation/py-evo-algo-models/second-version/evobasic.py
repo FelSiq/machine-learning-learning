@@ -140,11 +140,12 @@ class EvoBasic:
             Scheme used to select individuals from the parent generation to
             reproduce. In order of increasing competition pressure, this
             argument must assume one value from the following list:
-                1. `uniform` (least pressure applied)
-                2. `fitness-prop`
-                3. `k-power Ranking`
-                4. `k-sized Tournament`
-                5. `truncation` (tipically the most pressure applied)
+                1. `deterministic` (least pressure applied)
+                2. `uniform`
+                3. `fitness-prop`
+                4. `k-power Ranking`
+                5. `k-sized Tournament`
+                6. `truncation` (tipically the most pressure applied)
 
         selection_parent_args : dict, optional
             Arguments for the ``selection_parent`` selected selection scheme.
@@ -175,8 +176,8 @@ class EvoBasic:
             The same as ``selection_parent_args``, but for the ``selection_target``
             argument.
         """
-        VALID_SELECTIONS = ("uniform", "fitness-prop", "tournament", "ranking",
-                            "truncation")
+        VALID_SELECTIONS = ("deterministic", "uniform", "fitness-prop",
+                            "tournament", "ranking", "truncation")
 
         if selection_parent not in VALID_SELECTIONS:
             raise ValueError("'selection_parent' ({}) not in {}.".format(
@@ -270,16 +271,16 @@ class EvoBasic:
 
         self.best_inst_id = -1
         self.best_inst = np.array([])
-        self.best_inst_fitness = -1.0
+        self.best_inst_fitness = -np.inf
+        self._fitness_cur_best_avg = -np.inf
+        self._fitness_cur_best_std = 0.0
 
         self._online_plot = False
         self._time = -1
         self._alg_name = None
 
-        self._plt_fitness_avg = []  # type: t.List[float]
-        self._plt_fitness_std = []  # type: t.List[float]
+        self._plt_config = {}
 
-        self._plt_fig = None
         self._config_plot(online=False)
 
         if np.isscalar(mutation_prob):
@@ -386,11 +387,11 @@ class EvoBasic:
         self.timestamps = np.arange(self.pop_size_parent, dtype=np.uint)
         self._time = self.pop_size_parent
 
-        if not self._plt_fitness_avg:
-            self._plt_fitness_avg = avg_range * [0.0]
+        if not self._plt_config["fitness_avg"]:
+            self._plt_config["fitness_avg"] = avg_range * [0.0]
 
-        if not self._plt_fitness_std:
-            self._plt_fitness_std = avg_range * [0.0]
+        if not self._plt_config["fitness_std"]:
+            self._plt_config["fitness_std"] = avg_range * [0.0]
 
         self.fitness = np.array([
             self.fitness_func(inst, **self.fitness_func_args)
@@ -424,10 +425,15 @@ class EvoBasic:
 
                 killed_num = 0
 
-                self._plt_fitness_avg.pop(0)
-                self._plt_fitness_std.pop(0)
-                self._plt_fitness_avg.append(np.mean(self.fitness))
-                self._plt_fitness_std.append(np.std(self.fitness))
+                self._plt_config["fitness_avg"].pop(0)
+                self._plt_config["fitness_std"].pop(0)
+
+                _fitness_mean = np.mean(self.fitness)
+                self._plt_config["fitness_avg"].append(_fitness_mean)
+                self._fitness_cur_best_avg = max(self._fitness_cur_best_avg,
+                                                 _fitness_mean)
+
+                self._plt_config["fitness_std"].append(np.std(self.fitness))
 
                 if plot:
                     self._plot_timestep(pause=pause)
@@ -438,7 +444,7 @@ class EvoBasic:
 
         if plot:
             self._plot_timestep(pause=0)
-            self._plt_fig = None
+            self._plt_config["fig"] = None
 
         self._online_plot = False
 
@@ -463,14 +469,19 @@ class EvoBasic:
         else:
             self._online_plot = False
 
-        if not self._plt_fig:
-            self._plt_fig = plt.figure()
-            self._plt_ax1 = self._plt_fig.add_subplot(121)
-            self._plt_ax2 = self._plt_fig.add_subplot(122)
+        self._plt_config.setdefault("fitness_avg", [])
+        self._plt_config.setdefault("fitness_std", [])
+        self._plt_config.setdefault("fig", None)
 
-        self._plt_con = None
-        self._plt_sct = None
-        self._plt_avg_lines = None
+        if self._plt_config["fig"] is None:
+            self._plt_config["fig"] = plt.figure()
+            self._plt_config["ax1"] = self._plt_config["fig"].add_subplot(121)
+            self._plt_config["ax2"] = self._plt_config["fig"].add_subplot(122)
+
+        self._plt_config["con"] = None
+        self._plt_config["sct"] = None
+        self._plt_config["avg_lines"] = None
+        self._plt_config["fitness_max_line"] = None
 
     def _plot_timestep(self, pause: float = 0.2):
         """Plot the current population scatter plot.
@@ -481,24 +492,41 @@ class EvoBasic:
             Number of seconds to wait before closing the current plot
             automatically.
         """
-        if self._plt_sct:
-            self._plt_sct.remove()
+        if self._plt_config["sct"]:
+            self._plt_config["sct"].remove()
 
-        if self._plt_avg_lines:
-            self._plt_avg_lines.remove()
+        if self._plt_config["avg_lines"]:
+            self._plt_config["avg_lines"].remove()
+
+        if self._plt_config["fitness_max_line"]:
+            self._plt_config["fitness_max_line"].remove()
 
         if self.gene_num == 2:
-            self._plt_sct = self._plt_ax1.scatter(
+            self._plt_config["sct"] = self._plt_config["ax1"].scatter(
                 self.population[:, 0], self.population[:, 1], color="blue")
         else:
-            self._plt_sct = self._plt_ax1.scatter(
+            self._plt_config["sct"] = self._plt_config["ax1"].scatter(
                 self.population, self.fitness, color="blue")
 
-        self._plt_avg_lines = self._plt_ax2.errorbar(
-            x=np.arange(len(self._plt_fitness_avg)),
-            y=self._plt_fitness_avg,
-            yerr=self._plt_fitness_std,
-            color="black")
+        _shifted_time = self._time - self.pop_size_parent
+        _xlim = (_shifted_time,
+                 _shifted_time + len(self._plt_config["fitness_avg"]))
+
+        self._plt_config["avg_lines"] = self._plt_config["ax2"].errorbar(
+            x=np.arange(*_xlim),
+            y=self._plt_config["fitness_avg"],
+            yerr=self._plt_config["fitness_std"],
+            color="black",
+            label="Local fitness")
+
+        self._plt_config["fitness_max_line"] = self._plt_config["ax2"].hlines(
+            self._fitness_cur_best_avg,
+            *_xlim,
+            linestyle="--",
+            color="red",
+            label="Global best fitness")
+
+        self._plt_config["ax2"].set_xlim(*_xlim)
 
         try:
             plt.pause(pause)
@@ -548,39 +576,43 @@ class EvoBasic:
                     inst = np.array([X[i, j], Y[i, j]], dtype=float)
                     Z[i, j] = self.fitness_func(inst)
 
-            self._plt_con = self._plt_ax1.contour(
+            self._plt_config["con"] = self._plt_config["ax1"].contour(
                 X, Y, Z, levels=16, cmap="BuPu")
 
         else:
             vals = np.linspace(self.inst_range_low, self.inst_range_high,
                                num_points)
 
-            self._plt_con = self._plt_ax1.plot(
+            self._plt_config["con"] = self._plt_config["ax1"].plot(
                 vals, [self.fitness_func(val) for val in vals])
 
         plt.suptitle("Algorithm: {}".format(self._alg_name if self.
                                             _alg_name else "Unknown"))
-        self._plt_ax1.set_title("Population countour plot" + (
+        self._plt_config["ax1"].set_title("Fitness countour plot" + (
             " (best fit: {:.4f})".
             format(self.best_inst_fitness) if self.best_inst_id >= 0 else ""))
-        self._plt_ax1.set_xlabel("First dimension")
-        self._plt_ax1.set_ylabel("Second dimension")
+        self._plt_config["ax1"].set_xlabel("First dimension")
+        self._plt_config["ax1"].set_ylabel("Second dimension")
 
-        self._plt_ax2.set_title("Fitness local average")
-        self._plt_ax2.set_xlabel("# of algorithm executions")
-        self._plt_ax2.set_ylabel("Average local fitness")
+        self._plt_config["ax2"].set_title("Fitness local average")
+        self._plt_config["ax2"].set_xlabel("# of algorithm executions")
+        self._plt_config["ax2"].set_ylabel("Average local fitness")
 
         if self.inst_range_low.size > 1:
-            self._plt_ax1.set_xlim(self.inst_range_low[0],
-                                   self.inst_range_high[0])
-            self._plt_ax1.set_ylim(self.inst_range_low[1],
-                                   self.inst_range_high[1])
+            self._plt_config["ax1"].set_xlim(self.inst_range_low[0],
+                                             self.inst_range_high[0])
+            self._plt_config["ax1"].set_ylim(self.inst_range_low[1],
+                                             self.inst_range_high[1])
 
         else:
-            self._plt_ax1.set_xlim(self.inst_range_low, self.inst_range_high)
-            self._plt_ax1.set_ylim(self.inst_range_low, self.inst_range_high)
+            self._plt_config["ax1"].set_xlim(self.inst_range_low,
+                                             self.inst_range_high)
+            self._plt_config["ax1"].set_ylim(self.inst_range_low,
+                                             self.inst_range_high)
 
         self._plot_timestep(pause=pause)
+
+        self._plt_config["ax2"].legend()
 
         if not self._online_plot:
             plt.show()
@@ -655,7 +687,16 @@ class EvoBasic:
                 ranks = np.tile(
                     A=ranks, reps=pop_size_target // pop_size_source + 1)
 
-            return ranks[:pop_size_target]
+            return ranks[-pop_size_target:]
+
+        if scheme == "deterministic":
+            inds = np.arange(pop_size_source)
+
+            if pop_size_target > pop_size_source:
+                inds = np.tile(
+                    A=inds, reps=pop_size_target // pop_size_source + 1)
+
+            return inds[:pop_size_target]
 
         # Default: uniform
         return np.random.randint(pop_size_source, size=pop_size_target)
