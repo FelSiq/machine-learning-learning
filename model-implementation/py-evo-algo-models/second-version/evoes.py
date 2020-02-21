@@ -44,6 +44,9 @@ class EvoSteadyState(evobatch.EvoBatch):
             merge_populations=False,
             selection_parent="uniform",
             selection_target="truncation",
+            reproduction="asexual",
+            reproduction_func=None,
+            reproduction_func_args=None,
             *args,
             **kwargs)
 

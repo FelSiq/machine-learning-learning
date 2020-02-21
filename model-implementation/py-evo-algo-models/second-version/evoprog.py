@@ -36,6 +36,9 @@ class EvoProg(evobatch.EvoBatch):
             pop_size_offspring=None,
             selection_parent="deterministic",
             selection_target="truncation",
+            reproduction="asexual",
+            reproduction_func=None,
+            reproduction_func_args=None,
             *args,
             **kwargs)
 

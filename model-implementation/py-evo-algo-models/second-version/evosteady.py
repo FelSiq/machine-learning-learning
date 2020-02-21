@@ -33,6 +33,9 @@ class EvoSteadyState(evobatch.EvoBatch):
             overlapping_pops=True,
             merge_populations=False,
             pop_size_offspring=1,
+            reproduction="asexual",
+            reproduction_func=None,
+            reproduction_func_args=None,
             *args,
             **kwargs)
 
