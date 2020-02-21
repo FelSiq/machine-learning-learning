@@ -62,7 +62,7 @@ class EvoGen(evobatch.EvoBatch):
             self._crossover_args.setdefault("num_points", crossover_points)
 
         elif isinstance(crossover_points, (float, np.float)):
-            if not 0 < crossover_points < 1:
+            if not 0.0 < crossover_points < 1.0:
                 raise ValueError("'crossover_points' must be in (0, 1) range.")
 
             self._crossover_func = self.crossover_rand
@@ -72,6 +72,9 @@ class EvoGen(evobatch.EvoBatch):
             raise TypeError(
                 "'crossover_points' must be integer or float type.")
 
+        self.produce_both_offsprings = produce_both_offsprings
+        self._crossover_args.setdefault("return_both",
+                                        self.produce_both_offsprings)
         super().__init__(
             overlapping_pops=False,
             merge_populations=False,
@@ -83,10 +86,6 @@ class EvoGen(evobatch.EvoBatch):
             reproduction_func_args=self._crossover_args,
             *args,
             **kwargs)
-
-        self.produce_both_offsprings = produce_both_offsprings
-        self._crossover_args.setdefault("return_both",
-                                        self.produce_both_offsprings)
 
         self._alg_name = "Genetic Algorithm"
 
@@ -233,6 +232,7 @@ def _test() -> None:
     import numpy as np
 
     model = EvoGen(
+        produce_both_offsprings=True,
         inst_range_low=-8,
         inst_range_high=8,
         fitness_func=

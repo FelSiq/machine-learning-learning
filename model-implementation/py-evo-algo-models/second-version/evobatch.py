@@ -47,8 +47,8 @@ class EvoBatch(evobasic.EvoBasic):
 
     def _reproduce(self) -> None:
         """Choose parents to reproduce."""
-        num_parents_per_offspring = int(1 + int(self.reproduction == "sexual"))
-        num_offsprings = num_parents_per_offspring * self.pop_size_offspring
+        offspring_parent_num = int(1 + int(self.reproduction == "sexual"))
+        num_offsprings = offspring_parent_num * self.pop_size_offspring
 
         id_parents = self._get_inst_ids(
             pop_size_target=num_offsprings,
@@ -57,26 +57,51 @@ class EvoBatch(evobasic.EvoBasic):
             pick_best=True,
             args=self.selection_parent_args)
 
-        if num_parents_per_offspring > 1:
-            id_parents = id_parents.reshape(-1, num_parents_per_offspring)
+        if offspring_parent_num > 1:
+            id_parents = id_parents.reshape(-1, offspring_parent_num)
 
-        for id_offspring, id_chosen_parents in enumerate(id_parents):
+        offspring_pop_id = 0
+        id_parent_group = 0
+
+        while offspring_pop_id < self.pop_size_offspring:
             offspring = self.reproduction_func(
-                self.population[id_chosen_parents, :],
+                self.population[id_parents[id_parent_group], :],
                 **self.reproduction_func_args)
 
-            offspring += self._create_mutation(
-                num_offsprings=1 if offspring.ndim == 1 else offspring.
-                shape[0])
+            if offspring.ndim != 1:
+                num_offsprings = offspring.shape[0]
+                if num_offsprings + offspring_pop_id >= self.pop_size_offspring:
+                    offspring = offspring[:(
+                        self.pop_size_offspring - offspring_pop_id), :]
+                    num_offsprings = offspring.shape[0]
+            else:
+                num_offsprings = 1
+
+            offspring += self._create_mutation(num_offsprings=num_offsprings)
 
             offspring = np.minimum(offspring, self.inst_range_high)
             offspring = np.maximum(offspring, self.inst_range_low)
 
-            self._offspring_pop[id_offspring, :] = offspring
-            self._offspring_timestamps[id_offspring] = self._time
-            self._offspring_fitness[id_offspring] = self.fitness_func(
-                offspring, **self.fitness_func_args)
+            _aux_range = np.arange(offspring_pop_id,
+                                   offspring_pop_id + num_offsprings)
+
+            self._offspring_pop[_aux_range, :] = offspring
+            self._offspring_timestamps[_aux_range] = self._time
+
+            if num_offsprings == 1:
+                self._offspring_fitness[_aux_range] = self.fitness_func(
+                    offspring, **self.fitness_func_args)
+
+            else:
+                self._offspring_fitness[_aux_range] = np.apply_along_axis(
+                    func1d=self.fitness_func,
+                    arr=offspring,
+                    axis=1,
+                    **self.fitness_func_args)
+
             self._time += 1
+            id_parent_group += 1
+            offspring_pop_id += num_offsprings
 
     def _select(self) -> int:
         """Promote competition for a place in the next iteration."""
