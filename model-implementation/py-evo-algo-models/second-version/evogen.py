@@ -32,7 +32,11 @@ class EvoGen(evobatch.EvoBatch):
     +------------------------------+----------------+
     """
 
-    def __init__(self, crossover_points: t.Union[int, float] = 0.2, produce_both_offsprings: bool = True, *args, **kwargs):
+    def __init__(self,
+                 crossover_points: t.Union[int, float] = 0.2,
+                 produce_both_offsprings: bool = True,
+                 *args,
+                 **kwargs):
         """Init a genetic algorithm model.
 
         Arguments
@@ -104,7 +108,8 @@ class EvoGen(evobatch.EvoBatch):
 
         else:
             if inst_a.dtype != inst_b.dtype:
-                raise TypeError("Data type of 'inst_a' and 'inst_b' must match.")
+                raise TypeError(
+                    "Data type of 'inst_a' and 'inst_b' must match.")
 
         if inst_a.size != inst_b.size:
             raise ValueError("Instances size does not match for crossover.")

@@ -1,6 +1,7 @@
 """Evolution Strategy evolutionary algorithm."""
 import evobatch
 
+
 class EvoSteadyState(evobatch.EvoBatch):
     """Evolution Strategy evolutionary algorithm.
 
@@ -34,8 +35,8 @@ class EvoSteadyState(evobatch.EvoBatch):
 
         pop_size_offspring = kwargs.get("pop_size_offspring")
 
-        if (pop_size_offspring is not None and
-                pop_size_offspring < kwargs["pop_size_parent"]):
+        if (pop_size_offspring is not None
+                and pop_size_offspring < kwargs["pop_size_parent"]):
             raise ValueError("'pop_size_offspring' can't be smaller than "
                              "'pop_size_parent'.")
 

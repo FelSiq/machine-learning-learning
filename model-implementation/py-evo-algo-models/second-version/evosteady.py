@@ -1,6 +1,7 @@
 """Steady state evolutionary algorithm."""
 import evobatch
 
+
 class EvoSteadyState(evobatch.EvoBatch):
     """Steady State (batch size = 1) evolutionary algorithm.
 

@@ -742,8 +742,8 @@ class EvoBasic:
                 self._alg_name if self._alg_name else "Unknown",
                 self.pop_size_parent, self.pop_size_offspring,
                 self.selection_parent, self.selection_target,
-                self.reproduction,
-                self.overlapping_pops, self.merge_populations),
+                self.reproduction, self.overlapping_pops,
+                self.merge_populations),
             fontsize=10)
         self._plt_config["ax1"].set_title("Fitness countour plot" + (
             " (best fit: {:.4f})".
@@ -778,28 +778,26 @@ class EvoBasic:
             plt.draw()
 
     def __str__(self) -> str:
-        info = [
-            ["Algorithm chosen:", self._alg_name],
-            ["Population size:", str(self.pop_size_parent)],
-            [
-                "Using", ("" if self.overlapping_pops else "Non-") +
-                "overlapping population."
-            ],
-            [("M" if self.merge_populations else "Not m") +
-             "erging the parent "
-             "and offspring populations before selection."],
-            ["Population offspring:",
-             str(self.pop_size_offspring)],
-            [
-                "On average, {:.4f} offsprings per parent.".format(
-                    self.pop_size_offspring / self.pop_size_parent)
-            ],
-            ["Reproduction is {}.".format(self.reproduction)],
-            [
-                "    List of arguments:",
-                "" if self.reproduction_func_args else "None."
-            ]
-        ]
+        info = [["Algorithm chosen:", self._alg_name],
+                ["Population size:",
+                 str(self.pop_size_parent)],
+                [
+                    "Using", ("" if self.overlapping_pops else "Non-") +
+                    "overlapping population."
+                ],
+                [("M" if self.merge_populations else "Not m") +
+                 "erging the parent "
+                 "and offspring populations before selection."],
+                ["Population offspring:",
+                 str(self.pop_size_offspring)],
+                [
+                    "On average, {:.4f} offsprings per parent.".format(
+                        self.pop_size_offspring / self.pop_size_parent)
+                ], ["Reproduction is {}.".format(self.reproduction)],
+                [
+                    "    List of arguments:",
+                    "" if self.reproduction_func_args else "None."
+                ]]
 
         for key, val in self.reproduction_func_args.items():
             info[-1].append("\n    * {} = {}".format(key, str(val)))

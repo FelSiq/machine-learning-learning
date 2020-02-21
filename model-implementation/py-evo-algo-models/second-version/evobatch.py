@@ -61,7 +61,8 @@ class EvoBatch(evobasic.EvoBasic):
             id_parents.reshape(-1, num_parents_per_offspring)
 
         for id_offspring, id_parents in enumerate(id_parents):
-            offspring = self.reproduction_func(self.population[id_parents, :], **self.reproduction_func_args)
+            offspring = self.reproduction_func(self.population[id_parents, :],
+                                               **self.reproduction_func_args)
 
             offspring += [(p < self.mutation_prob[attr_ind]) *
                           self.mutation_delta_func[attr_ind](
