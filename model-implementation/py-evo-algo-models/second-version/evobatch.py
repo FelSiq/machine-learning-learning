@@ -22,6 +22,8 @@ class EvoBatch(evobasic.EvoBasic):
     +------------------------------+----------------+
     | Offspring selection scheme   | Any            |
     +------------------------------+----------------+
+    | Merge populations to select  | Is up to user  |
+    +------------------------------+----------------+
     | Reproduction                 | Asexual        |
     +------------------------------+----------------+
     | Mutation                     | Yes            |
@@ -33,35 +35,27 @@ class EvoBatch(evobasic.EvoBasic):
     def __init__(self, *args, **kwargs):
         """Init a Batch (Generational) evolutionary model."""
         kwargs.setdefault("overlapping_pops", True)
+        kwargs.setdefault("merge_populations", False)
 
         super().__init__(*args, **kwargs)
 
         self._alg_name = "Batch/Generational"
 
-    def _gen_pop(self) -> t.Tuple[np.ndarray, int]:
-        """Generate an entire batch of offsprings."""
-        killed_num = 0
+        self._offspring_pop = np.zeros(
+            (self.pop_size_offspring, self.gene_num), dtype=float)
+        self._offspring_timestamps = np.zeros(
+            self.pop_size_offspring, dtype=np.uint)
+        self._offspring_fitness = np.zeros(
+            self.pop_size_offspring, dtype=np.float)
 
-        offspring_pop = np.zeros((self.pop_size_offspring, self.gene_num),
-                                 dtype=float)
-        offspring_timestamps = np.zeros(self.pop_size_offspring, dtype=np.uint)
-
+    def _reproduce(self) -> None:
+        """Choose parents to reproduce asexualy."""
         id_parents = self._get_inst_ids(
-            pop_size_source=self.pop_size_parent,
             pop_size_target=self.pop_size_offspring,
             fitness_source=self.fitness,
             scheme=self.selection_parent,
             pick_best=True,
             args=self.selection_parent_args)
-
-        if self.overlapping_pops:
-            id_targets = self._get_inst_ids(
-                pop_size_source=self.pop_size_parent,
-                pop_size_target=self.pop_size_offspring,
-                fitness_source=self.fitness,
-                scheme=self.selection_target,
-                pick_best=False,
-                args=self.selection_target_args)
 
         for id_offspring, id_parent in enumerate(id_parents):
             offspring = np.copy(self.population[id_parent])
@@ -75,43 +69,72 @@ class EvoBatch(evobasic.EvoBasic):
             offspring = np.minimum(offspring, self.inst_range_high)
             offspring = np.maximum(offspring, self.inst_range_low)
 
-            offspring_pop[id_offspring, :] = offspring
-            offspring_timestamps[id_offspring] = self._time
+            self._offspring_pop[id_offspring, :] = offspring
+            self._offspring_timestamps[id_offspring] = self._time
+            self._offspring_fitness[id_offspring] = self.fitness_func(
+                offspring, **self.fitness_func_args)
             self._time += 1
 
+    def _select(self) -> int:
+        killed_num = 0
+
         if self.overlapping_pops:
-            for id_offspring, id_kill in enumerate(id_targets):
-                offspring = offspring_pop[id_offspring, :]
-                offspring_ts = offspring_timestamps[id_offspring]
+            if not self.merge_populations:
+                # Scenario: promote duels between parents and offsprings
+                id_targets = self._get_inst_ids(
+                    pop_size_target=self.pop_size_offspring,
+                    fitness_source=self.fitness,
+                    scheme=self.selection_target,
+                    pick_best=False,
+                    args=self.selection_target_args)
 
-                offspring_fitness = self.fitness_func(offspring,
-                                                      **self.fitness_func_args)
+                for id_offspring, id_kill in enumerate(id_targets):
+                    if self.fitness[id_kill] < self._offspring_fitness[
+                            id_offspring]:
+                        self.population[id_kill, :] = self._offspring_pop[
+                            id_offspring, :]
+                        self.fitness[id_kill] = self._offspring_fitness[
+                            id_offspring]
+                        self.timestamps[id_kill] = self._offspring_timestamps[
+                            id_offspring]
+                        killed_num += 1
 
-                if self.fitness[id_kill] < offspring_fitness:
-                    self.population[id_kill, :] = offspring
-                    self.fitness[id_kill] = offspring_fitness
-                    self.timestamps[id_kill] = offspring_ts
-                    killed_num += 1
+                return killed_num
+
+            else:
+                # Scenario: merge parents and offsprings, and then select
+                target_pop = np.vstack((self.population, self._offspring_pop))
+                target_fitness = np.concatenate((self.fitness,
+                                                 self._offspring_fitness))
+                target_timestamps = np.concatenate(
+                    (self.timestamps, self._offspring_timestamps))
+                calc_killed_num = lambda: np.sum(id_new_pop[:self.pop_size_parent] >= self.pop_size_parent)
 
         else:
-            offspring_fitness = np.apply_along_axis(
-                func1d=self.fitness_func,
-                arr=offspring_pop,
-                axis=1,
-                **self.fitness_func_args)
+            # Scenario: kill entire parent population, and select only offsprings
+            target_pop = self._offspring_pop
+            target_fitness = self._offspring_fitness
+            target_timestamps = self._offspring_timestamps
+            calc_killed_num = lambda: self.pop_size_parent
 
-            id_new_pop = self._get_inst_ids(
-                pop_size_source=self.pop_size_offspring,
-                pop_size_target=self.pop_size_parent,
-                fitness_source=offspring_fitness,
-                scheme=self.selection_target,
-                pick_best=True,
-                args=self.selection_target_args)
+        id_new_pop = self._get_inst_ids(
+            pop_size_target=self.pop_size_parent,
+            fitness_source=target_fitness,
+            scheme=self.selection_target,
+            pick_best=True,
+            args=self.selection_target_args)
 
-            killed_num = self.pop_size_parent
-            self.population = offspring_pop[id_new_pop, :]
-            self.fitness = offspring_fitness[id_new_pop]
-            self.timestamps = offspring_timestamps[id_new_pop]
+        self.population = target_pop[id_new_pop, :]
+        self.fitness = target_fitness[id_new_pop]
+        self.timestamps = target_timestamps[id_new_pop]
+
+        return calc_killed_num()
+
+    def _gen_pop(self) -> t.Tuple[np.ndarray, int]:
+        """Generate an entire batch of offsprings."""
+
+        self._reproduce()
+        killed_num = self._select()
 
         return self.population, killed_num
 
@@ -132,6 +155,8 @@ class EvoSteadyState(EvoBatch):
     +------------------------------+----------------+
     | Offspring selection scheme   | Any            |
     +------------------------------+----------------+
+    | Merge populations to select  | False          |
+    +------------------------------+----------------+
     | Reproduction                 | Asexual        |
     +------------------------------+----------------+
     | Mutation                     | Yes            |
@@ -143,7 +168,12 @@ class EvoSteadyState(EvoBatch):
     def __init__(self, *args, **kwargs):
         """Init a Steady State (batch size = 1) evolutionary model."""
         super().__init__(
-            overlapping_pops=True, pop_size_offspring=1, *args, **kwargs)
+            overlapping_pops=True,
+            merge_populations=False,
+            pop_size_offspring=1,
+            *args,
+            **kwargs)
+
         self._alg_name = "Steady State/Incremental"
 
 
@@ -199,7 +229,7 @@ def _test_02() -> None:
         selection_target="fitness-prop",
         selection_target_args={"size": 32},
         mutation_delta_func=lambda: np.random.normal(0, 0.5),
-        pop_size_parent=1028,
+        pop_size_parent=1024,
         pop_size_offspring=512,
         gen_range_low=[0, 1],
         gen_range_high=[0, 1],
