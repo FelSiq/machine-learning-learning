@@ -427,13 +427,15 @@ class EvoBasic:
 
                 self._plt_config["fitness_avg"].pop(0)
                 self._plt_config["fitness_std"].pop(0)
-
-                _fitness_mean = np.mean(self.fitness)
-                self._plt_config["fitness_avg"].append(_fitness_mean)
-                self._fitness_cur_best_avg = max(self._fitness_cur_best_avg,
-                                                 _fitness_mean)
-
+                self._plt_config["fitness_avg"].append(np.mean(self.fitness))
                 self._plt_config["fitness_std"].append(np.std(self.fitness))
+
+                _fitness_mean = self._plt_config["fitness_avg"][-1]
+                _fitness_std = self._plt_config["fitness_std"][-1]
+
+                if self._fitness_cur_best_avg < _fitness_mean:
+                    self._fitness_cur_best_avg = _fitness_mean
+                    self._fitness_cur_best_std = _fitness_std
 
                 if plot:
                     self._plot_timestep(pause=pause)
@@ -452,173 +454,6 @@ class EvoBasic:
             return self.best_inst
 
         return self.population
-
-    def _config_plot(self, online: bool = False) -> None:
-        """Configure the class attributes related to plotting.
-
-        Arguments
-        ---------
-        online : :obj:`bool`, optional
-            If True, configure for online plotting (plot during the
-            algorithm execution.)
-        """
-        if online:
-            self._online_plot = True
-            plt.ion()
-
-        else:
-            self._online_plot = False
-
-        self._plt_config.setdefault("fitness_avg", [])
-        self._plt_config.setdefault("fitness_std", [])
-        self._plt_config.setdefault("fig", None)
-
-        if self._plt_config["fig"] is None:
-            self._plt_config["fig"] = plt.figure()
-            self._plt_config["ax1"] = self._plt_config["fig"].add_subplot(121)
-            self._plt_config["ax2"] = self._plt_config["fig"].add_subplot(122)
-
-        self._plt_config["con"] = None
-        self._plt_config["sct"] = None
-        self._plt_config["avg_lines"] = None
-        self._plt_config["fitness_max_line"] = None
-
-    def _plot_timestep(self, pause: float = 0.2):
-        """Plot the current population scatter plot.
-
-        Arguments
-        ---------
-        pause : :obj:`float`, optional
-            Number of seconds to wait before closing the current plot
-            automatically.
-        """
-        if self._plt_config["sct"]:
-            self._plt_config["sct"].remove()
-
-        if self._plt_config["avg_lines"]:
-            self._plt_config["avg_lines"].remove()
-
-        if self._plt_config["fitness_max_line"]:
-            self._plt_config["fitness_max_line"].remove()
-
-        if self.gene_num == 2:
-            self._plt_config["sct"] = self._plt_config["ax1"].scatter(
-                self.population[:, 0], self.population[:, 1], color="blue")
-        else:
-            self._plt_config["sct"] = self._plt_config["ax1"].scatter(
-                self.population, self.fitness, color="blue")
-
-        _shifted_time = self._time - self.pop_size_parent
-        _xlim = (_shifted_time,
-                 _shifted_time + len(self._plt_config["fitness_avg"]))
-
-        self._plt_config["avg_lines"] = self._plt_config["ax2"].errorbar(
-            x=np.arange(*_xlim),
-            y=self._plt_config["fitness_avg"],
-            yerr=self._plt_config["fitness_std"],
-            color="black",
-            label="Local fitness")
-
-        self._plt_config["fitness_max_line"] = self._plt_config["ax2"].hlines(
-            self._fitness_cur_best_avg,
-            *_xlim,
-            linestyle="--",
-            color="red",
-            label="Global best fitness")
-
-        self._plt_config["ax2"].set_xlim(*_xlim)
-
-        try:
-            plt.pause(pause)
-
-        except Exception:
-            pass
-
-    def plot(self, num_points: int = 64, pause: float = 0.0) -> None:
-        """Plot the fitness curve contour plot with the population scatter plot.
-
-        Arguments
-        ---------
-        num_points : :obj:`int`, optional
-            Number of points, for each dimension, for the contour plot.
-            The higher is this value, the more precise will be the contour
-            plot.
-
-        pause : :obj:`float`, optional
-            Number of seconds to wait before closing the current plot
-            automatically.
-        """
-        if not self.population.size:
-            raise ValueError("No population to plot. Run 'run' method first.")
-
-        if self.gene_num > 2:
-            raise ValueError(
-                "Can't plot populations with more than 2 dimensions.")
-
-        if not self._online_plot:
-            self._config_plot(online=False)
-
-        if self.gene_num == 2:
-            if self.inst_range_low.size == 2:
-                vals_x = np.linspace(self.inst_range_low[0],
-                                     self.inst_range_high[0], num_points)
-                vals_y = np.linspace(self.inst_range_low[1],
-                                     self.inst_range_high[1], num_points)
-            else:
-                vals_x = vals_y = np.linspace(self.inst_range_low,
-                                              self.inst_range_high, num_points)
-
-            X, Y = np.meshgrid(vals_x, vals_y)
-            Z = np.zeros((num_points, num_points), dtype=float)
-
-            for i in np.arange(num_points):
-                for j in np.arange(num_points):
-                    inst = np.array([X[i, j], Y[i, j]], dtype=float)
-                    Z[i, j] = self.fitness_func(inst)
-
-            self._plt_config["con"] = self._plt_config["ax1"].contour(
-                X, Y, Z, levels=16, cmap="BuPu")
-
-        else:
-            vals = np.linspace(self.inst_range_low, self.inst_range_high,
-                               num_points)
-
-            self._plt_config["con"] = self._plt_config["ax1"].plot(
-                vals, [self.fitness_func(val) for val in vals])
-
-        plt.suptitle("Algorithm: {}".format(self._alg_name if self.
-                                            _alg_name else "Unknown"))
-        self._plt_config["ax1"].set_title("Fitness countour plot" + (
-            " (best fit: {:.4f})".
-            format(self.best_inst_fitness) if self.best_inst_id >= 0 else ""))
-        self._plt_config["ax1"].set_xlabel("First dimension")
-        self._plt_config["ax1"].set_ylabel("Second dimension")
-
-        self._plt_config["ax2"].set_title("Fitness local average")
-        self._plt_config["ax2"].set_xlabel("# of algorithm executions")
-        self._plt_config["ax2"].set_ylabel("Average local fitness")
-
-        if self.inst_range_low.size > 1:
-            self._plt_config["ax1"].set_xlim(self.inst_range_low[0],
-                                             self.inst_range_high[0])
-            self._plt_config["ax1"].set_ylim(self.inst_range_low[1],
-                                             self.inst_range_high[1])
-
-        else:
-            self._plt_config["ax1"].set_xlim(self.inst_range_low,
-                                             self.inst_range_high)
-            self._plt_config["ax1"].set_ylim(self.inst_range_low,
-                                             self.inst_range_high)
-
-        self._plot_timestep(pause=pause)
-
-        self._plt_config["ax2"].legend()
-
-        if not self._online_plot:
-            plt.show()
-
-        else:
-            plt.draw()
 
     @abc.abstractmethod
     def _gen_pop(self) -> t.Tuple[np.ndarray, int]:
@@ -700,6 +535,196 @@ class EvoBasic:
 
         # Default: uniform
         return np.random.randint(pop_size_source, size=pop_size_target)
+
+    def _config_plot(self, online: bool = False) -> None:
+        """Configure the class attributes related to plotting.
+
+        Arguments
+        ---------
+        online : :obj:`bool`, optional
+            If True, configure for online plotting (plot during the
+            algorithm execution.)
+        """
+        if online:
+            self._online_plot = True
+            plt.ion()
+
+        else:
+            self._online_plot = False
+
+        self._plt_config.setdefault("fitness_avg", [])
+        self._plt_config.setdefault("fitness_std", [])
+        self._plt_config.setdefault("fig", None)
+
+        if self._plt_config["fig"] is None:
+            self._plt_config["fig"] = plt.figure()
+            self._plt_config["ax1"] = self._plt_config["fig"].add_subplot(121)
+            self._plt_config["ax2"] = self._plt_config["fig"].add_subplot(122)
+
+        self._plt_config["con"] = None
+        self._plt_config["sct"] = None
+        self._plt_config["avg_lines"] = None
+        self._plt_config["fitness_max_line"] = None
+        self._plt_config["fitness_max_line_std1"] = None
+        self._plt_config["fitness_max_line_std2"] = None
+
+    def _plot_timestep(self, pause: float = 0.1):
+        """Plot the current population scatter plot.
+
+        Arguments
+        ---------
+        pause : :obj:`float`, optional
+            Number of seconds to wait before closing the current plot
+            automatically.
+        """
+        if self._plt_config["sct"]:
+            self._plt_config["sct"].remove()
+
+        if self._plt_config["avg_lines"]:
+            self._plt_config["avg_lines"].remove()
+
+        if self._plt_config["fitness_max_line"]:
+            self._plt_config["fitness_max_line"].remove()
+
+        if self._plt_config["fitness_max_line_std1"]:
+            self._plt_config["fitness_max_line_std1"].remove()
+
+        if self._plt_config["fitness_max_line_std2"]:
+            self._plt_config["fitness_max_line_std2"].remove()
+
+        if self.gene_num == 2:
+            self._plt_config["sct"] = self._plt_config["ax1"].scatter(
+                self.population[:, 0], self.population[:, 1], color="blue")
+        else:
+            self._plt_config["sct"] = self._plt_config["ax1"].scatter(
+                self.population, self.fitness, color="blue")
+
+        _shifted_time = self._time - self.pop_size_parent
+        _xlim = (_shifted_time,
+                 _shifted_time + len(self._plt_config["fitness_avg"]) - 1)
+
+        self._plt_config["avg_lines"] = self._plt_config["ax2"].errorbar(
+            x=np.arange(_xlim[0], _xlim[1] + 1),
+            y=self._plt_config["fitness_avg"],
+            yerr=self._plt_config["fitness_std"],
+            color="black",
+            label="Local fitness")
+
+        self._plt_config["fitness_max_line"] = self._plt_config["ax2"].hlines(
+            self._fitness_cur_best_avg,
+            *_xlim,
+            linestyle="--",
+            color="red",
+            label="Best local fitness")
+
+        self._plt_config["fitness_max_line_std1"] = self._plt_config[
+            "ax2"].hlines(
+                self._fitness_cur_best_avg - self._fitness_cur_best_std,
+                *_xlim,
+                linestyle=":",
+                color="red")
+
+        self._plt_config["fitness_max_line_std2"] = self._plt_config[
+            "ax2"].hlines(
+                self._fitness_cur_best_avg + self._fitness_cur_best_std,
+                *_xlim,
+                linestyle=":",
+                color="red")
+
+        self._plt_config["ax2"].set_xlim(*_xlim)
+
+        try:
+            plt.pause(pause)
+
+        except Exception:
+            pass
+
+    def plot(self, num_points: int = 64, pause: float = 0.0) -> None:
+        """Plot the fitness curve contour plot with the population scatter plot.
+
+        Arguments
+        ---------
+        num_points : :obj:`int`, optional
+            Number of points, for each dimension, for the contour plot.
+            The higher is this value, the more precise will be the contour
+            plot.
+
+        pause : :obj:`float`, optional
+            Number of seconds to wait before closing the current plot
+            automatically.
+        """
+        if not self.population.size:
+            raise ValueError("No population to plot. Run 'run' method first.")
+
+        if self.gene_num > 2:
+            raise ValueError(
+                "Can't plot populations with more than 2 dimensions.")
+
+        if not self._online_plot:
+            self._config_plot(online=False)
+
+        if self.gene_num == 2:
+            if self.inst_range_low.size == 2:
+                vals_x = np.linspace(self.inst_range_low[0],
+                                     self.inst_range_high[0], num_points)
+                vals_y = np.linspace(self.inst_range_low[1],
+                                     self.inst_range_high[1], num_points)
+            else:
+                vals_x = vals_y = np.linspace(self.inst_range_low,
+                                              self.inst_range_high, num_points)
+
+            X, Y = np.meshgrid(vals_x, vals_y)
+            Z = np.zeros((num_points, num_points), dtype=float)
+
+            for i in np.arange(num_points):
+                for j in np.arange(num_points):
+                    inst = np.array([X[i, j], Y[i, j]], dtype=float)
+                    Z[i, j] = self.fitness_func(inst)
+
+            self._plt_config["con"] = self._plt_config["ax1"].contour(
+                X, Y, Z, levels=16, cmap="BuPu")
+
+        else:
+            vals = np.linspace(self.inst_range_low, self.inst_range_high,
+                               num_points)
+
+            self._plt_config["con"] = self._plt_config["ax1"].plot(
+                vals, [self.fitness_func(val) for val in vals])
+
+        plt.suptitle("Algorithm: {} (Pop size: {}, Batch size: {})".format(
+            self._alg_name if self._alg_name else "Unknown",
+            self.pop_size_parent, self.pop_size_offspring))
+        self._plt_config["ax1"].set_title("Fitness countour plot" + (
+            " (best fit: {:.4f})".
+            format(self.best_inst_fitness) if self.best_inst_id >= 0 else ""))
+        self._plt_config["ax1"].set_xlabel("First dimension")
+        self._plt_config["ax1"].set_ylabel("Second dimension")
+
+        self._plt_config["ax2"].set_title("Fitness local average")
+        self._plt_config["ax2"].set_xlabel("# of algorithm executions")
+        self._plt_config["ax2"].set_ylabel("Average local fitness")
+
+        if self.inst_range_low.size > 1:
+            self._plt_config["ax1"].set_xlim(self.inst_range_low[0],
+                                             self.inst_range_high[0])
+            self._plt_config["ax1"].set_ylim(self.inst_range_low[1],
+                                             self.inst_range_high[1])
+
+        else:
+            self._plt_config["ax1"].set_xlim(self.inst_range_low,
+                                             self.inst_range_high)
+            self._plt_config["ax1"].set_ylim(self.inst_range_low,
+                                             self.inst_range_high)
+
+        self._plot_timestep(pause=pause)
+
+        self._plt_config["ax2"].legend(loc="lower left")
+
+        if not self._online_plot:
+            plt.show()
+
+        else:
+            plt.draw()
 
     def __str__(self) -> str:
         info = [
