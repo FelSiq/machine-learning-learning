@@ -85,6 +85,8 @@ class EvoGen(evobatch.EvoBatch):
             **kwargs)
 
         self.produce_both_offsprings = produce_both_offsprings
+        self._crossover_args.setdefault("return_both",
+                                        self.produce_both_offsprings)
 
         self._alg_name = "Genetic Algorithm"
 
@@ -98,7 +100,7 @@ class EvoGen(evobatch.EvoBatch):
     @staticmethod
     def _verify_parents(inst_a: np.ndarray,
                         inst_b: t.Optional[np.ndarray] = None) -> np.ndarray:
-        """."""
+        """Check both parent's dimensions, and return they."""
         if inst_b is None:
             if inst_a.ndim != 2:
                 raise ValueError("'inst_b' is None and 'inst_a' has not two "
