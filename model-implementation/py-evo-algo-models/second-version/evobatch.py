@@ -139,44 +139,6 @@ class EvoBatch(evobasic.EvoBasic):
         return self.population, killed_num
 
 
-class EvoSteadyState(EvoBatch):
-    """Steady State (batch size = 1) evolutionary algorithm.
-
-    +------------------------------+----------------+
-    | Algorithm characteristic:    | Value:         |
-    +------------------------------+----------------+
-    | Overlapping population       | Yes            |
-    +------------------------------+----------------+
-    | Parent population size       | m > 0          |
-    +------------------------------+----------------+
-    | Offspring population size    | 1              |
-    +------------------------------+----------------+
-    | Parent selection scheme      | Any            |
-    +------------------------------+----------------+
-    | Offspring selection scheme   | Any            |
-    +------------------------------+----------------+
-    | Merge populations to select  | False          |
-    +------------------------------+----------------+
-    | Reproduction                 | Asexual        |
-    +------------------------------+----------------+
-    | Mutation                     | Yes            |
-    +------------------------------+----------------+
-    | Crossover                    | No             |
-    +------------------------------+----------------+
-    """
-
-    def __init__(self, *args, **kwargs):
-        """Init a Steady State (batch size = 1) evolutionary model."""
-        super().__init__(
-            overlapping_pops=True,
-            merge_populations=False,
-            pop_size_offspring=1,
-            *args,
-            **kwargs)
-
-        self._alg_name = "Steady State/Incremental"
-
-
 def _test_01() -> None:
     model = EvoBatch(
         -8,
