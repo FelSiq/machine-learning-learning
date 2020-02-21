@@ -18,47 +18,50 @@ class EvoBatch(evobasic.EvoBasic):
     +------------------------------+----------------+
     | Offspring population size    | n > 0          |
     +------------------------------+----------------+
-    | Parent selection scheme      | Any            |
+    | Parent selection scheme      | Is up to user  |
     +------------------------------+----------------+
-    | Offspring selection scheme   | Any            |
+    | Offspring selection scheme   | Is up to user  |
     +------------------------------+----------------+
     | Merge populations to select  | Is up to user  |
     +------------------------------+----------------+
-    | Reproduction                 | Asexual        |
+    | Reproduction                 | Is up to user  |
     +------------------------------+----------------+
     | Mutation                     | Yes            |
     +------------------------------+----------------+
-    | Crossover                    | No             |
+    | Crossover                    | Is up to user  |
     +------------------------------+----------------+
     """
 
     def __init__(self, *args, **kwargs):
         """Init a Batch (Generational) evolutionary model."""
-        kwargs.setdefault("overlapping_pops", True)
-        kwargs.setdefault("merge_populations", False)
-
         super().__init__(*args, **kwargs)
 
         self._alg_name = "Batch/Generational"
 
         self._offspring_pop = np.zeros(
-            (self.pop_size_offspring, self.gene_num), dtype=float)
+            (self.pop_size_offspring, self.gene_num), dtype=np.float)
         self._offspring_timestamps = np.zeros(
             self.pop_size_offspring, dtype=np.uint)
         self._offspring_fitness = np.zeros(
             self.pop_size_offspring, dtype=np.float)
 
     def _reproduce(self) -> None:
-        """Choose parents to reproduce asexualy."""
+        """Choose parents to reproduce."""
+        num_parents_per_offspring = (1 + int(self.reproduction == "sexual"))
+        num_offsprings = num_parents_per_offspring * self.pop_size_offspring
+
         id_parents = self._get_inst_ids(
-            pop_size_target=self.pop_size_offspring,
+            pop_size_target=num_offsprings,
             fitness_source=self.fitness,
             scheme=self.selection_parent,
             pick_best=True,
             args=self.selection_parent_args)
 
-        for id_offspring, id_parent in enumerate(id_parents):
-            offspring = np.copy(self.population[id_parent])
+        if num_parents_per_offspring > 1:
+            id_parents.reshape(-1, num_parents_per_offspring)
+
+        for id_offspring, id_parents in enumerate(id_parents):
+            offspring = self.reproduction_func(self.population[id_parents, :], **self.reproduction_func_args)
 
             offspring += [(p < self.mutation_prob[attr_ind]) *
                           self.mutation_delta_func[attr_ind](
@@ -76,6 +79,7 @@ class EvoBatch(evobasic.EvoBasic):
             self._time += 1
 
     def _select(self) -> int:
+        """Promote competition for a place in the next iteration."""
         killed_num = 0
 
         if self.overlapping_pops:

@@ -10,7 +10,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 _InstType = t.Union[float, np.ndarray, np.number, int]
-_DeltaFuncType = t.Callable[[], t.Union[int, float]]
+_DeltaFuncType = t.Callable[..., t.Union[int, float]]
 _DictArgType = t.Dict[str, t.Any]
 
 
@@ -40,6 +40,9 @@ class EvoBasic:
             selection_parent_args: t.Optional[_DictArgType] = None,
             selection_target: str = "uniform",
             selection_target_args: t.Optional[_DictArgType] = None,
+            reproduction: str = "asexual",
+            reproduction_func: t.Optional[t.Callable[..., np.ndarray]] = None,
+            reproduction_func_args: t.Optional[_DictArgType] = None,
     ):
         """Init the basic evolutionary algorithm framework.
 
@@ -183,6 +186,20 @@ class EvoBasic:
         selection_target_args : dict, optional
             The same as ``selection_parent_args``, but for the ``selection_target``
             argument.
+
+        reproduction : :obj:`str`, optional
+            The type of reproduction. Must be either `sexual` or `asexual`.
+
+        reproduction_func : callable, optional
+            Reproduction function. If None, then `np.copy` is used by default
+            (i.e., each offspring is exactly the copy of its parent.) If
+            `reproduction` is `sexual`, then the first argument for this
+            function will be a single chromosome. Othwerwise, it will be
+            a two dimensional numpy array with each parent as different
+            row.
+
+        reproduction_func_args : dict, optional
+            Extra arguments for the `reproduction_func` callable.
         """
         if not overlapping_pops and merge_populations:
             raise ValueError("'merge_populations' can't be True with "
@@ -198,6 +215,12 @@ class EvoBasic:
         if selection_target not in VALID_SELECTIONS:
             raise ValueError("'selection_target' ({}) not in {}.".format(
                 selection_target, VALID_SELECTIONS))
+
+        VALID_REPRODUCTION = ("sexual", "asexual")
+
+        if reproduction not in VALID_REPRODUCTION:
+            raise ValueError("'reproduction' ({}) not in {}.".format(
+                selection_target, VALID_REPRODUCTION))
 
         self.fitness_func = fitness_func
 
@@ -242,6 +265,11 @@ class EvoBasic:
         if fitness_func_args is None:
             fitness_func_args = {}
 
+        if reproduction_func_args is None:
+            reproduction_func_args = {}
+
+        self.reproduction = reproduction
+        self.reproduction_func = reproduction_func if reproduction_func else np.copy
         self.pop_size_parent = pop_size_parent
         self.pop_size_offspring = pop_size_offspring
         self.gene_num = gene_num
@@ -249,6 +277,7 @@ class EvoBasic:
         self.overlapping_pops = overlapping_pops
         self.merge_populations = merge_populations
         self.fitness_func_args = fitness_func_args.copy()
+        self.reproduction_func_args = reproduction_func_args.copy()
 
         if mutation_prob is None:
             mutation_prob = 1.0 / self.gene_num
@@ -708,11 +737,12 @@ class EvoBasic:
 
         plt.suptitle(
             "Algorithm: {} (Pop size: {}, Batch size: {})\n"
-            "Parent selection: {}, Target selection: {}\n"
+            "Parent selection: {}, Target selection: {}, reproduction is {}\n"
             "Overlapping population: {}, Merge population: {}\n".format(
                 self._alg_name if self._alg_name else "Unknown",
                 self.pop_size_parent, self.pop_size_offspring,
                 self.selection_parent, self.selection_target,
+                self.reproduction,
                 self.overlapping_pops, self.merge_populations),
             fontsize=10)
         self._plt_config["ax1"].set_title("Fitness countour plot" + (
@@ -764,10 +794,18 @@ class EvoBasic:
                 "On average, {:.4f} offsprings per parent.".format(
                     self.pop_size_offspring / self.pop_size_parent)
             ],
-            [],
+            ["Reproduction is {}.".format(self.reproduction)],
+            [
+                "    List of arguments:",
+                "" if self.reproduction_func_args else "None."
+            ]
         ]
 
+        for key, val in self.reproduction_func_args.items():
+            info[-1].append("\n    * {} = {}".format(key, str(val)))
+
         info += [
+            [],
             ["Selection mechanisms:"],
             [" - Parent selection:", self.selection_parent],
             [

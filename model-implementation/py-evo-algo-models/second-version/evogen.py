@@ -1,8 +1,12 @@
 """Genetic Algorithm class."""
-import evobasic
+import typing as t
+
+import numpy as np
+
+import evobatch
 
 
-class EvoGen(evobasic.EvoBasic):
+class EvoGen(evobatch.EvoBatch):
     """Genetic Algorithm evolutionary algorithm.
 
     +------------------------------+----------------+
@@ -28,31 +32,37 @@ class EvoGen(evobasic.EvoBasic):
     +------------------------------+----------------+
     """
 
-    def __init__(self, crossover_points: t.Union[int, float], *args, **kwargs):
+    def __init__(self, crossover_points: t.Union[int, float] = 0.2, produce_both_offsprings: bool = True, *args, **kwargs):
         """Init a genetic algorithm model.
 
         Arguments
         ---------
-        crossover_points: :obj:`int` or :obj:`float`
+        crossover_points: :obj:`int` or :obj:`float`, optional
             - If integer, define the number of crossover points.
             - If float, this argument is the probability of the offspring
                 getting the gene of the first parent. Must be a number in
                 (0, 1) range.
+
+        produce_both_offsprings : :obj:`bool`, optional
+            If True, generate two offsprings for each crossover operation
+            instead of a single one (if False.)
         """
         self._crossover_func = None
-        self.crossover_param = crossover_points
+        self._crossover_args = {}
 
         if isinstance(crossover_points, (int, np.int)):
             if crossover_points <= 0:
                 raise ValueError("'crossover_points' must be positive.")
 
             self._crossover_func = self.crossover_fixed
+            self._crossover_args.setdefault("num_points", crossover_points)
 
         elif isinstance(crossover_points, (float, np.float)):
             if not 0 < crossover_points < 1:
                 raise ValueError("'crossover_points' must be in (0, 1) range.")
 
             self._crossover_func = self.crossover_rand
+            self._crossover_args.setdefault("gene_prob", crossover_points)
 
         else:
             raise TypeError(
@@ -64,14 +74,47 @@ class EvoGen(evobasic.EvoBasic):
             pop_size_offspring=None,
             selection_parent="fitness-prop",
             selection_target="uniform",
+            reproduction="sexual",
+            reproduction_func=self._crossover_func,
+            reproduction_func_args=self._crossover_args,
             *args,
             **kwargs)
 
+        self.produce_both_offsprings = produce_both_offsprings
+
         self._alg_name = "Genetic Algorithm"
 
+        self._offspring_pop = np.zeros(
+            (self.pop_size_offspring, self.gene_num), dtype=np.float)
+        self._offspring_timestamps = np.zeros(
+            self.pop_size_offspring, dtype=np.uint)
+        self._offspring_fitness = np.zeros(
+            self.pop_size_offspring, dtype=np.float)
+
     @staticmethod
-    def crossover_fixed(inst_a: np.ndarray,
-                        inst_b: np.ndarray,
+    def _verify_parents(inst_a: np.ndarray,
+                        inst_b: t.Optional[np.ndarray] = None) -> np.ndarray:
+        """."""
+        if inst_b is None:
+            if inst_a.ndim != 2:
+                raise ValueError("'inst_b' is None and 'inst_a' has not two "
+                                 "dimensions.")
+            inst_b = inst_a[1, :]
+            inst_a = inst_a[0, :]
+
+        else:
+            if inst_a.dtype != inst_b.dtype:
+                raise TypeError("Data type of 'inst_a' and 'inst_b' must match.")
+
+        if inst_a.size != inst_b.size:
+            raise ValueError("Instances size does not match for crossover.")
+
+        return inst_a, inst_b
+
+    @classmethod
+    def crossover_fixed(cls,
+                        inst_a: np.ndarray,
+                        inst_b: t.Optional[np.ndarray] = None,
                         num_points: int = 1,
                         return_both: bool = False) -> np.ndarray:
         """Crossover with a predetermined number of crosspoints.
@@ -80,6 +123,14 @@ class EvoGen(evobasic.EvoBasic):
 
         Arguments
         ---------
+        inst_a : :obj:`np.ndarray`
+            Array with both parents (if ``inst_b`` is None,) in each row, or
+            just the first parent.
+
+        inst_b : :obj:`np.ndarray`, optional
+            Second parent. If not given, the second row of ``inst_a`` will
+            be considered the second parent.
+
         num_points : :obj:`int`, optional
             Number of crosspoints.
 
@@ -94,11 +145,7 @@ class EvoGen(evobasic.EvoBasic):
             each row is a produced children. Otherwise, return only the first
             children (the `non-conjugate` one.)
         """
-        if inst_a.size != inst_b.size:
-            raise ValueError("Instances size does not match for crossover.")
-
-        if inst_a.dtype != inst_b.dtype:
-            raise TypeError("Data type of 'inst_a' and 'inst_b' must match.")
+        inst_a, inst_b = cls._verify_parents(inst_a, inst_b)
 
         cuts = np.zeros(inst_a.size, dtype=np.uint)
         cuts[np.random.choice(inst_a.size - 1, size=num_points,
@@ -119,9 +166,10 @@ class EvoGen(evobasic.EvoBasic):
 
         return offspring[0, :]
 
-    @staticmethod
-    def crossover_rand(inst_a: np.ndarray,
-                       inst_b: np.ndarray,
+    @classmethod
+    def crossover_rand(cls,
+                       inst_a: np.ndarray,
+                       inst_b: t.Optional[np.ndarray] = None,
                        gene_prob: float = 0.2,
                        return_both: bool = False) -> np.ndarray:
         """Random crossover using coin flipping.
@@ -131,6 +179,14 @@ class EvoGen(evobasic.EvoBasic):
 
         Arguments
         ---------
+        inst_a : :obj:`np.ndarray`
+            Array with both parents (if ``inst_b`` is None,) in each row, or
+            just the first parent.
+
+        inst_b : :obj:`np.ndarray`, optional
+            Second parent. If not given, the second row of ``inst_a`` will
+            be considered the second parent.
+
         gene_prob : :obj:`float`, optional
             Probability of the offspring copy each gene from the first parent
             (``inst_a``). Must be in [0, 1] range.
@@ -146,11 +202,7 @@ class EvoGen(evobasic.EvoBasic):
             each row is a produced children. Otherwise, return only the first
             children (the `non-conjugate` one.)
         """
-        if inst_a.size != inst_b.size:
-            raise ValueError("Size of instances does not match for crossover.")
-
-        if inst_a.dtype != inst_b.dtype:
-            raise TypeError("Data type of both instances must match.")
+        inst_a, inst_b = cls._verify_parents(inst_a, inst_b)
 
         cuts = np.random.choice(
             2, size=inst_a.size, replace=True,
@@ -169,22 +221,13 @@ class EvoGen(evobasic.EvoBasic):
 
         return offspring[0, :]
 
-    def _reproduce(self) -> None:
-        """."""
-
-    def _gen_pop(self) -> t.Union[np.ndarray, int]:
-        """."""
-        self._reproduce()
-        killed_num = self._select()
-        return self.population, killed_num
-
 
 def _test() -> None:
     import numpy as np
 
     model = EvoGen(
-        -8,
-        8,
+        inst_range_low=-8,
+        inst_range_high=8,
         fitness_func=
         lambda inst: np.sum(inst[0] * np.sin(inst[1])) if abs(inst[0]) < 7 else 0.0,
         mutation_delta_func=lambda: np.random.normal(0, 0.1),
