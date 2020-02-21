@@ -27,7 +27,7 @@ class EvoProg(evobatch.EvoBatch):
     """
 
     def __init__(self, *args, **kwargs):
-        """."""
+        """Init a evolutionary programming model."""
         kwargs.setdefault("pop_size_parent", 1)
         kwargs.setdefault("pop_size_parent", 256)
 
@@ -49,11 +49,13 @@ def _test() -> None:
         8,
         fitness_func=
         lambda inst: np.sum(inst[0] * np.sin(inst[1])) if abs(inst[0]) < 7 else 0.0,
-        mutation_delta_func=lambda: np.random.normal(0, 0.15),
+        mutation_delta_func=lambda: np.random.normal(0, 0.2),
+        pop_size_parent=16,
+        pop_size_offspring=20,
         gen_range_low=[-2.5, -8],
         gen_range_high=[2.5, 8],
         gene_num=2,
-        gen_num=2048)
+        gen_num=512)
     model.run(verbose=True, plot=True, pause=0.01)
     print(model)
 
