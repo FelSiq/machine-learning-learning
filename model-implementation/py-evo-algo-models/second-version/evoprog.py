@@ -30,8 +30,6 @@ class EvoProg(evobatch.EvoBatch):
 
     def __init__(self, *args, **kwargs):
         """Init a evolutionary programming model."""
-        kwargs.setdefault("pop_size_parent", 1)
-
         super().__init__(
             overlapping_pops=True,
             merge_populations=True,
@@ -53,7 +51,6 @@ def _test() -> None:
         fitness_func=
         lambda inst: np.sum(inst[0] * np.sin(inst[1])) if abs(inst[0]) < 7 else 0.0,
         mutation_delta_func=lambda: np.random.normal(0, 0.1),
-        pop_size_parent=16,
         gen_range_low=[-2.5, -8],
         gen_range_high=[2.5, 8],
         gene_num=2,
