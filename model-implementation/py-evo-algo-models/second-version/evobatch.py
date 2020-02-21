@@ -7,11 +7,35 @@ import evobasic
 
 
 class EvoBatch(evobasic.EvoBasic):
-    """Batch (Generational) evolutionary algorithm."""
+    """Batch (Generational) evolutionary algorithm.
+
+    +------------------------------+----------------+
+    | Algorithm characteristic:    | Value:         |
+    +------------------------------+----------------+
+    | Overlapping population       | Is up to user  |
+    +------------------------------+----------------+
+    | Parent population size       | m > 0          |
+    +------------------------------+----------------+
+    | Offspring population size    | n > 0          |
+    +------------------------------+----------------+
+    | Parent selection scheme      | Any            |
+    +------------------------------+----------------+
+    | Offspring selection scheme   | Any            |
+    +------------------------------+----------------+
+    | Reproduction                 | Asexual        |
+    +------------------------------+----------------+
+    | Mutation                     | Yes            |
+    +------------------------------+----------------+
+    | Crossover                    | No             |
+    +------------------------------+----------------+
+    """
 
     def __init__(self, *args, **kwargs):
         """Init a Batch (Generational) evolutionary model."""
-        super().__init__(overlapping_pops=True, *args, **kwargs)
+        kwargs.setdefault("overlapping_pops", True)
+
+        super().__init__(*args, **kwargs)
+
         self._alg_name = "Batch/Generational"
 
     def _gen_pop(self) -> t.Tuple[np.ndarray, int]:
@@ -93,11 +117,32 @@ class EvoBatch(evobasic.EvoBasic):
 
 
 class EvoSteadyState(EvoBatch):
-    """Steady State (batch size = 1) evolutionary algorithm."""
+    """Steady State (batch size = 1) evolutionary algorithm.
+
+    +------------------------------+----------------+
+    | Algorithm characteristic:    | Value:         |
+    +------------------------------+----------------+
+    | Overlapping population       | Yes            |
+    +------------------------------+----------------+
+    | Parent population size       | m > 0          |
+    +------------------------------+----------------+
+    | Offspring population size    | 1              |
+    +------------------------------+----------------+
+    | Parent selection scheme      | Any            |
+    +------------------------------+----------------+
+    | Offspring selection scheme   | Any            |
+    +------------------------------+----------------+
+    | Reproduction                 | Asexual        |
+    +------------------------------+----------------+
+    | Mutation                     | Yes            |
+    +------------------------------+----------------+
+    | Crossover                    | No             |
+    +------------------------------+----------------+
+    """
 
     def __init__(self, *args, **kwargs):
         """Init a Steady State (batch size = 1) evolutionary model."""
-        super().__init__(pop_size_offspring=1, *args, **kwargs)
+        super().__init__(overlapping_pops=True, pop_size_offspring=1, *args, **kwargs)
         self._alg_name = "Steady State/Incremental"
 
 
@@ -165,5 +210,5 @@ def _test_02() -> None:
 
 
 if __name__ == "__main__":
-    # _test_01()
+    _test_01()
     _test_02()
