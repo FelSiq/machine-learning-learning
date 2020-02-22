@@ -224,7 +224,9 @@ class EvoBasic:
 
         self.fitness_func = fitness_func
 
-        if not np.isscalar(fitness_func(np.zeros(gene_num, dtype=float))):
+        if not np.isscalar(
+                fitness_func(
+                    np.zeros(gene_num, dtype=float), **fitness_func_args)):
             raise TypeError("'fitness_func' must return a scalar.")
 
         if pop_size_parent <= 0:
@@ -380,11 +382,13 @@ class EvoBasic:
     def run(self,
             random_state: t.Optional[int] = None,
             verbose: bool = False,
+            return_solution: bool = False,
+            avg_range: int = 16,
+            time_invariant_fitness: bool = True,
             plot: bool = False,
             replot_fitness_contour: bool = False,
             plot_pause: float = 0.01,
-            avg_range: int = 16,
-            return_solution: bool = False) -> np.ndarray:
+            plot_contour_points: int = 32) -> np.ndarray:
         """Run the selected evolutionary algorithm.
 
         Arguments
@@ -395,6 +399,21 @@ class EvoBasic:
 
         verbose : :obj:`bool`, optional
             If True, print information related to every epoch.
+
+        return_solution : :obj:`np.ndarray`, optional
+            If True, return the chromosome (instance) with the best fitness.
+            If False, return the whole population after the algorithm
+            execution.
+
+        avg_range : :obj:`int`, optional
+            Number of most recent parent population fitness average and
+            standard deviation to be kept.
+
+        time_invariant_fitness : :obj:`bool`, optional
+            If False, recalculate the population fitness every algorithm
+            execution. If your fitness function is not time invariant,
+            set this argument to True. Otherwise, keep it False to avoid
+            unnecessary extra calculations, and improve performance.
 
         plot : :obj:`bool`, optional
             If True, do online plotting during the algorithm execution.
@@ -408,14 +427,10 @@ class EvoBasic:
             Used only if ``plot`` is True. Number of seconds to wait
             before every epoch plot.
 
-        avg_range : :obj:`int`, optional
-            Number of most recent parent population fitness average and
-            standard deviation to be kept.
-
-        return_solution : :obj:`np.ndarray`, optional
-            If True, return the chromosome (instance) with the best fitness.
-            If False, return the whole population after the algorithm
-            execution.
+        plot_contour_points : :obj:`int`, optional
+            Number of points, for each dimension, for the contour plot.
+            The higher is this value, the more precise will be the contour
+            plot.
 
         Returns
         -------
@@ -450,7 +465,7 @@ class EvoBasic:
 
         if plot:
             self._config_plot(online=True)
-            self.plot(plot_pause=plot_pause)
+            self.plot(num_points=plot_contour_points, plot_pause=plot_pause)
 
         gen_ind = 0
         current_it = 0
@@ -458,6 +473,13 @@ class EvoBasic:
 
         while gen_ind < self.gen_num:
             self.population, cur_killed_num = self._gen_pop()
+
+            if not time_invariant_fitness:
+                self.fitness = np.apply_along_axis(
+                    func1d=self.fitness_func,
+                    axis=1,
+                    arr=self.population,
+                    **self.fitness_func_args)
 
             current_it += self.pop_size_offspring
             killed_num += cur_killed_num
@@ -478,7 +500,9 @@ class EvoBasic:
 
                 if plot:
                     if replot_fitness_contour:
-                        self.plot(plot_pause=plot_pause)
+                        self.plot(
+                            num_points=plot_contour_points,
+                            plot_pause=plot_pause)
                     else:
                         self._plot_timestep(plot_pause=plot_pause)
 
@@ -703,10 +727,13 @@ class EvoBasic:
 
         if self.gene_num == 2:
             self._plt_config["sct"] = self._plt_config["ax1"].scatter(
-                self.population[:, 0], self.population[:, 1], color="blue")
+                self.population[:, 0],
+                self.population[:, 1],
+                color="blue",
+                zorder=1)
         else:
             self._plt_config["sct"] = self._plt_config["ax1"].scatter(
-                self.population, self.fitness, color="blue")
+                self.population, self.fitness, color="blue", zorder=1)
 
         _shifted_time = self._time - self.pop_size_parent
         _xlim = (_shifted_time,
@@ -743,7 +770,7 @@ class EvoBasic:
         except Exception:
             pass
 
-    def plot(self, num_points: int = 64, plot_pause: float = 0.0) -> None:
+    def plot(self, num_points: int = 32, plot_pause: float = 0.0) -> None:
         """Plot the fitness curve contour plot with the population scatter plot.
 
         Arguments
@@ -767,6 +794,10 @@ class EvoBasic:
         if not self._online_plot:
             self._config_plot(online=False)
 
+        if self._plt_config.get("con") is not None:
+            for item in self._plt_config["con"].collections:
+                item.remove()
+
         if self.gene_num == 2:
             if self.inst_range_low.size == 2:
                 vals_x = np.linspace(self.inst_range_low[0],
@@ -783,17 +814,17 @@ class EvoBasic:
             for i in np.arange(num_points):
                 for j in np.arange(num_points):
                     inst = np.array([X[i, j], Y[i, j]], dtype=float)
-                    Z[i, j] = self.fitness_func(inst)
+                    Z[i, j] = self.fitness_func(inst, **self.fitness_func_args)
 
-            self._plt_config["con"] = self._plt_config["ax1"].contour(
-                X, Y, Z, levels=16, cmap="BuPu")
+            self._plt_config["con"] = self._plt_config["ax1"].contourf(
+                X, Y, Z, levels=16, cmap="BuPu", zorder=-1)
 
         else:
             vals = np.linspace(self.inst_range_low, self.inst_range_high,
                                num_points)
 
             self._plt_config["con"] = self._plt_config["ax1"].plot(
-                vals, [self.fitness_func(val) for val in vals])
+                vals, [self.fitness_func(val) for val in vals], zorder=-1)
 
         self._plot_timestep(plot_pause=plot_pause)
 
