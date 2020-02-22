@@ -205,14 +205,16 @@ def _test_02() -> None:
             inst, mean=[x1, y1], cov=3 * np.eye(2))
         b = scipy.stats.multivariate_normal.pdf(
             inst, mean=[x2, y2], cov=1 * np.eye(2))
-        return 0.75 * a + 0.25 * b
+        c = scipy.stats.multivariate_normal.pdf(
+            inst, mean=[x1, y1], cov=1 * np.eye(2))
+        return 0.9 * a - 0.2 * c + 0.3 * b
 
     model = EvoBatch(
         -8,
         8,
         fitness_func=fitness,
         fitness_func_args={"angle": [0.0]},
-        mutation_delta_func=lambda: np.random.normal(0, 0.15),
+        mutation_delta_func=lambda: np.random.normal(0, 0.3),
         selection_parent="fitness-prop",
         selection_target="uniform",
         pop_size_parent=32,
@@ -222,7 +224,7 @@ def _test_02() -> None:
 
     model.run(
         verbose=True,
-        plot_contour_points=16,
+        plot_contour_points=8,
         time_invariant_fitness=False,
         plot=True,
         replot_fitness_contour=True)

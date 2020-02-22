@@ -6,7 +6,7 @@ import numpy as np
 import evobatch
 
 
-class EvoSteadyState(evobatch.EvoBatch):
+class EvoES(evobatch.EvoBatch):
     """Evolution Strategy evolutionary algorithm.
 
     +------------------------------+----------------+
@@ -116,7 +116,7 @@ class EvoSteadyState(evobatch.EvoBatch):
 def _test_01() -> None:
     import numpy as np
 
-    model = EvoSteadyState(
+    model = EvoES(
         inst_range_low=-8,
         inst_range_high=8,
         fitness_func=
@@ -131,5 +131,44 @@ def _test_01() -> None:
     print(model)
 
 
+def _test_02() -> None:
+    import scipy.stats
+
+    def fitness(inst, angle, r: float = 3.0, angle_adjust: float = 1e-3):
+        x1 = r * np.cos(angle[0])
+        y1 = r * np.sin(angle[0])
+        x2 = 1.5 * r * np.cos(np.pi - angle[0])
+        y2 = 1.5 * r * np.sin(np.pi - angle[0])
+
+        angle[0] = (angle[0] + angle_adjust) % 360
+
+        a = scipy.stats.multivariate_normal.pdf(
+            inst, mean=[x1, y1], cov=3 * np.eye(2))
+        b = scipy.stats.multivariate_normal.pdf(
+            inst, mean=[x2, y2], cov=1 * np.eye(2))
+        c = scipy.stats.multivariate_normal.pdf(
+            inst, mean=[x1, y1], cov=1 * np.eye(2))
+        return 0.9 * a - 0.2 * c + 0.3 * b
+
+    model = EvoES(
+        inst_range_low=-8,
+        inst_range_high=8,
+        fitness_func=fitness,
+        fitness_func_args={"angle": [0.0]},
+        pop_size_parent=4,
+        gene_num=2,
+        gen_num=1024)
+
+    model.run(
+        verbose=True,
+        plot_contour_points=8,
+        time_invariant_fitness=False,
+        plot=True,
+        replot_fitness_contour=True)
+
+    print(model)
+
+
 if __name__ == "__main__":
     _test_01()
+    _test_02()
