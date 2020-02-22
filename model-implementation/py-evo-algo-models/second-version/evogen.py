@@ -230,7 +230,7 @@ class EvoGen(evobatch.EvoBatch):
         return offspring[0, :]
 
 
-def _test() -> None:
+def _test_01() -> None:
     import numpy as np
 
     model = EvoGen(
@@ -249,5 +249,45 @@ def _test() -> None:
     print(model)
 
 
+def _test_02() -> None:
+    import scipy.stats
+
+    def fitness(inst, angle, r: float = 3.0, angle_adjust: float = 5e-4):
+        x1 = r * np.cos(angle[0])
+        y1 = r * np.sin(angle[0])
+        x2 = 1.5 * r * np.cos(np.pi - angle[0])
+        y2 = 1.5 * r * np.sin(np.pi - angle[0])
+
+        angle[0] = (angle[0] + angle_adjust) % 360
+
+        a = scipy.stats.multivariate_normal.pdf(
+            inst, mean=[x1, y1], cov=3 * np.eye(2))
+        b = scipy.stats.multivariate_normal.pdf(
+            inst, mean=[x2, y2], cov=1 * np.eye(2))
+        c = scipy.stats.multivariate_normal.pdf(
+            inst, mean=[0, 0], cov=1 * np.eye(2))
+        return 0.45 * a + 0.15 * c + 0.4 * b
+
+    model = EvoGen(
+        inst_range_low=-8,
+        inst_range_high=8,
+        fitness_func=fitness,
+        fitness_func_args={"angle": [0.0]},
+        mutation_delta_func=lambda: np.random.normal(0, 0.5),
+        pop_size_parent=32,
+        gene_num=2,
+        gen_num=1024)
+
+    model.run(
+        verbose=True,
+        plot_contour_points=12,
+        time_invariant_fitness=False,
+        plot=True,
+        replot_fitness_contour=True)
+
+    print(model)
+
+
 if __name__ == "__main__":
-    _test()
+    # _test_01()
+    _test_02()
