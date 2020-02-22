@@ -170,7 +170,7 @@ class EvoBatch(evobasic.EvoBasic):
         return self.population, killed_num
 
 
-def _test() -> None:
+def _test_01() -> None:
     model = EvoBatch(
         -8,
         8,
@@ -179,9 +179,9 @@ def _test() -> None:
         mutation_delta_func=lambda: np.random.normal(0, 0.15),
         selection_parent="tournament",
         selection_target="uniform",
-        selection_parent_args={"size": 128},
-        pop_size_parent=512,
-        pop_size_offspring=1024,
+        selection_parent_args={"size": 16},
+        pop_size_parent=128,
+        pop_size_offspring=256,
         gen_range_low=[-2.5, -8],
         gen_range_high=[2.5, 8],
         gene_num=2,
@@ -190,5 +190,45 @@ def _test() -> None:
     print(model)
 
 
+def _test_02() -> None:
+    import scipy.stats
+
+    def fitness(inst, angle, r: float = 3.0, angle_adjust: float = 3e-4):
+        x1 = r * np.cos(angle[0])
+        y1 = r * np.sin(angle[0])
+        x2 = 1.5 * r * np.cos(np.pi - angle[0])
+        y2 = 1.5 * r * np.sin(np.pi - angle[0])
+
+        angle[0] = (angle[0] + angle_adjust) % 360
+
+        a = scipy.stats.multivariate_normal.pdf(
+            inst, mean=[x1, y1], cov=3 * np.eye(2))
+        b = scipy.stats.multivariate_normal.pdf(
+            inst, mean=[x2, y2], cov=1 * np.eye(2))
+        return 0.75 * a + 0.25 * b
+
+    model = EvoBatch(
+        -8,
+        8,
+        fitness_func=fitness,
+        fitness_func_args={"angle": [0.0]},
+        mutation_delta_func=lambda: np.random.normal(0, 0.15),
+        selection_parent="fitness-prop",
+        selection_target="uniform",
+        pop_size_parent=32,
+        pop_size_offspring=32,
+        gene_num=2,
+        gen_num=1024)
+
+    model.run(
+        verbose=True,
+        plot_contour_points=16,
+        time_invariant_fitness=False,
+        plot=True,
+        replot_fitness_contour=True)
+    print(model)
+
+
 if __name__ == "__main__":
-    _test()
+    _test_01()
+    _test_02()
