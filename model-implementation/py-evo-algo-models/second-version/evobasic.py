@@ -474,20 +474,13 @@ class EvoBasic:
 
                 killed_num = 0
 
-                self._plt_config["fitness_avg"].pop(0)
-                self._plt_config["fitness_std"].pop(0)
-                self._plt_config["fitness_avg"].append(np.mean(self.fitness))
-                self._plt_config["fitness_std"].append(np.std(self.fitness))
-
-                _fitness_mean = self._plt_config["fitness_avg"][-1]
-                _fitness_std = self._plt_config["fitness_std"][-1]
-
-                if self._fitness_cur_best_avg < _fitness_mean:
-                    self._fitness_cur_best_avg = _fitness_mean
-                    self._fitness_cur_best_std = _fitness_std
+                self._conf_it_statistics()
 
                 if plot:
-                    self._plot_timestep(plot_pause=plot_pause)
+                    if replot_fitness_contour:
+                        self.plot(plot_pause=plot_pause)
+                    else:
+                        self._plot_timestep(plot_pause=plot_pause)
 
         self.best_inst_id = np.argmax(self.fitness)
         self.best_inst = self.population[self.best_inst_id]
@@ -503,6 +496,20 @@ class EvoBasic:
             return self.best_inst
 
         return self.population
+
+    def _conf_it_statistics(self) -> None:
+        """Configure statistics related to the current iteration."""
+        self._plt_config["fitness_avg"].pop(0)
+        self._plt_config["fitness_std"].pop(0)
+        self._plt_config["fitness_avg"].append(np.mean(self.fitness))
+        self._plt_config["fitness_std"].append(np.std(self.fitness))
+
+        _fitness_mean = self._plt_config["fitness_avg"][-1]
+        _fitness_std = self._plt_config["fitness_std"][-1]
+
+        if self._fitness_cur_best_avg < _fitness_mean:
+            self._fitness_cur_best_avg = _fitness_mean
+            self._fitness_cur_best_std = _fitness_std
 
     @abc.abstractmethod
     def _gen_pop(self) -> t.Tuple[np.ndarray, int]:
@@ -638,6 +645,7 @@ class EvoBasic:
         self._plt_config["avg_lines"] = None
         self._plt_config["fitness_max_line"] = None
         self._plt_config["fitness_max_line_std"] = None
+        self._plt_config["legend"] = None
 
         plt.suptitle(
             "Algorithm: {} (Pop size: {}, Batch size: {})\n"
@@ -722,7 +730,10 @@ class EvoBasic:
             "ax2"].hlines([
                 self._fitness_cur_best_avg - self._fitness_cur_best_std,
                 self._fitness_cur_best_avg + self._fitness_cur_best_std,
-            ], *_xlim, linestyle=":", color="red")
+            ],
+                          *_xlim,
+                          linestyle=":",
+                          color="red")
 
         self._plt_config["ax2"].set_xlim(*_xlim)
 
@@ -786,7 +797,9 @@ class EvoBasic:
 
         self._plot_timestep(plot_pause=plot_pause)
 
-        self._plt_config["ax2"].legend(loc="lower left")
+        if self._plt_config.get("legend") is None:
+            self._plt_config["legend"] = self._plt_config["ax2"].legend(
+                loc="lower left")
 
         if not self._online_plot:
             plt.show()
