@@ -729,11 +729,11 @@ class EvoBasic:
             self._plt_config["sct"] = self._plt_config["ax1"].scatter(
                 self.population[:, 0],
                 self.population[:, 1],
-                color="blue",
+                color="yellow",
                 zorder=1)
         else:
             self._plt_config["sct"] = self._plt_config["ax1"].scatter(
-                self.population, self.fitness, color="blue", zorder=1)
+                self.population, self.fitness, color="yellow", zorder=1)
 
         _shifted_time = self._time - self.pop_size_parent
         _xlim = (_shifted_time,
