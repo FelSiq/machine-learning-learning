@@ -794,6 +794,9 @@ class EvoBasic:
         if not self._online_plot:
             self._config_plot(online=False)
 
+        elif not plt.fignum_exists(self._plt_config["fig"].number):
+            return
+
         if self._plt_config.get("con") is not None:
             for item in self._plt_config["con"].collections:
                 item.remove()
@@ -835,7 +838,7 @@ class EvoBasic:
         if not self._online_plot:
             plt.show()
 
-        else:
+        elif plt.fignum_exists(self._plt_config["fig"].number):
             plt.draw()
 
     def __str__(self) -> str:
