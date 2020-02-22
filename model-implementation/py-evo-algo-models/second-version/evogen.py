@@ -245,7 +245,7 @@ def _test() -> None:
         gen_range_high=[2.5, 8],
         gene_num=2,
         gen_num=96)
-    model.run(verbose=True, plot=True, pause=0.01)
+    model.run(verbose=True, plot=True)
     print(model)
 
 

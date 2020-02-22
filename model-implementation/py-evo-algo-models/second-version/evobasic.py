@@ -381,7 +381,8 @@ class EvoBasic:
             random_state: t.Optional[int] = None,
             verbose: bool = False,
             plot: bool = False,
-            pause: float = 0.2,
+            replot_fitness_contour: bool = False,
+            plot_pause: float = 0.01,
             avg_range: int = 16,
             return_solution: bool = False) -> np.ndarray:
         """Run the selected evolutionary algorithm.
@@ -398,7 +399,12 @@ class EvoBasic:
         plot : :obj:`bool`, optional
             If True, do online plotting during the algorithm execution.
 
-        pause : :obj:`float`, optional
+        replot_fitness_contour : :obj:`bool`, optional
+            If True, replot the fitness function contour plot. It may be
+            extremely computation expensive depending on the defined
+            function limits and the fitness function complexity.
+
+        plot_pause : :obj:`float`, optional
             Used only if ``plot`` is True. Number of seconds to wait
             before every epoch plot.
 
@@ -444,7 +450,7 @@ class EvoBasic:
 
         if plot:
             self._config_plot(online=True)
-            self.plot(pause=pause)
+            self.plot(plot_pause=plot_pause)
 
         gen_ind = 0
         current_it = 0
@@ -481,14 +487,14 @@ class EvoBasic:
                     self._fitness_cur_best_std = _fitness_std
 
                 if plot:
-                    self._plot_timestep(pause=pause)
+                    self._plot_timestep(plot_pause=plot_pause)
 
         self.best_inst_id = np.argmax(self.fitness)
         self.best_inst = self.population[self.best_inst_id]
         self.best_inst_fitness = self.fitness[self.best_inst_id]
 
         if plot:
-            self._plot_timestep(pause=0)
+            self._plot_timestep(plot_pause=0)
             self._plt_config["fig"] = None
 
         self._online_plot = False
@@ -633,12 +639,45 @@ class EvoBasic:
         self._plt_config["fitness_max_line"] = None
         self._plt_config["fitness_max_line_std"] = None
 
-    def _plot_timestep(self, pause: float = 0.1):
+        plt.suptitle(
+            "Algorithm: {} (Pop size: {}, Batch size: {})\n"
+            "Parent selection: {}, Target selection: {}, reproduction is {}\n"
+            "Overlapping population: {}, Merge population: {}\n".format(
+                self._alg_name if self._alg_name else "Unknown",
+                self.pop_size_parent, self.pop_size_offspring,
+                self.selection_parent, self.selection_target,
+                self.reproduction, self.overlapping_pops,
+                self.merge_populations),
+            fontsize=10)
+
+        self._plt_config["ax1"].set_title("Fitness countour plot" + (
+            " (best fit: {:.4f})".
+            format(self.best_inst_fitness) if self.best_inst_id >= 0 else ""))
+        self._plt_config["ax1"].set_xlabel("First dimension")
+        self._plt_config["ax1"].set_ylabel("Second dimension")
+
+        self._plt_config["ax2"].set_title("Fitness local average")
+        self._plt_config["ax2"].set_xlabel("# of algorithm executions")
+        self._plt_config["ax2"].set_ylabel("Average local fitness")
+
+        if self.inst_range_low.size > 1:
+            self._plt_config["ax1"].set_xlim(self.inst_range_low[0],
+                                             self.inst_range_high[0])
+            self._plt_config["ax1"].set_ylim(self.inst_range_low[1],
+                                             self.inst_range_high[1])
+
+        else:
+            self._plt_config["ax1"].set_xlim(self.inst_range_low,
+                                             self.inst_range_high)
+            self._plt_config["ax1"].set_ylim(self.inst_range_low,
+                                             self.inst_range_high)
+
+    def _plot_timestep(self, plot_pause: float = 0.01):
         """Plot the current population scatter plot.
 
         Arguments
         ---------
-        pause : :obj:`float`, optional
+        plot_pause : :obj:`float`, optional
             Number of seconds to wait before closing the current plot
             automatically.
         """
@@ -683,27 +722,17 @@ class EvoBasic:
             "ax2"].hlines([
                 self._fitness_cur_best_avg - self._fitness_cur_best_std,
                 self._fitness_cur_best_avg + self._fitness_cur_best_std,
-            ],
-                          *_xlim,
-                          linestyle=":",
-                          color="red")
-
-        self._plt_config["fitness_max_line_std2"] = self._plt_config[
-            "ax2"].hlines(
-                self._fitness_cur_best_avg + self._fitness_cur_best_std,
-                *_xlim,
-                linestyle=":",
-                color="red")
+            ], *_xlim, linestyle=":", color="red")
 
         self._plt_config["ax2"].set_xlim(*_xlim)
 
         try:
-            plt.pause(pause)
+            plt.pause(plot_pause)
 
         except Exception:
             pass
 
-    def plot(self, num_points: int = 64, pause: float = 0.0) -> None:
+    def plot(self, num_points: int = 64, plot_pause: float = 0.0) -> None:
         """Plot the fitness curve contour plot with the population scatter plot.
 
         Arguments
@@ -713,7 +742,7 @@ class EvoBasic:
             The higher is this value, the more precise will be the contour
             plot.
 
-        pause : :obj:`float`, optional
+        plot_pause : :obj:`float`, optional
             Number of seconds to wait before closing the current plot
             automatically.
         """
@@ -755,39 +784,7 @@ class EvoBasic:
             self._plt_config["con"] = self._plt_config["ax1"].plot(
                 vals, [self.fitness_func(val) for val in vals])
 
-        plt.suptitle(
-            "Algorithm: {} (Pop size: {}, Batch size: {})\n"
-            "Parent selection: {}, Target selection: {}, reproduction is {}\n"
-            "Overlapping population: {}, Merge population: {}\n".format(
-                self._alg_name if self._alg_name else "Unknown",
-                self.pop_size_parent, self.pop_size_offspring,
-                self.selection_parent, self.selection_target,
-                self.reproduction, self.overlapping_pops,
-                self.merge_populations),
-            fontsize=10)
-        self._plt_config["ax1"].set_title("Fitness countour plot" + (
-            " (best fit: {:.4f})".
-            format(self.best_inst_fitness) if self.best_inst_id >= 0 else ""))
-        self._plt_config["ax1"].set_xlabel("First dimension")
-        self._plt_config["ax1"].set_ylabel("Second dimension")
-
-        self._plt_config["ax2"].set_title("Fitness local average")
-        self._plt_config["ax2"].set_xlabel("# of algorithm executions")
-        self._plt_config["ax2"].set_ylabel("Average local fitness")
-
-        if self.inst_range_low.size > 1:
-            self._plt_config["ax1"].set_xlim(self.inst_range_low[0],
-                                             self.inst_range_high[0])
-            self._plt_config["ax1"].set_ylim(self.inst_range_low[1],
-                                             self.inst_range_high[1])
-
-        else:
-            self._plt_config["ax1"].set_xlim(self.inst_range_low,
-                                             self.inst_range_high)
-            self._plt_config["ax1"].set_ylim(self.inst_range_low,
-                                             self.inst_range_high)
-
-        self._plot_timestep(pause=pause)
+        self._plot_timestep(plot_pause=plot_pause)
 
         self._plt_config["ax2"].legend(loc="lower left")
 
