@@ -224,6 +224,9 @@ class EvoBasic:
 
         self.fitness_func = fitness_func
 
+        if fitness_func_args is None:
+            fitness_func_args = {}
+
         if not np.isscalar(
                 fitness_func(
                     np.zeros(gene_num, dtype=float), **fitness_func_args)):
@@ -263,9 +266,6 @@ class EvoBasic:
         if pop_size_offspring <= 0:
             raise ValueError("'pop_size_offspring' must be positive "
                              "(got {}.)".format(pop_size_offspring))
-
-        if fitness_func_args is None:
-            fitness_func_args = {}
 
         if reproduction_func_args is None:
             reproduction_func_args = {}
@@ -817,7 +817,7 @@ class EvoBasic:
                     Z[i, j] = self.fitness_func(inst, **self.fitness_func_args)
 
             self._plt_config["con"] = self._plt_config["ax1"].contourf(
-                X, Y, Z, levels=16, cmap="BuPu", zorder=-1)
+                X, Y, Z, cmap="BuPu", zorder=-1)
 
         else:
             vals = np.linspace(self.inst_range_low, self.inst_range_high,
