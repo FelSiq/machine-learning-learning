@@ -26,6 +26,8 @@ class EvoSteadyState(evobatch.EvoBatch):
     +------------------------------+----------------+
     | Crossover                    | No             |
     +------------------------------+----------------+
+    | Mutation scale adjust        | No             |
+    +------------------------------+----------------+
     """
 
     def __init__(self, *args, **kwargs):

@@ -30,6 +30,8 @@ class EvoBatch(evobasic.EvoBasic):
     +------------------------------+----------------+
     | Crossover                    | Is up to user  |
     +------------------------------+----------------+
+    | Mutation scale adjust        | No             |
+    +------------------------------+----------------+
     """
 
     def __init__(self, *args, **kwargs):

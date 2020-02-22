@@ -333,7 +333,8 @@ class EvoBasic:
             self.mutation_prob = np.copy(mutation_prob)
 
         if mutation_delta_func is None:
-            mutation_delta_func = lambda: np.random.normal(loc=0, scale=1.0)
+            mutation_delta_func = (
+                lambda loc=0.0, scale=1.0: np.random.normal(loc=loc, scale=scale))
 
         if mutation_func_args is None:
             mutation_func_args = {}
