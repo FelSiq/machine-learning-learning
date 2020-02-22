@@ -631,8 +631,7 @@ class EvoBasic:
         self._plt_config["sct"] = None
         self._plt_config["avg_lines"] = None
         self._plt_config["fitness_max_line"] = None
-        self._plt_config["fitness_max_line_std1"] = None
-        self._plt_config["fitness_max_line_std2"] = None
+        self._plt_config["fitness_max_line_std"] = None
 
     def _plot_timestep(self, pause: float = 0.1):
         """Plot the current population scatter plot.
@@ -652,11 +651,8 @@ class EvoBasic:
         if self._plt_config["fitness_max_line"]:
             self._plt_config["fitness_max_line"].remove()
 
-        if self._plt_config["fitness_max_line_std1"]:
-            self._plt_config["fitness_max_line_std1"].remove()
-
-        if self._plt_config["fitness_max_line_std2"]:
-            self._plt_config["fitness_max_line_std2"].remove()
+        if self._plt_config["fitness_max_line_std"]:
+            self._plt_config["fitness_max_line_std"].remove()
 
         if self.gene_num == 2:
             self._plt_config["sct"] = self._plt_config["ax1"].scatter(
@@ -683,12 +679,14 @@ class EvoBasic:
             color="red",
             label="Best local fitness")
 
-        self._plt_config["fitness_max_line_std1"] = self._plt_config[
-            "ax2"].hlines(
+        self._plt_config["fitness_max_line_std"] = self._plt_config[
+            "ax2"].hlines([
                 self._fitness_cur_best_avg - self._fitness_cur_best_std,
-                *_xlim,
-                linestyle=":",
-                color="red")
+                self._fitness_cur_best_avg + self._fitness_cur_best_std,
+            ],
+                          *_xlim,
+                          linestyle=":",
+                          color="red")
 
         self._plt_config["fitness_max_line_std2"] = self._plt_config[
             "ax2"].hlines(
