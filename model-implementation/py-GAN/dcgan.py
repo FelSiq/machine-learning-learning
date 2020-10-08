@@ -332,7 +332,7 @@ class DCGAN:
 
     def generate(self, inst_num: int = 1, noise: t.Optional[torch.Tensor] = None):
         if noise is None:
-            noise = torch.randn(inst_num, self.noise_dim, device=device)
+            noise = torch.randn(inst_num, self.noise_dim, device=self.device)
 
         return self.gene.forward(noise)
 

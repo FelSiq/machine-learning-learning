@@ -182,9 +182,7 @@ class GAN:
                 avg_loss_disc /= print_it
 
                 print(36 * "-")
-                print(
-                    f"Epoch: {i} of {num_epochs} ({100. * i / num_epochs:.2f}%)"
-                )
+                print(f"Epoch: {i} of {num_epochs} ({100. * i / num_epochs:.2f}%)")
                 print(f"Generator avg. loss     : {avg_loss_gene:.6f}")
                 print(f"Discriminator avg. loss : {avg_loss_disc:.6f}")
                 print(36 * "-", end="\n\n")
@@ -196,7 +194,7 @@ class GAN:
 
     def generate(self, inst_num: int = 1, noise: t.Optional[torch.Tensor] = None):
         if noise is None:
-            noise = torch.randn(inst_num, self.noise_dim, device=device)
+            noise = torch.randn(inst_num, self.noise_dim, device=self.device)
 
         return self.gene.forward(noise)
 
@@ -216,7 +214,6 @@ def _test():
         batch_size=batch_size,
         shuffle=True,
     )
-
 
     try:
         model = torch.load("gan_model.pt")
