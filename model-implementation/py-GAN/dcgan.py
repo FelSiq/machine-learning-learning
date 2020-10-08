@@ -87,6 +87,7 @@ class Discriminator(nn.Module):
         kernel_size: t.List[int],
         stride: t.List[int],
         criterion,
+        add_spectral_norm: bool = True,
     ):
         super().__init__()
         self.disc = nn.Sequential(
@@ -96,6 +97,7 @@ class Discriminator(nn.Module):
                     output_channels=num_channels[i + 1],
                     kernel_size=kernel_size[i],
                     stride=stride[i],
+                    add_spectral_norm=add_spectral_norm,
                 )
                 for i in np.arange(num_channels.size - 2)
             ),
@@ -105,6 +107,7 @@ class Discriminator(nn.Module):
                 kernel_size=kernel_size[-1],
                 stride=stride[-1],
                 final_layer=True,
+                add_spectral_norm=add_spectral_norm,
             ),
         )
 
@@ -118,28 +121,27 @@ class Discriminator(nn.Module):
         stride: int,
         negative_slope: float = 0.2,
         final_layer: bool = False,
+        add_spectral_norm: bool = True,
     ):
+        conv_layer = nn.Conv2d(
+            in_channels=input_channels,
+            out_channels=output_channels,
+            kernel_size=kernel_size,
+            stride=stride,
+        )
+
+        if add_spectral_norm:
+            conv_layer = nn.utils.spectral_norm(conv_layer)
+
         if not final_layer:
             block = nn.Sequential(
-                nn.Conv2d(
-                    in_channels=input_channels,
-                    out_channels=output_channels,
-                    kernel_size=kernel_size,
-                    stride=stride,
-                ),
+                conv_layer,
                 nn.BatchNorm2d(output_channels),
                 nn.LeakyReLU(negative_slope=0.2, inplace=True),
             )
 
         else:
-            block = nn.Sequential(
-                nn.Conv2d(
-                    in_channels=input_channels,
-                    out_channels=output_channels,
-                    kernel_size=kernel_size,
-                    stride=stride,
-                ),
-            )
+            block = nn.Sequential(conv_layer,)
 
         return block
 
@@ -341,7 +343,7 @@ def _test():
     # torch.manual_seed(32)
 
     batch_size = 128
-    num_epochs = 45
+    num_epochs = 80
 
     transform = torchvision.transforms.Compose(
         [
