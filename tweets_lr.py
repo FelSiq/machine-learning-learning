@@ -23,6 +23,13 @@ class LogReg(nn.Module):
 
 
 lang = "english"
+device = "cpu"
+
+remove_emoticon = True
+"""
+Test accuracy with emoticons : 0.993000
+Test accuracy w/o  emoticons : 0.685000
+"""
 
 
 reg_pipeline = [
@@ -30,6 +37,9 @@ reg_pipeline = [
     re.compile(r"https?:\/\/.*[\r\n]*"),
     re.compile(r"#"),
 ]
+
+if remove_emoticon:
+    reg_pipeline.append(re.compile(r":[^\s]+"))
 
 
 nltk.download("twitter_samples")
@@ -132,12 +142,12 @@ def _test(train_size: int = 4500, device: str = "cuda"):
     y_test = torch.tensor(y_test, dtype=torch.float)
 
     model = LogReg().to(device)
-    optim = torch.optim.SGD(model.parameters(), lr=0.001, momentum=0.5, weight_decay=25)
+    optim = torch.optim.SGD(model.parameters(), lr=0.001, momentum=0.3, weight_decay=20)
     criterion = nn.BCEWithLogitsLoss()
 
-    losses = np.zeros(100)
+    losses = np.zeros(300)
 
-    for i in np.arange(100):
+    for i in np.arange(300):
         optim.zero_grad()
         y_preds = model(X_train)
         loss = criterion(y_preds, y_train)
@@ -156,10 +166,10 @@ def _test(train_size: int = 4500, device: str = "cuda"):
 
     print("Theta:", list(model.parameters()))
 
-    colors = ["red", "green"]
     plt.subplot(1, 2, 1)
     plt.plot(losses)
     plt.subplot(1, 2, 2)
+    colors = ["red", "green"]
     plt.scatter(
         *X_train.cpu()[:, 1:].T,
         c=[colors[cls] for cls in y_train.cpu().int().squeeze()],
@@ -169,4 +179,4 @@ def _test(train_size: int = 4500, device: str = "cuda"):
 
 
 if __name__ == "__main__":
-    _test()
+    _test(device=device)
