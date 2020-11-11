@@ -8,9 +8,23 @@ import collections
 import tweets_utils
 
 
-def knn(X_query: np.ndarray, X_subset: np.ndarray, k: int = 1) -> np.ndarray:
-    dist = np.linalg.norm(X_subset - X_query)
-    nn = np.argsort(dist)
+def cosine_similarity(X_query: np.ndarray, X_subset: np.ndarray) -> np.ndarray:
+    return np.dot(X_query, X_subset.T) / (
+        (1e-7 + np.linalg.norm(X_query)) * np.linalg.norm(X_subset, axis=1)
+    )
+
+
+def knn(
+    X_query: np.ndarray, X_subset: np.ndarray, k: int = 1, cosine: bool = True
+) -> np.ndarray:
+    if cosine:
+        vals = -cosine_similarity(X_query, X_subset)
+
+    else:
+        vals = np.linalg.norm(X_subset - X_query)
+
+    nn = np.argsort(vals)
+
     return nn[:k]
 
 
