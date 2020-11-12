@@ -36,23 +36,16 @@ def extract_features(
     return feats
 
 
-def _test(train_size: int = 4500, device: str = "cuda"):
-    (
-        train_tweets,
-        train_labels,
-        test_tweets,
-        test_labels,
-        freq_pos,
-        freq_neg,
-    ) = tweets_utils.get_data(train_size)
+def train_model(
+    X_train: torch.Tensor,
+    y_train: torch.Tensor,
+    epochs: int,
+    device: str = "cpu",
+) -> t.Tuple[LogReg, np.ndarray]:
 
-    train_feat = extract_features(train_tweets, freq_pos, freq_neg)
-    test_feat = extract_features(test_tweets, freq_pos, freq_neg)
-
-    X_train = torch.tensor(train_feat, device=device, dtype=torch.float)
-    y_train = torch.tensor(train_labels, device=device, dtype=torch.float)
-    X_test = torch.tensor(test_feat, device=device, dtype=torch.float)
-    y_test = torch.tensor(test_labels, dtype=torch.float)
+    if not torch.is_tensor(X_train):
+        X_train = torch.tensor(train_feat, device=device, dtype=torch.float)
+        y_train = torch.tensor(train_labels, device=device, dtype=torch.float)
 
     model = LogReg().to(device)
     optim = torch.optim.SGD(model.parameters(), lr=0.001, momentum=0.3, weight_decay=20)
@@ -72,6 +65,29 @@ def _test(train_size: int = 4500, device: str = "cuda"):
 
         losses[i] = loss.item()
 
+    return model, losses
+
+
+def _test(train_size: int = 4500, device: str = "cuda"):
+    (
+        train_tweets,
+        train_labels,
+        test_tweets,
+        test_labels,
+        freq_pos,
+        freq_neg,
+    ) = tweets_utils.get_data(train_size)
+
+    train_feat = extract_features(train_tweets, freq_pos, freq_neg)
+    test_feat = extract_features(test_tweets, freq_pos, freq_neg)
+
+    X_train = torch.tensor(train_feat, device=device, dtype=torch.float)
+    y_train = torch.tensor(train_labels, device=device, dtype=torch.float)
+    X_test = torch.tensor(test_feat, device=device, dtype=torch.float)
+    y_test = torch.tensor(test_labels, dtype=torch.float)
+
+    model, losses = train_model(X_train, y_train, 300, device=device)
+
     with torch.no_grad():
         y_preds = model(X_test).cpu() >= 0.0
         test_acc = sklearn.metrics.accuracy_score(y_preds, y_test)
@@ -79,15 +95,19 @@ def _test(train_size: int = 4500, device: str = "cuda"):
 
     print("Theta:", list(model.parameters()))
 
-    plt.subplot(1, 2, 1)
-    plt.plot(losses)
-    plt.subplot(1, 2, 2)
-    colors = ["red", "green"]
+    # plt.subplot(1, 2, 1)
+    # plt.plot(losses)
+    # plt.subplot(1, 2, 2)
+    plt.figure(figsize=(10, 10))
+    colors = ["red", "purple"]
     plt.scatter(
         *X_train.cpu()[:, 1:].T,
         c=[colors[cls] for cls in y_train.cpu().int().squeeze()],
         s=0.1,
     )
+    plt.axis("off")
+    plt.tight_layout()
+    plt.savefig("cute_graph")
     plt.show()
 
 
