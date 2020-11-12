@@ -54,11 +54,13 @@ def embed_document(
 
 
 def lsh_train(
-    X_train, embeddings: t.Dict[str, np.ndarray], n_universes: int, embed_dim: int
+    X_train,
+    embeddings: t.Dict[str, np.ndarray],
+    n_universes: int,
+    embed_dim: int,
+    n_planes: int = 8,
 ) -> t.Dict[str, t.Any]:
     assert n_universes > 0
-
-    n_planes = 8
 
     X_train_embed = np.vstack(
         [embed_document(doc, embeddings, embed_dim) for doc in X_train]
@@ -120,35 +122,38 @@ def lsh_predict(
     preds = np.zeros(len(votes), dtype=np.uint)
 
     for i, cur_votes in enumerate(votes):
-        cur_pred = -1
-        max_freq = -1
-
-        for j, freq in cur_votes.items():
-            if freq > max_freq:
-                cur_pred = j
-                max_freq = freq
-
-        preds[i] = cur_pred
+        preds[i], _ = cur_votes.most_common(1)[0]
 
     return preds
 
 
-def get_embeddings(X_train, embedding_dim: int = 300) -> t.Dict[str, np.ndarray]:
+def get_embeddings(X_train, freq_pos, freq_neg) -> t.Dict[str, np.ndarray]:
     embeddings = {}
+
+    freq_pos_vals = list(freq_pos.values())
+    freq_neg_vals = list(freq_neg.values())
+
+    pos_mean = np.mean(freq_pos_vals)
+    neg_mean = np.mean(freq_neg_vals)
+
+    pos_std = 1e-7 + np.std(freq_pos_vals)
+    neg_std = 1e-7 + np.std(freq_neg_vals)
 
     for tweet in X_train:
         for w in tweet:
-            embeddings.setdefault(w, np.random.randn(embedding_dim))
+            ft_pos = (freq_pos[w] - pos_mean) / pos_std
+            ft_neg = (freq_neg[w] - neg_mean) / neg_std
+            embeddings.setdefault(w, np.array([ft_pos, ft_neg]))
 
     return embeddings
 
 
 def _test(n_universes: int = 16, k: int = 1):
-    X_train, _, X_test = tweets_utils.get_data()[:3]
-    embed_dim = 25
-    embeddings = get_embeddings(X_train, embed_dim)
-    model = lsh_train(X_train, embeddings, n_universes, embed_dim)
-    preds = lsh_predict(X_test, embeddings, model)
+    X_train, _, X_test, _, freq_pos, freq_neg = tweets_utils.get_data(train_size=4900)
+    embed_dim = 2
+    embeddings = get_embeddings(X_train, freq_pos, freq_neg)
+    model = lsh_train(X_train, embeddings, n_universes, embed_dim, n_planes=16)
+    preds = lsh_predict(X_test, embeddings, model, k=3)
 
     for i, inst in enumerate(X_test):
         print(i, "test:", " ".join(inst), "closest:", " ".join(X_train[preds[i]]))
