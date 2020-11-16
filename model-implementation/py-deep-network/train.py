@@ -12,6 +12,7 @@ def forward(
     parameters,
     activation_hidden: str = "ReLU",
     activation_out: str = "sigmoid",
+    keep_prob: float = 1.0,
 ):
     caches = []
     A = X
@@ -22,27 +23,29 @@ def forward(
         W = parameters["W" + str(l)]
         b = parameters["b" + str(l)]
 
-        A, cache = modules.forward_linear_activation(
+        A, cur_cache = modules.forward_linear_activation(
             A_prev=A,
             W=W,
             b=b,
             activation=activation_hidden,
         )
+        caches.append(cur_cache)
 
-        caches.append(cache)
+        A, cur_cache = modules.forward_dropout(A, keep_prob)
+        caches.append(cur_cache)
 
     # Note: output layer forward
     W = parameters["W" + str(L)]
     b = parameters["b" + str(L)]
 
-    A, cache = modules.forward_linear_activation(
+    A, cur_cache = modules.forward_linear_activation(
         A_prev=A,
         W=W,
         b=b,
         activation=activation_out,
     )
 
-    caches.append(cache)
+    caches.append(cur_cache)
 
     return A, caches
 
@@ -54,13 +57,14 @@ def backward(
 ):
     assert lambd >= 0.0
 
-    grads = dict()
-    L = len(caches) - 1
-    m = AL.shape[1]
-
     # Loss gradient
     cur_cache = caches.pop()
     dA = losses.backward(AL, cur_cache)
+
+    # Note: L = (len(caches) - #output_layer) // #(paits dropout and linact) + #output_layer
+    L = (len(caches) - 1) // 2 + 1
+    m = AL.shape[1]
+    grads = dict()
 
     # Output layer gradient
     cur_cache = caches.pop()
@@ -71,6 +75,9 @@ def backward(
 
     # Hidden layers gradient
     for l in np.arange(L - 2, -1, -1):
+        cur_cache = caches.pop()
+        dA = modules.backward_dropout(dA, cur_cache)
+
         cur_cache = caches.pop()
         dA, dW, db = modules.backward_linear_activation(dA, cur_cache, lambd=lambd)
         grads["dA" + str(l)] = dA
@@ -122,7 +129,7 @@ def fit(
 
 
 def predict(X, parameters):
-    preds, _ = forward(X.T, parameters)
+    preds, _ = forward(X.T, parameters, keep_prob=1.0)
     return np.squeeze(preds >= 0.5).astype(float, copy=False)
 
 
