@@ -16,9 +16,20 @@ LOSSES = {
 }
 
 
-def forward(AL, Y, loss_func: str):
+def forward(AL, Y, parameters, loss_func: str, lambd: float = 0.0):
+    assert lambd >= 0.0
+
     loss_func, loss_func_grad = LOSSES[loss_func]
     loss = loss_func(AL, Y)
+
+    if lambd > 0.0:
+        reg_loss = 0.0
+
+        for param, W in parameters.items():
+            if param.startswith("W"):
+                reg_loss += np.sum(np.square(W))
+
+        loss += lambd * reg_loss
 
     cache = (loss_func_grad, Y)
 
