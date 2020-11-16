@@ -45,3 +45,28 @@ def backward_linear_activation(dA, cache, lambd: float = 0.0):
     dA_prev, dW, db = backward_linear(dZ, cache_linear, lambd=lambd)
 
     return dA_prev, dW, db
+
+
+def forward_dropout(A_prev, keep_prob: float = 1.0):
+    if keep_prob >= 1.0:
+        return A_prev, (None, keep_prob)
+
+    mask = (np.random.rand(*A_prev.shape) <= keep_prob).astype(float)
+
+    A = a_prev * mask
+    A /= keep_prob
+
+    cache = (mask, keep_prob)
+
+    return A, cache
+
+
+def backward_dropout(dA, cache):
+    mask, keep_prob = cache
+
+    if keep_prob >= 1.0:
+        return dA
+
+    dA_prev = mask * dA / keep_prob
+
+    return dA_prev
