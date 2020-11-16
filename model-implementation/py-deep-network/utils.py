@@ -22,7 +22,7 @@ def calc_init_val(
 
 def initialize_parameters(
     layer_dims: t.Sequence[int],
-    init_val: t.Union[str, float] = "xavier",
+    init_val: t.Union[str, float] = "he",
     random_state: t.Optional[int] = None,
     make_assertions: bool = True,
 ) -> t.Dict[str, np.ndarray]:
