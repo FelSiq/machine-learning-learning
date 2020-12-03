@@ -6,6 +6,7 @@ import modules
 import utils
 import losses
 import optimizers
+import lr_updates
 
 
 def forward(
@@ -104,18 +105,50 @@ def update_parameters(
     return parameters
 
 
+def build_minibatch(
+    X: np.ndarray, y: np.ndarray, epochs: int, batch_size: int, shuffle: bool = True
+) -> t.Tuple[np.ndarray, np.ndarray]:
+    num_inst = y.size
+
+    inds = np.arange(num_inst)
+
+    for _ in np.arange(epochs):
+        cur_ind = 0
+
+        if shuffle:
+            np.random.shuffle(inds)
+
+        while cur_ind < num_inst:
+            inds_batch = inds[cur_ind : cur_ind + batch_size]
+
+            X_batch = X[inds_batch, :]
+            y_batch = y[inds_batch, :]
+
+            cur_ind += batch_size
+
+            yield X_batch, y_batch
+
+
 def fit(
-    X,
-    y,
+    X: np.ndarray,
+    y: np.ndarray,
     parameters: t.Dict[str, t.Any],
     loss_func: str,
     optimizer: str = "gd",
+    epochs: int = 100,
+    batch_size: int = 128,
+    learning_rate: float = 1e-2,
+    shuffle_batch: bool = True,
     lambd: float = 0.0,
-    iterations: int = 100,
-    it_to_print: int = -1,
     optim_args: t.Optional[t.Dict[str, t.Any]] = None,
+    lr_args: t.Optional[t.Dict[str, t.Any]] = None,
+    lr_update: str = "constant",
+    epoch_to_print: int = -1,
 ):
     assert lambd >= 0.0
+    assert batch_size > 0
+
+    batch_size = min(batch_size, y.size)
 
     if y.ndim == 1:
         y = y.reshape(-1, 1)
@@ -123,22 +156,38 @@ def fit(
     if optim_args is None:
         optim_args = dict()
 
+    if lr_args is None:
+        lr_args = dict()
+
     f_init_optim, f_update_optim = optimizers.solve_optim(optimizer)
+    f_init_lr, f_update_lr = lr_updates.solve_lr_update(lr_update)
 
-    optim_cache = f_init_optim(parameters, **optim_args)
+    cache_optim = f_init_optim(parameters, **optim_args)
+    cache_lr = f_init_lr(learning_rate, **lr_args)
 
-    for i in np.arange(iterations):
-        A, caches = forward(X.T, parameters)
+    inst_iterator = build_minibatch(
+        X, y, epochs=epochs, batch_size=batch_size, shuffle=shuffle_batch
+    )
+
+    epoch = 0
+    inst_ind = 0
+
+    for X_batch, y_batch in inst_iterator:
+        A, caches = forward(X_batch.T, parameters)
         AL, cache_l = losses.forward(
-            A, y.T, parameters, loss_func=loss_func, lambd=lambd
+            A, y_batch.T, parameters, loss_func=loss_func, lambd=lambd
         )
         caches.append(cache_l)
         grads = backward(A, caches, lambd=lambd)
-        updates = f_update_optim(grads, optim_cache)
-        parameters = update_parameters(parameters, updates)
+        updates = f_update_optim(grads, cache_optim)
+        parameters = update_parameters(parameters, updates, learning_rate=learning_rate)
+        learning_rate = f_update_lr(cache_lr)
+        inst_ind += y_batch.size
 
-        if it_to_print > 0 and i % it_to_print == 0:
-            print(f"{i:<{8}}: {AL:.4f}")
+        if epoch_to_print > 0 and inst_ind >= y.size:
+            epoch += 1
+            print(f"{epoch} / {epochs}: {AL:.4f}")
+            inst_ind = 0
 
     return parameters
 
@@ -171,10 +220,14 @@ def _test():
         y_train,
         model,
         "bce",
-        optimizer="momentum",
-        iterations=1000,
-        it_to_print=50,
+        batch_size=128,
+        optimizer="gd",
+        epochs=50,
+        learning_rate=0.5,
+        epoch_to_print=50,
         lambd=0.1,
+        lr_update="disc_frac",
+        lr_args={"epochs": 10, "decay_rate": 0.75},
     )
     y_preds = predict(X_test, model)
 
