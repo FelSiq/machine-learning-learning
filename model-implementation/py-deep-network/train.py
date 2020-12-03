@@ -5,6 +5,7 @@ import numpy as np
 import modules
 import utils
 import losses
+import optimizers
 
 
 def forward(
@@ -87,14 +88,18 @@ def backward(
     return grads
 
 
-def update_parameters(parameters, grads, learning_rate: float = 1e-2):
+def update_parameters(
+    parameters: t.Dict[str, np.ndarray],
+    updates: t.Dict[str, np.ndarray],
+    learning_rate: float = 1e-2,
+):
     assert learning_rate > 0.0
 
     L = len(parameters) // 2
 
     for l in np.arange(L):
-        parameters["W" + str(l + 1)] -= learning_rate * grads["dW" + str(l + 1)]
-        parameters["b" + str(l + 1)] -= learning_rate * grads["db" + str(l + 1)]
+        parameters["W" + str(l + 1)] -= learning_rate * updates["uW" + str(l + 1)]
+        parameters["b" + str(l + 1)] -= learning_rate * updates["ub" + str(l + 1)]
 
     return parameters
 
@@ -104,14 +109,23 @@ def fit(
     y,
     parameters: t.Dict[str, t.Any],
     loss_func: str,
+    optimizer: str = "gd",
     lambd: float = 0.0,
     iterations: int = 100,
     it_to_print: int = -1,
+    optim_args: t.Optional[t.Dict[str, t.Any]] = None,
 ):
     assert lambd >= 0.0
 
     if y.ndim == 1:
         y = y.reshape(-1, 1)
+
+    if optim_args is None:
+        optim_args = dict()
+
+    f_init_optim, f_update_optim = optimizers.solve_optim(optimizer)
+
+    optim_cache = f_init_optim(parameters, **optim_args)
 
     for i in np.arange(iterations):
         A, caches = forward(X.T, parameters)
@@ -120,7 +134,8 @@ def fit(
         )
         caches.append(cache_l)
         grads = backward(A, caches, lambd=lambd)
-        parameters = update_parameters(parameters, grads)
+        updates = f_update_optim(grads, optim_cache)
+        parameters = update_parameters(parameters, updates)
 
         if it_to_print > 0 and i % it_to_print == 0:
             print(f"{i:<{8}}: {AL:.4f}")
@@ -151,7 +166,16 @@ def _test():
 
     model = utils.initialize_parameters([X.shape[1], 5, 1], "he")
 
-    fit(X_train, y_train, model, "bce", iterations=1000, it_to_print=50, lambd=0.1)
+    fit(
+        X_train,
+        y_train,
+        model,
+        "bce",
+        optimizer="momentum",
+        iterations=1000,
+        it_to_print=50,
+        lambd=0.1,
+    )
     y_preds = predict(X_test, model)
 
     acc = sklearn.metrics.accuracy_score(y_preds, y_test)
