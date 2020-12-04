@@ -3,12 +3,17 @@ import numpy as np
 
 def loss_bce(AL, Y):
     m = Y.shape[1]
-    loss = -np.sum(np.dot(Y, np.log(AL).T) + np.dot(1.0 - Y, np.log(1.0 - AL).T)) / m
+    loss = (
+        -np.sum(
+            np.dot(Y, np.log(AL + 1e-8).T) + np.dot(1.0 - Y, np.log(1.0 - AL + 1e-8).T)
+        )
+        / m
+    )
     return np.squeeze(loss)
 
 
 def loss_bce_grad(AL, Y):
-    return -(np.divide(Y, AL) - np.divide(1.0 - Y, 1.0 - AL))
+    return -(np.divide(Y, AL + 1e-8) - np.divide(1.0 - Y, 1.0 - AL + 1e-8))
 
 
 def loss_ce(AL, Y):
