@@ -14,7 +14,9 @@ def flatten_dict(values, remove_stats: bool = False):
 
     for param in sorted(values, key=lambda item: item[item[0] == "d" :]):
         is_grad = int(param.startswith("d"))
-        if param[is_grad] not in {"A", "Z", "@"} and (not remove_stats or not param.startswith("moving")):
+        if param[is_grad] not in {"A", "Z", "@"} and (
+            not remove_stats or not param.startswith("moving")
+        ):
             v = values[param]
             shapes[param] = (v.shape, cum_size, cum_size + v.size)
             cum_size += v.size
@@ -64,8 +66,10 @@ def debug_forward(
         vec_gradapprox[i] = (loss_p - loss_m) / (2 * epsilon)
 
     aux = unflatten_dict(vec_gradapprox, theta_shapes)
-    vec_gradapprox, _ = flatten_dict({k: v for k, v in aux.items() if k[0] in {"W", "B", "b", "G"}})
-    
+    vec_gradapprox, _ = flatten_dict(
+        {k: v for k, v in aux.items() if k[0] in {"W", "B", "b", "G"}}
+    )
+
     num = np.linalg.norm(vec_grads - vec_gradapprox)
     den = np.linalg.norm(vec_grads) + np.linalg.norm(vec_gradapprox)
 
