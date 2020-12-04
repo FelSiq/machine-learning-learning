@@ -171,10 +171,12 @@ def fit(
     optim_args: t.Optional[t.Dict[str, t.Any]] = None,
     lr_args: t.Optional[t.Dict[str, t.Any]] = None,
     lr_update: str = "constant",
+    keep_prob: float = 1.0,
     epoch_to_print: int = -1,
 ):
     assert lambd >= 0.0
     assert batch_size > 0
+    assert 0.0 < keep_prob <= 1.0
 
     batch_size = min(batch_size, y.size)
 
@@ -201,7 +203,7 @@ def fit(
     inst_ind = 0
 
     for X_batch, y_batch in inst_iterator:
-        A, caches = forward(X_batch.T, parameters)
+        A, caches = forward(X_batch.T, parameters, keep_prob=keep_prob)
         AL, cache_l = losses.forward(
             A, y_batch.T, parameters, loss_func=loss_func, lambd=lambd
         )
@@ -215,8 +217,10 @@ def fit(
 
         if epoch_to_print > 0 and inst_ind >= y.size:
             epoch += 1
-            print(f"{epoch} / {epochs}: {AL:.4f}")
             inst_ind = 0
+
+            if epoch % epoch_to_print == 0:
+                print(f"{epoch} / {epochs}: {AL:.4f}")
 
     return parameters
 
@@ -249,13 +253,14 @@ def _test():
         y_train,
         model,
         "bce",
-        batch_size=128,
+        batch_size=256,
         optimizer="adam",
-        epochs=100,
-        learning_rate=0.001,
-        epoch_to_print=50,
+        epochs=5000,
+        learning_rate=0.01,
+        epoch_to_print=500,
         lambd=0.1,
-        lr_update="constant",
+        lr_update="inv_sqrt",
+        keep_prob=0.8,
     )
     y_preds = predict(X_test, model)
 
