@@ -7,14 +7,14 @@ import utils
 import losses
 
 
-def flatten_dict(values):
+def flatten_dict(values, remove_stats: bool = False):
     arrays = []
     shapes = {}
     cum_size = 0
 
-    for param in sorted(values, key=lambda item: item[item.startswith("d") :]):
+    for param in sorted(values, key=lambda item: item[item[0] == "d" :]):
         is_grad = int(param.startswith("d"))
-        if param[is_grad] in {"W", "b"}:
+        if param[is_grad] not in {"A", "Z", "@"} and (not remove_stats or not param.startswith("moving")):
             v = values[param]
             shapes[param] = (v.shape, cum_size, cum_size + v.size)
             cum_size += v.size
@@ -42,9 +42,7 @@ def debug_forward(
 ):
     vec_grads, grads_shapes = flatten_dict(grads)
     vec_theta, theta_shapes = flatten_dict(parameters)
-    vec_gradapprox = np.zeros_like(vec_grads, dtype=float)
-
-    assert len(unflatten_dict(vec_grads, grads_shapes).keys()) == len(parameters.keys())
+    vec_gradapprox = np.zeros_like(vec_theta, dtype=float)
 
     for i in np.arange(vec_theta.size):
         vec_theta[i] += epsilon
@@ -65,6 +63,9 @@ def debug_forward(
 
         vec_gradapprox[i] = (loss_p - loss_m) / (2 * epsilon)
 
+    aux = unflatten_dict(vec_gradapprox, theta_shapes)
+    vec_gradapprox, _ = flatten_dict({k: v for k, v in aux.items() if k[0] in {"W", "B", "b", "G"}})
+    
     num = np.linalg.norm(vec_grads - vec_gradapprox)
     den = np.linalg.norm(vec_grads) + np.linalg.norm(vec_gradapprox)
 
@@ -86,9 +87,9 @@ def _test():
 
     model = utils.initialize_parameters((X.shape[1], 4, 1), "he")
 
-    assert all(
-        np.allclose(model[k], unflatten_dict(*flatten_dict(model))[k]) for k in model
-    )
+    aux = unflatten_dict(*flatten_dict(model))
+
+    assert all(np.allclose(model[k], aux[k]) for k in model if k in aux)
 
     lambd = 0
 

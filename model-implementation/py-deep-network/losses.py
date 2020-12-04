@@ -11,8 +11,19 @@ def loss_bce_grad(AL, Y):
     return -(np.divide(Y, AL) - np.divide(1.0 - Y, 1.0 - AL))
 
 
+def loss_ce(AL, Y):
+    m = Y.shape[1]
+    loss = -np.sum(np.dot(Y, np.log(AL).T)) / m
+    return loss
+
+
+def loss_ce_grad(AL, Y):
+    pass
+
+
 LOSSES = {
     "bce": (loss_bce, loss_bce_grad),
+    "ce": (loss_ce, loss_ce_grad),
 }
 
 

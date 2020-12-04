@@ -15,21 +15,31 @@ def forward(
     activation_hidden: str = "ReLU",
     activation_out: str = "sigmoid",
     keep_prob: float = 1.0,
+    test_time: bool = False,
 ):
     caches = []
     A = X
-    L = len(parameters) // 2
+    L = 1 + (len(parameters) - 2) // 6
 
     # Note: hidden layers forward
     for l in np.arange(1, L):
         W = parameters["W" + str(l)]
         b = parameters["b" + str(l)]
+        G = parameters["G" + str(l)]
+        B = parameters["B" + str(l)]
+        moving_avg = parameters["moving_avg" + str(l)]
+        moving_std = parameters["moving_std" + str(l)]
 
-        A, cur_cache = modules.forward_linear_activation(
+        A, cur_cache = modules.forward_linear_batchnorm_activation(
             A_prev=A,
             W=W,
             b=b,
+            G=G,
+            B=B,
+            moving_avg=moving_avg,
+            moving_std=moving_std,
             activation=activation_hidden,
+            test_time=test_time,
         )
         caches.append(cur_cache)
 
@@ -63,7 +73,7 @@ def backward(
     cur_cache = caches.pop()
     dA = losses.backward(AL, cur_cache)
 
-    # Note: L = (len(caches) - #output_layer) // #(paits dropout and linact) + #output_layer
+    # Note: L = (len(caches) - #output_layer) // #(pairs dropout and linact) + #output_layer
     L = (len(caches) - 1) // 2 + 1
     m = AL.shape[1]
     grads = dict()
@@ -81,10 +91,22 @@ def backward(
         dA = modules.backward_dropout(dA, cur_cache)
 
         cur_cache = caches.pop()
-        dA, dW, db = modules.backward_linear_activation(dA, cur_cache, lambd=lambd)
+        (
+            dA,
+            dW,
+            db,
+            dG,
+            dB,
+            moving_avg,
+            moving_std,
+        ) = modules.backward_linear_batchnorm_activation(dA, cur_cache, lambd=lambd)
         grads["dA" + str(l)] = dA
         grads["dW" + str(l + 1)] = dW
         grads["db" + str(l + 1)] = db
+        grads["dG" + str(l + 1)] = dG
+        grads["dB" + str(l + 1)] = dB
+        grads["@moving_avg" + str(l + 1)] = moving_avg
+        grads["@moving_std" + str(l + 1)] = moving_std
 
     return grads
 
@@ -96,11 +118,17 @@ def update_parameters(
 ):
     assert learning_rate > 0.0
 
-    L = len(parameters) // 2
+    L = 1 + (len(parameters) - 2) // 6
 
     for l in np.arange(L):
         parameters["W" + str(l + 1)] -= learning_rate * updates["uW" + str(l + 1)]
         parameters["b" + str(l + 1)] -= learning_rate * updates["ub" + str(l + 1)]
+
+        if l < L - 1:
+            parameters["G" + str(l + 1)] -= learning_rate * updates["uG" + str(l + 1)]
+            parameters["B" + str(l + 1)] -= learning_rate * updates["uB" + str(l + 1)]
+            parameters["moving_avg" + str(l + 1)] = updates["@moving_avg" + str(l + 1)]
+            parameters["moving_std" + str(l + 1)] = updates["@moving_std" + str(l + 1)]
 
     return parameters
 
@@ -180,6 +208,7 @@ def fit(
         caches.append(cache_l)
         grads = backward(A, caches, lambd=lambd)
         updates = f_update_optim(grads, cache_optim)
+        updates.update({k: v for k, v in grads.items() if k.startswith("@")})
         parameters = update_parameters(parameters, updates, learning_rate=learning_rate)
         learning_rate = f_update_lr(cache_lr)
         inst_ind += y_batch.size
@@ -193,7 +222,7 @@ def fit(
 
 
 def predict(X, parameters):
-    preds, _ = forward(X.T, parameters, keep_prob=1.0)
+    preds, _ = forward(X.T, parameters, keep_prob=1.0, test_time=True)
     return np.squeeze(preds >= 0.5).astype(float, copy=False)
 
 
@@ -221,13 +250,12 @@ def _test():
         model,
         "bce",
         batch_size=128,
-        optimizer="gd",
-        epochs=50,
-        learning_rate=0.5,
+        optimizer="adam",
+        epochs=100,
+        learning_rate=0.001,
         epoch_to_print=50,
         lambd=0.1,
-        lr_update="disc_frac",
-        lr_args={"epochs": 10, "decay_rate": 0.75},
+        lr_update="constant",
     )
     y_preds = predict(X_test, model)
 

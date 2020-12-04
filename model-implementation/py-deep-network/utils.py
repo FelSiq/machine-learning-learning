@@ -47,6 +47,14 @@ def initialize_parameters(
 
         parameters["b" + str(l)] = np.zeros((layer_dims[l], 1))
 
+        if l < len(layer_dims) - 1:
+            parameters["G" + str(l)] = weight_std * np.random.randn(layer_dims[l], 1)
+
+            parameters["B" + str(l)] = np.zeros((layer_dims[l], 1))
+
+            parameters["moving_avg" + str(l)] = np.zeros((layer_dims[l], 1))
+            parameters["moving_std" + str(l)] = np.zeros((layer_dims[l], 1))
+
     return parameters
 
 

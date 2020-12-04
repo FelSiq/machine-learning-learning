@@ -23,6 +23,16 @@ def grad_relu(A):
     return (A > 0.0).astype(float)
 
 
+def softmax(Z):
+    z_max = np.max(z)
+    z_exp = np.exp(z - z_max)
+    return z_exp / (np.sum(z_exp) + 1e-8)
+
+
+def grad_softmax(A):
+    pass
+
+
 ACTIVATIONS = {
     "sigmoid": (sigmoid, grad_sigmoid),
     "logistic": (sigmoid, grad_sigmoid),
