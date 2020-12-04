@@ -53,7 +53,7 @@ def forward_dropout(A_prev, keep_prob: float = 1.0):
 
     mask = (np.random.rand(*A_prev.shape) <= keep_prob).astype(float)
 
-    A = a_prev * mask
+    A = A_prev * mask
     A /= keep_prob
 
     cache = (mask, keep_prob)
