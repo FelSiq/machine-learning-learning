@@ -16,19 +16,29 @@ def loss_bce_grad(AL, Y):
     return -(np.divide(Y, AL + 1e-8) - np.divide(1.0 - Y, 1.0 - AL + 1e-8))
 
 
-def loss_ce(AL, Y):
+def softmax(AL):
+    AL_exp = np.exp(AL - np.max(AL, keepdims=True, axis=0))
+    AL_norm = AL_exp / (np.sum(AL_exp, axis=0) + 1e-8)
+    return AL_norm
+
+
+def loss_softmax_ce(AL, Y):
     m = Y.shape[1]
-    loss = -np.sum(np.dot(Y, np.log(AL).T)) / m
+
+    AL_norm = softmax(AL)
+
+    loss = -np.sum(Y * np.log(AL_norm + 1e-8)) / m
+
     return loss
 
 
-def loss_ce_grad(AL, Y):
-    pass
+def loss_softmax_ce_grad(AL, Y):
+    return softmax(AL) - Y
 
 
 LOSSES = {
     "bce": (loss_bce, loss_bce_grad),
-    "ce": (loss_ce, loss_ce_grad),
+    "softmax_ce": (loss_softmax_ce, loss_softmax_ce_grad),
 }
 
 

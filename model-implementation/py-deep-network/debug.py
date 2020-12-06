@@ -51,15 +51,15 @@ def debug_forward(
 
         params_p = unflatten_dict(vec_theta, theta_shapes)
 
-        A_p, _ = train.forward(X.T, params_p)
-        loss_p, _ = losses.forward(A_p, y.T, params_p, "bce", lambd=lambd)
+        A_p, _ = train.forward(X.T, params_p, activation_out="identity")
+        loss_p, _ = losses.forward(A_p, y.T, params_p, "softmax_ce", lambd=lambd)
 
         vec_theta[i] -= 2 * epsilon
 
         params_m = unflatten_dict(vec_theta, theta_shapes)
 
-        A_m, _ = train.forward(X.T, params_m)
-        loss_m, _ = losses.forward(A_m, y.T, params_m, "bce", lambd=lambd)
+        A_m, _ = train.forward(X.T, params_m, activation_out="identity")
+        loss_m, _ = losses.forward(A_m, y.T, params_m, "softmax_ce", lambd=lambd)
 
         vec_theta[i] += epsilon
 
@@ -82,14 +82,17 @@ def debug_forward(
 
 def _test():
     import sklearn.datasets
+    import sklearn.preprocessing
 
-    X, y = sklearn.datasets.load_breast_cancer(return_X_y=True)
+    X, y = sklearn.datasets.load_iris(return_X_y=True)
 
     X = (X - X.mean(axis=0)) / X.std(axis=0)
 
     y = y.reshape(-1, 1)
 
-    model = utils.initialize_parameters((X.shape[1], 4, 1), "he")
+    y = sklearn.preprocessing.OneHotEncoder(sparse=False).fit_transform(y)
+
+    model = utils.initialize_parameters((X.shape[1], 4, 3), "he")
 
     aux = unflatten_dict(*flatten_dict(model))
 
@@ -97,8 +100,8 @@ def _test():
 
     lambd = 0
 
-    A, caches = train.forward(X.T, model)
-    loss, cache_l = losses.forward(A, y.T, model, "bce", lambd=lambd)
+    A, caches = train.forward(X.T, model, activation_out="identity")
+    loss, cache_l = losses.forward(A, y.T, model, "softmax_ce", lambd=lambd)
     caches.append(cache_l)
     grads = train.backward(A, caches)
 

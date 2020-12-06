@@ -136,7 +136,7 @@ def update_parameters(
 def build_minibatch(
     X: np.ndarray, y: np.ndarray, epochs: int, batch_size: int, shuffle: bool = True
 ) -> t.Tuple[np.ndarray, np.ndarray]:
-    num_inst = y.size
+    num_inst = X.shape[1]
 
     inds = np.arange(num_inst)
 
@@ -172,13 +172,20 @@ def fit(
     lr_args: t.Optional[t.Dict[str, t.Any]] = None,
     lr_update: str = "constant",
     keep_prob: float = 1.0,
+    activation_hidden: str = "ReLU",
+    activation_out: str = "sigmoid",
     epoch_to_print: int = -1,
 ):
+    assert epochs > 0
+    assert learning_rate > 0.0
     assert lambd >= 0.0
     assert batch_size > 0
     assert 0.0 < keep_prob <= 1.0
+    assert (
+        loss_func != "bce" or np.unique(y).size == 2
+    ), "Not a binary classification problem to use BCE."
 
-    batch_size = min(batch_size, y.size)
+    batch_size = min(batch_size, X.shape[0])
 
     if y.ndim == 1:
         y = y.reshape(-1, 1)
@@ -203,9 +210,20 @@ def fit(
     inst_ind = 0
 
     for X_batch, y_batch in inst_iterator:
-        A, caches = forward(X_batch.T, parameters, keep_prob=keep_prob)
+        A, caches = forward(
+            X_batch.T,
+            parameters,
+            keep_prob=keep_prob,
+            activation_hidden=activation_hidden,
+            activation_out=activation_out,
+        )
+
         AL, cache_l = losses.forward(
-            A, y_batch.T, parameters, loss_func=loss_func, lambd=lambd
+            A,
+            y_batch.T,
+            parameters,
+            loss_func=loss_func,
+            lambd=lambd,
         )
         caches.append(cache_l)
         grads = backward(A, caches, lambd=lambd)
@@ -213,9 +231,9 @@ def fit(
         updates.update({k: v for k, v in grads.items() if k.startswith("@")})
         parameters = update_parameters(parameters, updates, learning_rate=learning_rate)
         learning_rate = f_update_lr(cache_lr)
-        inst_ind += y_batch.size
+        inst_ind += batch_size
 
-        if epoch_to_print > 0 and inst_ind >= y.size:
+        if epoch_to_print > 0 and inst_ind >= X.shape[0]:
             epoch += 1
             inst_ind = 0
 
@@ -227,7 +245,7 @@ def fit(
 
 def predict(X, parameters):
     preds, _ = forward(X.T, parameters, keep_prob=1.0, test_time=True)
-    return np.squeeze(preds >= 0.5).astype(float, copy=False)
+    return np.squeeze(preds).T
 
 
 def _test():
@@ -236,7 +254,7 @@ def _test():
     import sklearn.metrics
     import sklearn.preprocessing
 
-    X, y = sklearn.datasets.load_breast_cancer(return_X_y=True)
+    X, y = sklearn.datasets.load_iris(return_X_y=True)
 
     X_train, X_test, y_train, y_test = sklearn.model_selection.train_test_split(
         X, y, test_size=0.2, stratify=y
@@ -246,13 +264,20 @@ def _test():
     X_train = scaler.transform(X_train)
     X_test = scaler.transform(X_test)
 
-    model = utils.initialize_parameters([X.shape[1], 5, 1], "he")
+    encoder = sklearn.preprocessing.OneHotEncoder(sparse=False).fit(
+        y_train.reshape(-1, 1)
+    )
+    y_train = encoder.transform(y_train.reshape(-1, 1))
+    y_test = encoder.transform(y_test.reshape(-1, 1))
+
+    model = utils.initialize_parameters([X.shape[1], 5, 3], "he")
 
     fit(
         X_train,
         y_train,
         model,
-        "bce",
+        "ce",
+        activation_out="softmax",
         batch_size=256,
         optimizer="adam",
         epochs=5000,
@@ -263,6 +288,9 @@ def _test():
         keep_prob=0.8,
     )
     y_preds = predict(X_test, model)
+
+    print(y_preds)
+    print(y_test)
 
     acc = sklearn.metrics.accuracy_score(y_preds, y_test)
 

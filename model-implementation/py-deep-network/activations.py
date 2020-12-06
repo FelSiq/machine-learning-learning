@@ -23,14 +23,12 @@ def grad_relu(A):
     return (A > 0.0).astype(float)
 
 
-def softmax(Z):
-    z_max = np.max(z)
-    z_exp = np.exp(z - z_max)
-    return z_exp / (np.sum(z_exp) + 1e-8)
+def identity(Z):
+    return Z
 
 
-def grad_softmax(A):
-    pass
+def grad_identity(Z):
+    return 1.0
 
 
 ACTIVATIONS = {
@@ -39,6 +37,7 @@ ACTIVATIONS = {
     "tanh": (np.tanh, grad_tanh),
     "ReLU": (relu, grad_relu),
     "relu": (relu, grad_relu),
+    "identity": (identity, grad_identity),
 }
 
 
