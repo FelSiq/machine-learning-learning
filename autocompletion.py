@@ -1,6 +1,7 @@
 import typing as t
 import re
 import collections
+import pickle
 
 import numpy as np
 import pandas as pd
@@ -88,7 +89,7 @@ def build_n_gram(
     epsilon: t.Union[int, float] = 1,
 ) -> t.Dict[str, t.Any]:
     assert epsilon >= 0.0
-    assert n >= 1
+    assert n >= 2
 
     sorted_vocab = sorted(vocab.union({start_token, end_token}))
 
@@ -141,38 +142,92 @@ def get_sentences(n: t.Optional[int] = None):
     return sentences
 
 
+def autocomplete(
+    prev_tokens: t.Union[str, t.Sequence[str]],
+    model: t.Dict[str, t.Any],
+    suggestions_num: int = 3,
+    random: bool = True,
+):
+    prob_mat = model["prob_mat"]
+    n = model["n"]
+    start_token = model["start_token"]
+
+    prev_tokens = (n - 1) * [start_token] + prev_tokens
+    prev_tokens = tuple(prev_tokens[-n + 1 :])
+
+    suggestions = ["</s>"]
+
+    if prev_tokens in prob_mat.index:
+        if not random:
+            inds = (-prob_mat.loc[prev_tokens, :].values).argsort()[:suggestions_num]
+
+        else:
+            inds = np.random.choice(
+                prob_mat.columns.size,
+                p=prob_mat.loc[prev_tokens, :].values,
+                size=suggestions_num,
+                replace=False,
+            )
+
+        suggestions = list(prob_mat.columns[inds])
+
+    return suggestions
+
+
 def _test():
-    import random
+    n = 4
 
-    random.seed(87)
-    nltk.download("punkt")
+    filename = f"n_gram_models/{n}_gram_model.pickle"
 
-    sentences = get_sentences(30000)
+    try:
+        with open(filename, "rb") as f:
+            model = pickle.load(f)
 
-    random.shuffle(sentences)
+    except FileNotFoundError:
+        import random
 
-    train_size = int(len(sentences) * 0.95)
-    train_data = sentences[:train_size]
-    test_data = sentences[train_size:]
+        random.seed(87)
+        nltk.download("punkt")
 
-    print("Train size:", len(train_data))
-    print("Test size :", len(test_data))
+        sentences = get_sentences()
 
-    train_data, vocab = preproc_sentences(train_data, min_vocab_freq=10)
-    test_data, _ = preproc_sentences(test_data, vocab=vocab)
+        random.shuffle(sentences)
 
-    model = build_n_gram(train_data, vocab, n=5)
+        train_size = int(len(sentences) * 0.95)
+        train_data = sentences[:train_size]
+        test_data = sentences[train_size:]
 
-    del train_data
+        print("Train size:", len(train_data))
+        print("Test size :", len(test_data))
 
-    print(model["prob_mat"])
+        train_data, vocab = preproc_sentences(train_data, min_vocab_freq=10)
+        test_data, _ = preproc_sentences(test_data, vocab=vocab)
 
-    test_data_concat = []
+        model = build_n_gram(train_data, vocab, n=3)
 
-    for v in test_data:
-        test_data_concat.extend(v)
+        del train_data
 
-    print("Perplexity:", 2 ** log_perplexity(test_data_concat, model))
+        test_data_concat = []
+
+        for v in test_data:
+            test_data_concat.extend(v)
+
+        print("Perplexity:", 2 ** log_perplexity(test_data_concat, model))
+
+        with open(filename, "wb") as f:
+            pickle.dump(model, f, protocol=pickle.HIGHEST_PROTOCOL)
+
+    print(f"Using {n}-gram model.")
+    seq = "this group is"
+
+    seq = preproc_sentences([seq], vocab=set(model["sorted_vocab"]))[0][0]
+
+    print("Initial seq:", seq)
+
+    while seq[-1] != "</s>" and len(seq) <= 128:
+        seq.append(autocomplete(seq, model=model, random=False)[0])
+
+    print("Autocompleted seq:", " ".join(seq[:-1]))
 
 
 if __name__ == "__main__":
