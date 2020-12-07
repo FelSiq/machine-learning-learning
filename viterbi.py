@@ -122,7 +122,7 @@ def get_vocab(path: str = "corpus/hmm_vocab.txt") -> t.Dict[str, int]:
     vocab = dict()
 
     with open(path) as f:
-        words = set(f.read().split("\n"))
+        words = f.read().split("\n")
 
     for i, w in enumerate(sorted(words)):
         vocab[w] = i
@@ -149,25 +149,35 @@ def _test():
 
         with open("corpus/wsj_test.pos") as f:
             tagged_corpus_test = f.readlines()
-            print("Got test corpus for HMM.")
+
+        _, test_words = viterbi_utils_pos.preprocess(vocab, "corpus/test_words.txt")
+        print("Got test corpus for HMM.")
 
         model = hidden_markov_model(tagged_corpus_train, vocab)
         print("Built HMM.")
 
-        test_words = []
-        tags_true = []
-
-        for i, word_tag in enumerate(tagged_corpus_test):
-            word, tag = viterbi_utils_pos.get_word_tag(word_tag, vocab)
-            test_words.append(word)
-            tags_true.append(tag)
-
         tags_pred = viterbi(test_words, model, vocab)
+        print("Finished Viterbi.")
 
-        test_accuracy = np.mean([pr == tr for pr, tr in zip(tags_pred, tags_true)])
+        correct = total = 0
+
+        for tag_pred, word_tag in zip(tags_pred, tagged_corpus_test):
+            word_tag = word_tag.split()
+
+            if len(word_tag) != 2:
+                continue
+
+            word, tag_true = word_tag
+
+            if tag_pred == tag_true:
+                correct += 1
+
+            total += 1
+
+        test_accuracy = correct / total
+
         print(f"Test accuracy: {test_accuracy:.4f}")
 
-        assert len(tags_pred) == len(tags_true)
         assert test_accuracy >= 0.95
 
         with open(pickle_file, "w") as f:

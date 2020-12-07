@@ -5,24 +5,59 @@ import string
 punct = set(string.punctuation)
 
 # Morphology rules used to assign unknown word tokens
-noun_suffix = ["action", "age", "ance", "cy", "dom", "ee", "ence", "er", "hood", "ion", "ism", "ist", "ity", "ling", "ment", "ness", "or", "ry", "scape", "ship", "ty"]
+noun_suffix = [
+    "action",
+    "age",
+    "ance",
+    "cy",
+    "dom",
+    "ee",
+    "ence",
+    "er",
+    "hood",
+    "ion",
+    "ism",
+    "ist",
+    "ity",
+    "ling",
+    "ment",
+    "ness",
+    "or",
+    "ry",
+    "scape",
+    "ship",
+    "ty",
+]
 verb_suffix = ["ate", "ify", "ise", "ize"]
-adj_suffix = ["able", "ese", "ful", "i", "ian", "ible", "ic", "ish", "ive", "less", "ly", "ous"]
+adj_suffix = [
+    "able",
+    "ese",
+    "ful",
+    "i",
+    "ian",
+    "ible",
+    "ic",
+    "ish",
+    "ive",
+    "less",
+    "ly",
+    "ous",
+]
 adv_suffix = ["ward", "wards", "wise"]
 
 
-def get_word_tag(line, vocab): 
+def get_word_tag(line, vocab):
     if not line.split():
         word = "--n--"
         tag = "--s--"
         return word, tag
     else:
         word, tag = line.split()
-        if word not in vocab: 
+        if word not in vocab:
             # Handle unknown words
             word = assign_unk(word)
         return word, tag
-    return None 
+    return None
 
 
 def preprocess(vocab, data_fp):
@@ -55,8 +90,8 @@ def preprocess(vocab, data_fp):
                 orig.append(word.strip())
                 prep.append(word.strip())
 
-    assert(len(orig) == len(open(data_fp, "r").readlines()))
-    assert(len(prep) == len(open(data_fp, "r").readlines()))
+    assert len(orig) == len(open(data_fp, "r").readlines())
+    assert len(prep) == len(open(data_fp, "r").readlines())
 
     return orig, prep
 
