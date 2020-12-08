@@ -1,16 +1,18 @@
 import typing as t
+import pickle
 
 import matplotlib.pyplot as plt
 import numpy as np
 import scipy.spatial
 import collections
+import sklearn.preprocessing
 
 import tweets_utils
 
 
 def cosine_similarity(X_query: np.ndarray, X_subset: np.ndarray) -> np.ndarray:
     return np.dot(X_query, X_subset.T) / (
-        (1e-7 + np.linalg.norm(X_query)) * np.linalg.norm(X_subset, axis=1)
+        1e-7 + np.linalg.norm(X_query) * np.linalg.norm(X_subset, axis=1)
     )
 
 
@@ -35,7 +37,7 @@ def create_random_planes(n_planes: int, planes_dim: int) -> np.ndarray:
 def hash_instances(X_embed: np.ndarray, planes: np.ndarray) -> np.ndarray:
     n_planes = len(planes)
     in_reg = (np.dot(X_embed, planes.T) >= 0).astype(int, copy=False)
-    base = np.geomspace(1, 2 ** (n_planes - 1), n_planes)
+    base = np.geomspace(1, 2 ** (n_planes - 1), n_planes).astype(int)
     hash_vals = np.dot(base, in_reg.T)
     return hash_vals.squeeze()
 
@@ -117,42 +119,36 @@ def lsh_predict(
             closest = knn(
                 inst_embed, X_train_embed[cur_hash_table[hash_vals[i]], :], k=k
             )
-            votes[i] += collections.Counter(closest)
+            train_inds = [cur_hash_table[hash_vals[i]][v] for v in closest]
+            votes[i].update(train_inds)
 
     preds = np.zeros(len(votes), dtype=np.uint)
 
     for i, cur_votes in enumerate(votes):
-        preds[i], _ = cur_votes.most_common(1)[0]
+        chosen = cur_votes.most_common(1)
+        if chosen:
+            preds[i], _ = chosen[0]
 
     return preds
 
 
-def get_embeddings(X_train, freq_pos, freq_neg) -> t.Dict[str, np.ndarray]:
-    embeddings = {}
+def get_embeddings(X_train) -> t.Dict[str, np.ndarray]:
+    with open("embedding_models/embedding_model_2_512.pickle", "rb") as f:
+        model = pickle.load(f)
 
-    freq_pos_vals = list(freq_pos.values())
-    freq_neg_vals = list(freq_neg.values())
+    embeddings = model["embeddings"]
 
-    pos_mean = np.mean(freq_pos_vals)
-    neg_mean = np.mean(freq_neg_vals)
+    embeddings = sklearn.preprocessing.StandardScaler().fit_transform(embeddings)
 
-    pos_std = 1e-7 + np.std(freq_pos_vals)
-    neg_std = 1e-7 + np.std(freq_neg_vals)
-
-    for tweet in X_train:
-        for w in tweet:
-            ft_pos = (freq_pos[w] - pos_mean) / pos_std
-            ft_neg = (freq_neg[w] - neg_mean) / neg_std
-            embeddings.setdefault(w, np.array([ft_pos, ft_neg]))
-
-    return embeddings
+    return dict(zip(model["sorted_vocab"], embeddings))
 
 
 def _test(n_universes: int = 16, k: int = 1):
-    X_train, _, X_test, _, freq_pos, freq_neg = tweets_utils.get_data(train_size=4900)
-    embed_dim = 2
-    embeddings = get_embeddings(X_train, freq_pos, freq_neg)
-    model = lsh_train(X_train, embeddings, n_universes, embed_dim, n_planes=16)
+    X_train, _, X_test, _, freq_pos, freq_neg = tweets_utils.get_data(train_size=4980)
+    embeddings = get_embeddings(X_train)
+    embed_dim = len(next(iter(embeddings.values())))
+    print("Embed dim:", embed_dim)
+    model = lsh_train(X_train, embeddings, n_universes, embed_dim, n_planes=8)
     preds = lsh_predict(X_test, embeddings, model, k=3)
 
     for i, inst in enumerate(X_test):
