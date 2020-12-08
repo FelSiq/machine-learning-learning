@@ -2,12 +2,22 @@ import typing as t
 import re
 import bisect
 import collections
+import pickle
 
 import numpy as np
 import nltk
 import emoji
 import torch
 import torch.nn as nn
+
+
+full_stop_reg = re.compile(r"[;,!?-]+")
+
+emoji_reg = emoji.get_emoji_regexp()
+
+tokenizer = nltk.tokenize.TweetTokenizer(
+    preserve_case=False, strip_handles=True, reduce_len=True
+)
 
 
 class MLP(nn.Module):
@@ -36,13 +46,10 @@ def sliding_window(tokens: t.Sequence[str], C: int = 2):
 
 
 def preprocess_sentence(sentence: str):
-    full_stop_reg = re.compile(r"[;,!?-]+")
-    emoji_reg = emoji.get_emoji_regexp()
-
     sentence = full_stop_reg.sub(".", sentence)
-    sentence = sentence.lower()
 
-    tokens = nltk.word_tokenize(sentence)
+    tokens = tokenizer.tokenize(sentence)
+
     tokens = [
         token
         for token in tokens
@@ -54,28 +61,37 @@ def preprocess_sentence(sentence: str):
 
 def get_X_y(tokens: t.Sequence[str], sorted_vocab: t.Sequence[str], C: int = 2):
     for context, word in sliding_window(tokens, C):
+        tg_ind = bisect.bisect_left(sorted_vocab, word)
+
+        if tg_ind >= len(sorted_vocab):
+            continue
+
         X = np.zeros(len(sorted_vocab), dtype=np.float32)
         y = np.zeros(len(sorted_vocab), dtype=np.uint32)
 
         freqs = collections.Counter(context)
 
         for w, freq in freqs.items():
-            X[bisect.bisect_left(sorted_vocab, w)] += freq
+            ind = bisect.bisect_left(sorted_vocab, w)
+            if ind < len(X):
+                X[ind] += freq
 
         X /= np.sum(X)
 
-        y[bisect.bisect_left(sorted_vocab, word)] = 1
+        y[tg_ind] = 1
 
         yield X, y
 
 
-def get_tokens(freq_min: int = 2):
+def get_tokens(C: int = 2, freq_min: int = 5):
     assert freq_min >= 1
 
-    tweets_pos = nltk.corpus.twitter_samples.strings("positive_tweets.json")[:5]
-    tweets_neg = nltk.corpus.twitter_samples.strings("negative_tweets.json")[:5]
+    tweets_pos = nltk.corpus.twitter_samples.strings("positive_tweets.json")
+    tweets_neg = nltk.corpus.twitter_samples.strings("negative_tweets.json")
 
     tweets = tweets_pos + tweets_neg
+
+    tweets = tweets[:20]
 
     word_freqs = collections.Counter()
 
@@ -89,7 +105,7 @@ def get_tokens(freq_min: int = 2):
     y = []
 
     for tokens in tweets:
-        for x_i, y_i in get_X_y(tokens, sorted_vocab, 2):
+        for x_i, y_i in get_X_y(tokens, sorted_vocab, C=C):
             X.append(x_i)
             y.append(y_i)
 
@@ -100,9 +116,10 @@ def _test():
     nltk.download("punkt")
     nltk.download("twitter_samples")
     embedding_dim = 512
+    C = 2
     device = "cuda"
 
-    X, y, sorted_vocab = get_tokens()
+    X, y, sorted_vocab = get_tokens(C=C)
 
     X = torch.tensor(X, dtype=torch.float32, device=device)
     y_inds = torch.tensor(y, dtype=torch.long, device=device).argmax(axis=1)
@@ -112,7 +129,7 @@ def _test():
     criterion = nn.CrossEntropyLoss()
     optim = torch.optim.Adam(model.parameters())
 
-    for i in np.arange(4000):
+    for i in np.arange(400):
         optim.zero_grad()
         preds = model(X)
         loss = criterion(preds, y_inds)
@@ -131,7 +148,19 @@ def _test():
 
     assert embeddings.shape == (len(sorted_vocab), embedding_dim)
 
-    np.save("word_embedding.npy", embeddings)
+    model = {
+        "embeddings": embeddings,
+        "sorted_vocab": sorted_vocab,
+    }
+
+    with open(
+        f"embedding_models/embedding_model_{C}_{embedding_dim}.pickle", "wb"
+    ) as f:
+        pickle.dump(
+            model,
+            f,
+            protocol=pickle.HIGHEST_PROTOCOL,
+        )
 
 
 if __name__ == "__main__":
