@@ -5,6 +5,7 @@ import collections
 import pickle
 
 import numpy as np
+import tweets_utils
 import nltk
 import emoji
 import torch
@@ -83,7 +84,7 @@ def get_X_y(tokens: t.Sequence[str], sorted_vocab: t.Sequence[str], C: int = 2):
         yield X, y
 
 
-def get_tokens(C: int = 2, freq_min: int = 5):
+def get_tokens(C: int = 2, freq_min: int = 3):
     assert freq_min >= 1
 
     tweets_pos = nltk.corpus.twitter_samples.strings("positive_tweets.json")
@@ -91,12 +92,12 @@ def get_tokens(C: int = 2, freq_min: int = 5):
 
     tweets = tweets_pos + tweets_neg
 
-    tweets = tweets[:20]
+    tweets = tweets
 
     word_freqs = collections.Counter()
 
     for i, tweet in enumerate(tweets):
-        tweets[i] = tokens = preprocess_sentence(tweet)
+        tweets[i] = tokens = tweets_utils.process_tweet(tweet)
         word_freqs.update(tokens)
 
     sorted_vocab = sorted({k for k, v in word_freqs.items() if v >= freq_min})
@@ -116,7 +117,7 @@ def _test():
     nltk.download("punkt")
     nltk.download("twitter_samples")
     embedding_dim = 512
-    C = 2
+    C = 4
     device = "cuda"
 
     X, y, sorted_vocab = get_tokens(C=C)
@@ -129,7 +130,7 @@ def _test():
     criterion = nn.CrossEntropyLoss()
     optim = torch.optim.Adam(model.parameters())
 
-    for i in np.arange(400):
+    for i in np.arange(1400):
         optim.zero_grad()
         preds = model(X)
         loss = criterion(preds, y_inds)
