@@ -1,4 +1,5 @@
 import collections
+import itertools
 
 import numpy
 import trax
@@ -89,23 +90,22 @@ def _test():
     def batch(X, y, batch_size: int = 16):
         n_splits = y.size // batch_size
 
-        while True:
-            splitter = sklearn.model_selection.StratifiedKFold(
-                n_splits=n_splits, shuffle=True
-            )
+        splitter = sklearn.model_selection.StratifiedKFold(
+            n_splits=n_splits, shuffle=True
+        )
 
-            for _, inds in splitter.split(X, y):
-                yield X[inds, :], y[inds], np.ones_like(inds)
+        for _, inds in splitter.split(X, y):
+            yield X[inds, :], y[inds], np.ones_like(inds)
 
     train_task = trax.supervised.training.TrainTask(
-        labeled_data=batch(X_train, y_train),
+        labeled_data=itertools.cycle(batch(X_train, y_train)),
         loss_layer=trax.layers.CrossEntropyLoss(),
         optimizer=trax.optimizers.Adam(0.01),
         n_steps_per_checkpoint=10,
     )
 
     eval_task = trax.supervised.training.EvalTask(
-        labeled_data=batch(X_eval, y_eval),
+        labeled_data=itertools.cycle(batch(X_eval, y_eval)),
         metrics=(trax.layers.CrossEntropyLoss(), trax.layers.Accuracy()),
     )
 
