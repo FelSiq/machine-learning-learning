@@ -1,4 +1,5 @@
 import functools
+import random
 
 import nltk
 import trax
@@ -7,22 +8,59 @@ import pandas as pd
 import numpy
 
 
-def get_corpus(n=None):
-    data = pd.read_csv("corpus/questions.csv", index_col=0, nrows=n)
+def get_corpus(test_size: int = 512):
+    assert test_size % 2 == 0
+
+    data = pd.read_csv("corpus/questions.csv", index_col=0)
     dup_inds = data["is_duplicate"] != 0
+
+    half_test_size = test_size // 2
+
+    test_non_duplicate = data.loc[~dup_inds, ["question1", "question2"]].values[
+        :half_test_size
+    ]
+
     data = data.loc[dup_inds, ["question1", "question2"]].values
 
     Q1 = []
     Q2 = []
 
-    for row in data:
+    for row in data[:-half_test_size]:
         tokens1 = nltk.word_tokenize(row[0])
         tokens2 = nltk.word_tokenize(row[1])
 
         Q1.append(tokens1)
         Q2.append(tokens2)
 
-    return Q1, Q2
+    assert len(Q1) == len(Q2) == len(data) - half_test_size
+
+    Q1_test = []
+    Q2_test = []
+    y_test = []
+
+    for row in data[-half_test_size:]:
+        tokens1 = nltk.word_tokenize(row[0])
+        tokens2 = nltk.word_tokenize(row[1])
+
+        Q1_test.append(tokens1)
+        Q2_test.append(tokens2)
+
+        y_test.append(1)
+
+    for row in test_non_duplicate:
+        tokens1 = nltk.word_tokenize(row[0])
+        tokens2 = nltk.word_tokenize(row[1])
+
+        Q1_test.append(tokens1)
+        Q2_test.append(tokens2)
+
+        y_test.append(0)
+
+    del data
+
+    assert len(Q1_test) == len(Q2_test) == test_size
+
+    return Q1, Q2, Q1_test, Q2_test, np.array(y_test, dtype=int)
 
 
 def data_generator(Q1, Q2, pad_num: int, batch_size: int = 128, shuffle: bool = True):
@@ -116,33 +154,60 @@ def encode_tokens(Q, vocab, unknown_token: str = "__UNK__"):
             q[i] = vocab.get(token, vocab[unknown_token])
 
 
+def predict(
+    model,
+    Q1_test,
+    Q2_test,
+    vocab,
+    pad_token: str = "__PAD__",
+    batch_size: int = 128,
+    threshold: float = 0.7,
+):
+    test_generator = data_generator(
+        Q1_test, Q2_test, pad_num=vocab[pad_token], batch_size=batch_size, shuffle=False
+    )
+
+    test_size = len(Q1_test)
+
+    preds = []
+
+    for i in np.arange(0, test_size, batch_size):
+        q1_batch, q2_batch = next(test_generator)
+        v1, v2 = model([q1_batch, q2_batch])
+        for j in np.arange(batch_size):
+            cossine = np.dot(v1[j], v2[j].T)
+            preds.append(cossine >= threshold)
+
+    return np.array(preds, dtype=int)
+
+
 def _test():
     pad_token = "__PAD__"
     margin = 0.25
     output_dir = "dir_dup_questions"
-    n_steps = 256
+    n_steps = 3100
     test_size = 512
+    train = True
 
-    Q1, Q2 = get_corpus()
+    Q1, Q2, Q1_test, Q2_test, y_test = get_corpus(test_size)
 
     print("Question pairs num:", len(Q1))
 
     train_size = int(0.95 * len(Q1))
 
     print("Train size:", train_size)
-    print("Eval size :", len(Q1) - train_size - test_size)
+    print("Eval size :", len(Q1) - train_size)
     print("Test size :", test_size)
 
     Q1_train, Q2_train = Q1[:train_size], Q2[:train_size]
-    Q1_eval, Q2_eval = Q1[train_size:test_size], Q2[train_size:test_size]
-    Q1_test, Q2_test = Q1[-test_size:], Q2[-test_size:]
+    Q1_eval, Q2_eval = Q1[train_size:], Q2[train_size:]
+
+    assert len(Q1_test) == len(Q2_test) == test_size
+    assert len(Q1_eval) == len(Q2_eval) == len(Q1) - train_size
+    assert len(Q1_train) == len(Q2_train) == train_size
 
     del Q1
     del Q2
-
-    assert len(Q1_test) == len(Q2_test) == test_size
-    assert len(Q1_eval) == len(Q2_eval) == len(Q1) - train_size - test_size
-    assert len(Q1_train) == len(Q2_train) == train_size
 
     vocab = build_vocab(Q1_train, Q2_train, pad_token=pad_token)
 
@@ -152,48 +217,67 @@ def _test():
     encode_tokens(Q2_train, vocab)
     encode_tokens(Q1_eval, vocab)
     encode_tokens(Q2_eval, vocab)
+    encode_tokens(Q1_test, vocab)
+    encode_tokens(Q2_test, vocab)
 
     print("Encoded tokens (train) sample:", Q1_train[0])
     print("Encoded tokens (eval) sample:", Q1_eval[0])
+    print("Encoded tokens (test) sample:", Q1_test[0])
 
     model = build_siamese_model(len(vocab))
 
     print(model)
 
-    train_generator = data_generator(
-        Q1_train, Q2_train, pad_num=vocab[pad_token], batch_size=256
-    )
-    eval_generator = data_generator(
-        Q1_eval, Q2_eval, pad_num=vocab[pad_token], batch_size=256
-    )
+    if train:
+        train_generator = data_generator(
+            Q1_train, Q2_train, pad_num=vocab[pad_token], batch_size=256
+        )
+        eval_generator = data_generator(
+            Q1_eval, Q2_eval, pad_num=vocab[pad_token], batch_size=256
+        )
 
-    TripletLoss = trax.layers.Fn(
-        "TripletLoss", functools.partial(triplet_loss, margin=margin)
-    )
+        def TripletLoss(margin: float = 0.25):
+            l = trax.layers.Fn(
+                "TripletLoss", functools.partial(triplet_loss, margin=margin)
+            )
 
-    lr_schedule = trax.lr.warmup_and_rsqrt_decay(400, 0.01)
+            return l
 
-    train_task = trax.supervised.training.TrainTask(
-        labeled_data=train_generator,
-        loss_layer=TripletLoss,
-        optimizer=trax.optimizers.Adam(0.01),
-        n_steps_per_checkpoint=10,
-        lr_schedule=lr_schedule,
-    )
+        lr_schedule = trax.lr.warmup_and_rsqrt_decay(400, 0.01)
 
-    eval_task = trax.supervised.training.EvalTask(
-        labeled_data=eval_generator,
-        metrics=[TripletLoss],
-    )
+        train_task = trax.supervised.training.TrainTask(
+            labeled_data=train_generator,
+            loss_layer=TripletLoss(),
+            optimizer=trax.optimizers.Adam(0.01),
+            n_steps_per_checkpoint=10,
+            lr_schedule=lr_schedule,
+        )
 
-    train_loop = trax.supervised.training.Loop(
-        model,
-        train_task,
-        eval_tasks=eval_task,
-        output_dir=output_dir,
-    )
+        eval_task = trax.supervised.training.EvalTask(
+            labeled_data=eval_generator,
+            metrics=[TripletLoss()],
+        )
 
-    train_loop.run(n_steps=n_steps)
+        train_loop = trax.supervised.training.Loop(
+            model,
+            train_task,
+            eval_tasks=eval_task,
+            output_dir=output_dir,
+        )
+
+        train_loop.run(n_steps=n_steps)
+
+    else:
+        import os
+
+        model.init_from_file(os.path.join(output_dir, "model.pkl.gz"))
+        print("Loaded model.")
+
+    preds = predict(model, Q1_test, Q2_test, vocab)
+
+    acc_test = np.mean(preds == y_test[: preds.size])
+
+    print(f"Test accuracy: {acc_test:.4f}")
 
 
 if __name__ == "__main__":
