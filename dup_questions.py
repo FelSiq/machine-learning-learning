@@ -60,7 +60,7 @@ def get_corpus(test_size: int = 512):
 
     assert len(Q1_test) == len(Q2_test) == test_size
 
-    return Q1, Q2, Q1_test, Q2_test, np.array(y_test, dtype=int)
+    return Q1, Q2, Q1_test, Q2_test, np.array(y_test, dtype=np.int32)
 
 
 def data_generator(Q1, Q2, pad_num: int, batch_size: int = 128, shuffle: bool = True):
@@ -88,23 +88,20 @@ def data_generator(Q1, Q2, pad_num: int, batch_size: int = 128, shuffle: bool = 
         max_len = max(max_len, len(q1[-1]), len(q2[-1]))
         idx += 1
 
-        if idx == batch_size:
+        if len(q1) == batch_size:
             max_len = 2 ** int(np.ceil(np.log2(max_len)))
 
-            q1_batch = []
-            q2_batch = []
+            for cur_q1, cur_q2 in zip(q1, q2):
+                cur_q1.extend((max_len - len(cur_q1)) * [pad_num])
+                cur_q2.extend((max_len - len(cur_q2)) * [pad_num])
 
-            for j in np.arange(batch_size):
-                q1_batch.append(q1[j] + (max_len - len(q1[j])) * [pad_num])
-                q2_batch.append(q2[j] + (max_len - len(q2[j])) * [pad_num])
-
-            yield np.array(q1_batch), np.array(q2_batch)
+            yield np.array(q1), np.array(q2)
 
             q1, q2 = [], []
             max_len = 0
 
 
-def triplet_loss(v1, v2, margin: 0.25):
+def triplet_loss(v1, v2, margin: float = 0.25):
     cossine = np.dot(v1, v2.T)
 
     batch_size = cossine.shape[0]
@@ -145,7 +142,7 @@ def build_vocab(Q1, Q2, pad_token: str = "__PAD__", unknown_token: str = "__UNK_
         vocab.update(q1)
         vocab.update(q2)
 
-    return dict(zip(vocab, range(len(vocab))))
+    return dict(zip(sorted(vocab), range(len(vocab))))
 
 
 def encode_tokens(Q, vocab, unknown_token: str = "__UNK__"):
@@ -178,14 +175,14 @@ def predict(
             cossine = np.dot(v1[j], v2[j].T)
             preds.append(cossine >= threshold)
 
-    return np.array(preds, dtype=int)
+    return np.array(preds, dtype=np.int32)
 
 
 def _test():
     pad_token = "__PAD__"
     margin = 0.25
     output_dir = "dir_dup_questions"
-    n_steps = 3100
+    n_steps = 2048
     test_size = 512
     train = True
 
@@ -221,8 +218,8 @@ def _test():
     encode_tokens(Q2_test, vocab)
 
     print("Encoded tokens (train) sample:", Q1_train[0])
-    print("Encoded tokens (eval) sample:", Q1_eval[0])
-    print("Encoded tokens (test) sample:", Q1_test[0])
+    print("Encoded tokens (eval) sample :", Q1_eval[0])
+    print("Encoded tokens (test) sample :", Q1_test[0])
 
     model = build_siamese_model(len(vocab))
 
@@ -274,6 +271,8 @@ def _test():
         print("Loaded model.")
 
     preds = predict(model, Q1_test, Q2_test, vocab)
+
+    print(preds)
 
     acc_test = np.mean(preds == y_test[: preds.size])
 
