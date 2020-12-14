@@ -1,11 +1,24 @@
 import functools
 import random
+import collections
 
 import nltk
 import trax
 import trax.fastmath.numpy as np
 import pandas as pd
 import numpy
+
+
+stemmer = nltk.stem.PorterStemmer()
+
+
+def get_tokens(question: str, stemming: bool = True):
+    tokens = nltk.word_tokenize(question)
+
+    if stemming:
+        tokens = [stemmer.stem(w) for w in tokens]
+
+    return tokens
 
 
 def get_corpus(test_size: int = 512):
@@ -26,8 +39,8 @@ def get_corpus(test_size: int = 512):
     Q2 = []
 
     for row in data[:-half_test_size]:
-        tokens1 = nltk.word_tokenize(row[0])
-        tokens2 = nltk.word_tokenize(row[1])
+        tokens1 = get_tokens(row[0])
+        tokens2 = get_tokens(row[1])
 
         Q1.append(tokens1)
         Q2.append(tokens2)
@@ -39,8 +52,8 @@ def get_corpus(test_size: int = 512):
     y_test = []
 
     for row in data[-half_test_size:]:
-        tokens1 = nltk.word_tokenize(row[0])
-        tokens2 = nltk.word_tokenize(row[1])
+        tokens1 = get_tokens(row[0])
+        tokens2 = get_tokens(row[1])
 
         Q1_test.append(tokens1)
         Q2_test.append(tokens2)
@@ -48,8 +61,8 @@ def get_corpus(test_size: int = 512):
         y_test.append(1)
 
     for row in test_non_duplicate:
-        tokens1 = nltk.word_tokenize(row[0])
-        tokens2 = nltk.word_tokenize(row[1])
+        tokens1 = get_tokens(row[0])
+        tokens2 = get_tokens(row[1])
 
         Q1_test.append(tokens1)
         Q2_test.append(tokens2)
@@ -135,14 +148,26 @@ def build_siamese_model(vocab_dim: int, embed_dim: int = 128):
     return model_siamese
 
 
-def build_vocab(Q1, Q2, pad_token: str = "__PAD__", unknown_token: str = "__UNK__"):
-    vocab = {pad_token, unknown_token}
+def build_vocab(
+    Q1,
+    Q2,
+    pad_token: str = "__PAD__",
+    unknown_token: str = "__UNK__",
+    min_freq: int = 1,
+):
+    assert min_freq >= 1
+
+    freqs = collections.Counter()
 
     for q1, q2 in zip(Q1, Q2):
-        vocab.update(q1)
-        vocab.update(q2)
+        freqs.update(q1)
+        freqs.update(q2)
 
-    return dict(zip(sorted(vocab), range(len(vocab))))
+    vocab = [k for k, f in freqs.items() if f >= min_freq]
+    vocab.extend([pad_token, unknown_token])
+    vocab.sort()
+
+    return dict(zip(vocab, range(len(vocab))))
 
 
 def encode_tokens(Q, vocab, unknown_token: str = "__UNK__"):
@@ -181,8 +206,8 @@ def predict(
 def _test():
     pad_token = "__PAD__"
     margin = 0.25
-    output_dir = "dir_dup_questions"
-    n_steps = 2048
+    output_dir = "dir_dup_questions_stemming_very_freq_only"
+    n_steps = 256
     test_size = 512
     train = True
 
@@ -206,7 +231,11 @@ def _test():
     del Q1
     del Q2
 
-    vocab = build_vocab(Q1_train, Q2_train, pad_token=pad_token)
+    print("Tokens (train) sample:", Q1_train[0])
+    print("Tokens (eval) sample :", Q1_eval[0])
+    print("Tokens (test) sample :", Q1_test[0])
+
+    vocab = build_vocab(Q1_train, Q2_train, pad_token=pad_token, min_freq=3)
 
     print("Vocab len:", len(vocab))
 
