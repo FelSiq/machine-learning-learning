@@ -1,0 +1,20 @@
+X,Y,C
+-2,-2,1
+-2,1,-1
+1,1,1
+1,-2,-1
+
+model <- e1071::svm(formula=C~., data=dataset, type='C-classification', kernel='radial')
+predict(model, c(1.0, 1.0))
+
+vals = seq(-2, 2, by=4/200)
+xs = vector()
+ys = vector()
+for (n in vals) {
+	for (m in vals) {
+		xs <- c(xs, n)
+		ys <- c(ys, m)
+	}
+}
+
+plot(xs, ys, col=)
