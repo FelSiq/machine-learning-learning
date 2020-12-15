@@ -1,10 +1,10 @@
 import typing as t
 import collections
 import functools
-
 import re
-import nltk
 import string
+
+import nltk
 import numpy as np
 
 
