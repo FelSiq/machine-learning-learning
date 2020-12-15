@@ -132,13 +132,13 @@ def triplet_loss(v1, v2, margin: float = 0.25):
     return loss
 
 
-def build_siamese_model(vocab_dim: int, embed_dim: int = 128):
+def build_siamese_model(vocab_dim: int, embed_dim: int = 128, num_lstm: int = 1):
     def normalize(x):
         return x / np.linalg.norm(x, axis=-1, keepdims=True)
 
     model_seq = trax.layers.Serial(
         trax.layers.Embedding(vocab_dim, embed_dim),
-        trax.layers.LSTM(embed_dim),
+        [trax.layers.LSTM(embed_dim) for _ in range(num_lstm)],
         trax.layers.Mean(axis=1),
         trax.layers.Fn("Normalize", normalize),
     )
@@ -207,7 +207,7 @@ def _test():
     pad_token = "__PAD__"
     margin = 0.25
     output_dir = "dir_dup_questions_stemming_very_freq_only"
-    n_steps = 256
+    n_steps = 512
     test_size = 512
     train = True
 
@@ -250,7 +250,7 @@ def _test():
     print("Encoded tokens (eval) sample :", Q1_eval[0])
     print("Encoded tokens (test) sample :", Q1_test[0])
 
-    model = build_siamese_model(len(vocab))
+    model = build_siamese_model(len(vocab), num_lstm=1)
 
     print(model)
 
