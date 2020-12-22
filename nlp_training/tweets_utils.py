@@ -34,14 +34,14 @@ stop_words_eng = frozenset(nltk.corpus.stopwords.words(lang))
 punctuation = frozenset(string.punctuation)
 
 
-def process_tweet(tweet: str) -> t.List[str]:
+def process_tweet(tweet: str, stemming: bool = True) -> t.List[str]:
     for reg in reg_pipeline:
         tweet = reg.sub("", tweet)
 
     words = tokenizer.tokenize(tweet)
 
     words = [
-        stemmer.stem(w)
+        stemmer.stem(w) if stemming else w.lower()
         for w in words
         if w not in stop_words_eng and w not in punctuation
     ]
