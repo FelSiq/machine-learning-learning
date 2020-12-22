@@ -1,3 +1,7 @@
+"""Embed words using Word2Vec CBOW (Continuous bag-of-words) algorithm.
+
+Not to be confused with the Word2Vec Skip-gram algorithm.
+"""
 import typing as t
 import re
 import bisect
@@ -97,7 +101,7 @@ def get_tokens(C: int = 2, freq_min: int = 3):
     word_freqs = collections.Counter()
 
     for i, tweet in enumerate(tweets):
-        tweets[i] = tokens = tweets_utils.process_tweet(tweet)
+        tweets[i] = tokens = tweets_utils.process_tweet(tweet, stemming=False)
         word_freqs.update(tokens)
 
     sorted_vocab = sorted({k for k, v in word_freqs.items() if v >= freq_min})
@@ -116,7 +120,7 @@ def get_tokens(C: int = 2, freq_min: int = 3):
 def _test():
     nltk.download("punkt")
     nltk.download("twitter_samples")
-    embedding_dim = 512
+    embedding_dim = 256
     C = 4
     device = "cuda"
 
@@ -130,7 +134,7 @@ def _test():
     criterion = nn.CrossEntropyLoss()
     optim = torch.optim.Adam(model.parameters())
 
-    for i in np.arange(1400):
+    for i in np.arange(2048):
         optim.zero_grad()
         preds = model(X)
         loss = criterion(preds, y_inds)
