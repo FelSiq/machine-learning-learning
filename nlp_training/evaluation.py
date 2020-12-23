@@ -1,3 +1,4 @@
+"""Metrics to automatically evaluate machine translation."""
 import collections
 import typing as t
 
