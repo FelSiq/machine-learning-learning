@@ -1,4 +1,12 @@
-"""Metrics to automatically evaluate machine translation."""
+"""Metrics to automatically evaluate e.g. machine translation.
+
+Those metrics are useful for evaluation candidates where there is not a
+single ground truth label. For instance, in machine translation and
+image captitioning, there is not a single better answer given an input.
+On the other side, for speech recognition for instance, those metrics
+are not useful since the best answer for a speech recognition task is
+to recognize the exactly same words spoken.
+"""
 import collections
 import typing as t
 
