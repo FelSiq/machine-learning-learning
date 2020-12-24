@@ -5,6 +5,7 @@ import torch
 import torch.nn as nn
 import pandas as pd
 import numpy as np
+import sklearn.metrics
 
 
 class ResNet(nn.Module):
@@ -269,6 +270,7 @@ def get_data(device: str) -> t.Tuple[torch.Tensor, ...]:
 def _test():
     num_train_epochs = 1
     device = "cuda"
+    checkpoint_path = "models/resnet_model.pt"
 
     X_train, X_test, y_train, y_test, classes = get_data(device)
 
@@ -303,7 +305,16 @@ def _test():
         filters_num=filters_num,
         strides=strides,
         conv_shortcut_layers=conv_shortcut_layers,
-    ).to(device)
+    )
+
+    try:
+        full_model.load_state_dict(torch.load(checkpoint_path))
+        print("Checkpoint file loaded.")
+
+    except FileNotFoundError:
+        pass
+
+    full_model = full_model.to(device)
 
     criterion = nn.CrossEntropyLoss()
     optim = torch.optim.Adam(full_model.parameters(), lr=0.01)
@@ -318,6 +329,14 @@ def _test():
             loss = criterion(y_preds, y_batch)
             loss.backward()
             optim.step()
+
+    torch.save(full_model.state_dict(), checkpoint_path)
+
+    full_model.eval()  # Note: set dropout and batch normalization to eval mode
+
+    test_preds = full_model.to("cpu")(X_test).detach().numpy().argmax(axis=1)
+    test_acc = sklearn.metrics.accuracy_score(test_preds, y_test)
+    print(f"Test accuracy: {test_acc:.4f}")
 
 
 if __name__ == "__main__":
