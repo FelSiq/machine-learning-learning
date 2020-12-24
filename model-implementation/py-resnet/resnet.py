@@ -1,5 +1,6 @@
 import typing as t
 
+import tqdm
 import torch
 import torch.nn as nn
 import pandas as pd
@@ -101,10 +102,10 @@ class ResNet(nn.Module):
     def forward(self, X):
         X_out = X
 
-        for main_path, last_activation in self.layers:
+        for main_path, shortcut_path, last_activation in self.layers:
             X_main_out = main_path(X_out)
-            X_out += X_main_out  # Note: skip connection.
-            X_out = last_activation(X_out)
+            X_shortcut_out = shortcut_path(X_out)
+            X_out = last_activation(X_main_out + X_shortcut_out)
 
         return X_out
 
@@ -148,19 +149,12 @@ class PostprocessNet(nn.Module):
         input_shape: t.Tuple[int, int, int],
         num_classes: int,
         pooling_size: int = 2,
-        channels_first: bool = True,
     ):
         super(PostprocessNet, self).__init__()
 
-        if channels_first:
-            dense_input_size = (
-                (input_shape[1] // 2) * (input_shape[2] // 2) * input_shape[0]
-            )
-
-        else:
-            dense_input_size = (
-                (input_shape[0] // 2) * (input_shape[1] // 2) * input_shape[2]
-            )
+        dense_input_size = (
+            (input_shape[1] // 2) * (input_shape[2] // 2) * input_shape[0]
+        )
 
         self.weights = nn.Sequential(
             nn.AvgPool2d(kernel_size=pooling_size),
@@ -181,17 +175,12 @@ class FullResNet(nn.Module):
         filters_num: t.Sequence[t.Tuple[int, int, int]],
         strides: t.Sequence[int],
         conv_shortcut_layers: t.Set[int],
-        channels_first: bool = True,
     ):
         super(FullResNet, self).__init__()
 
         assert len(input_shape) == 3
 
-        if channels_first:
-            input_c, input_h, input_w = input_shape
-
-        else:
-            input_h, input_w, input_c = input_shape
+        input_c, input_h, input_w = input_shape
 
         if isinstance(kernels_size, int):
             kernels_size = len(filters_num) * [kernels_size]
@@ -207,7 +196,7 @@ class FullResNet(nn.Module):
         print("Built preprocessing layer.")
 
         self.mid_net = ResNet(
-            in_channels=input_c,
+            in_channels=64,
             kernels_size=kernels_size,
             filters_num=filters_num,
             strides=strides,
@@ -219,11 +208,7 @@ class FullResNet(nn.Module):
             input_w = self._adjust_out_shape(input_w, 1, strides[l], 0)
             input_h = self._adjust_out_shape(input_h, 1, strides[l], 0)
 
-        if channels_first:
-            mid_net_out_shape = (filters_num[-1][-1], input_h, input_w)
-
-        else:
-            mid_net_out_shape = (input_h, input_w, filters_num[-1][-1])
+        mid_net_out_shape = (filters_num[-1][-1], input_h, input_w)
 
         print("Input shape:", tuple(input_shape))
         print("Shape before postprocessing layer:", mid_net_out_shape)
@@ -231,7 +216,6 @@ class FullResNet(nn.Module):
         self.pos_net = PostprocessNet(
             input_shape=mid_net_out_shape,
             num_classes=num_classes,
-            channels_first=channels_first,
         )
         print("Built postprocessing layer.")
 
@@ -255,22 +239,28 @@ def get_data(device: str) -> t.Tuple[torch.Tensor, ...]:
     X_train = np.load("datasets/train_set_x_orig.npy") / 255.0
     X_test = np.load("datasets/test_set_x_orig.npy") / 255.0
 
-    y_train = np.load("datasets/train_set_y_orig.npy")
-    y_test = np.load("datasets/test_set_y_orig.npy")
+    y_train = np.load("datasets/train_set_y_orig.npy").ravel()
+    y_test = np.load("datasets/test_set_y_orig.npy").ravel()
 
     classes = np.load("datasets/classes.npy")
 
-    X_train_tensor = torch.Tensor(X_train).to(device)
-    y_train_tensor = torch.Tensor(y_train).to(device)
+    X_train_tensor = torch.Tensor(X_train).permute((0, 3, 1, 2)).to(device)
+    y_train_tensor = torch.Tensor(y_train).long().to(device)
 
-    X_test_tensor = torch.Tensor(X_test)
-    y_test_tensor = torch.Tensor(y_test)
+    X_test_tensor = torch.Tensor(X_test).permute((0, 3, 1, 2))
+    y_test_tensor = torch.Tensor(y_test).long()
 
     del X_train
     del X_test
     del y_train
     del y_test
 
+    print(
+        "X_train_tensor:", X_train_tensor.shape, "X_test_tensor:", X_test_tensor.shape
+    )
+    print(
+        "y_train_tensor:", y_train_tensor.shape, "y_test_tensor:", y_test_tensor.shape
+    )
     print("Classes:", classes)
 
     return X_train_tensor, X_test_tensor, y_train_tensor, y_test_tensor, classes
@@ -313,7 +303,6 @@ def _test():
         filters_num=filters_num,
         strides=strides,
         conv_shortcut_layers=conv_shortcut_layers,
-        channels_first=False,
     ).to(device)
 
     criterion = nn.CrossEntropyLoss()
@@ -324,7 +313,6 @@ def _test():
 
     for i in np.arange(1, 1 + num_train_epochs):
         print(f"Epoch {i} / {num_train_epochs}...")
-        # TODO.
         for X_batch, y_batch in tqdm.auto.tqdm(dataloader):
             y_preds = full_model(X_batch)
             loss = criterion(y_preds, y_batch)
