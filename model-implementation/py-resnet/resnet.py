@@ -268,7 +268,7 @@ def get_data(device: str) -> t.Tuple[torch.Tensor, ...]:
 
 
 def _test():
-    num_train_epochs = 1
+    num_train_epochs = 0
     device = "cuda"
     checkpoint_path = "models/resnet_model.pt"
 
@@ -314,23 +314,26 @@ def _test():
     except FileNotFoundError:
         pass
 
-    full_model = full_model.to(device)
+    if num_train_epochs > 0:
+        full_model.train()
+        full_model = full_model.to(device)
 
-    criterion = nn.CrossEntropyLoss()
-    optim = torch.optim.Adam(full_model.parameters(), lr=0.01)
+        criterion = nn.CrossEntropyLoss()
+        optim = torch.optim.Adam(full_model.parameters(), lr=0.01)
 
-    X_y_data = torch.utils.data.TensorDataset(X_train, y_train)
-    dataloader = torch.utils.data.DataLoader(X_y_data, batch_size=32, shuffle=True)
+        X_y_data = torch.utils.data.TensorDataset(X_train, y_train)
+        dataloader = torch.utils.data.DataLoader(X_y_data, batch_size=32, shuffle=True)
 
-    for i in np.arange(1, 1 + num_train_epochs):
-        print(f"Epoch {i} / {num_train_epochs}...")
-        for X_batch, y_batch in tqdm.auto.tqdm(dataloader):
-            y_preds = full_model(X_batch)
-            loss = criterion(y_preds, y_batch)
-            loss.backward()
-            optim.step()
+        for i in np.arange(1, 1 + num_train_epochs):
+            print(f"Epoch {i} / {num_train_epochs}...")
+            for X_batch, y_batch in tqdm.auto.tqdm(dataloader):
+                optim.zero_grad()
+                y_preds = full_model(X_batch)
+                loss = criterion(y_preds, y_batch)
+                loss.backward()
+                optim.step()
 
-    torch.save(full_model.state_dict(), checkpoint_path)
+        torch.save(full_model.state_dict(), checkpoint_path)
 
     full_model.eval()  # Note: set dropout and batch normalization to eval mode
 
