@@ -21,23 +21,24 @@ class ResNet(nn.Module):
 
         num_layers = len(kernels_size)
 
-        self.layers = nn.ParameterList()
+        self.layers = nn.ModuleList()
 
         prev_channels = in_channels
 
         for l in np.arange(num_layers):
+            print(f"Building layer {1 + l} / {num_layers}...")
             k, f, s = kernels_size[l], filters_num[l], strides[l]
 
             new_block = self._build_block(
-                kernel_size=(prev_channels, *k),
-                filters_num=f,
+                kernel_size=k,
+                filters_num=(prev_channels, *f),
                 stride=s,
                 conv_shortcut=l in conv_shortcut_layers,
             )
 
             self.layers.append(new_block)
 
-            prev_channels = k[-1]
+            prev_channels = f[-1]
 
     @staticmethod
     def _build_block(
@@ -95,7 +96,7 @@ class ResNet(nn.Module):
         # connection happens before it. Check 'forward' method.
         last_activation = nn.ReLU(inplace=True)
 
-        return nn.ParameterList([main_path, shortcut_path, last_activation])
+        return nn.ModuleList([main_path, shortcut_path, last_activation])
 
     def forward(self, X):
         X_out = X
@@ -118,7 +119,9 @@ class PreprocessNet(nn.Module):
         pooling_size: int = 3,
         pooling_stride: int = 2,
     ):
-        assert kernel_size % 2 == 1
+        super(PreprocessNet, self).__init__()
+
+        assert conv_size % 2 == 1
 
         self.weights = nn.Sequential(
             nn.Conv2d(
@@ -127,7 +130,7 @@ class PreprocessNet(nn.Module):
                 kernel_size=conv_size,
                 stride=conv_stride,
                 bias=False,
-                padding=kernel_size // 2,
+                padding=conv_size // 2,
                 padding_mode="zeros",
             ),
             nn.BatchNorm2d(out_channels),
@@ -147,6 +150,8 @@ class PostprocessNet(nn.Module):
         pooling_size: int = 2,
         channels_first: bool = True,
     ):
+        super(PostprocessNet, self).__init__()
+
         if channels_first:
             dense_input_size = (
                 (input_shape[1] // 2) * (input_shape[2] // 2) * input_shape[0]
@@ -160,7 +165,7 @@ class PostprocessNet(nn.Module):
         self.weights = nn.Sequential(
             nn.AvgPool2d(kernel_size=pooling_size),
             nn.Flatten(),
-            nn.Dense(dense_input_size, num_classes),
+            nn.Linear(dense_input_size, num_classes),
         )
 
     def forward(self, X):
@@ -172,7 +177,7 @@ class FullResNet(nn.Module):
         self,
         input_shape: t.Tuple[int, int, int],
         num_classes: int,
-        kernels_size: t.Sequence[int],
+        kernels_size: t.Union[int, t.Sequence[int]],
         filters_num: t.Sequence[t.Tuple[int, int, int]],
         strides: t.Sequence[int],
         conv_shortcut_layers: t.Set[int],
@@ -188,6 +193,9 @@ class FullResNet(nn.Module):
         else:
             input_h, input_w, input_c = input_shape
 
+        if isinstance(kernels_size, int):
+            kernels_size = len(filters_num) * [kernels_size]
+
         self.pre_net = PreprocessNet(in_channels=input_c)
 
         # Note: adjust input size to PreprocessNet output shape
@@ -196,29 +204,36 @@ class FullResNet(nn.Module):
         input_w = self._adjust_out_shape(input_w, 7, 2, 3)  # Pooling layer
         input_w = self._adjust_out_shape(input_w, 3, 2, 0)  # Pooling layer
 
+        print("Built preprocessing layer.")
+
         self.mid_net = ResNet(
             in_channels=input_c,
-            kernel_size=kernel_size,
+            kernels_size=kernels_size,
             filters_num=filters_num,
             strides=strides,
             conv_shortcut_layers=conv_shortcut_layers,
         )
 
-        for l in np.arange(len(kernel_size)):
-            # TODO.
-            pass
+        for l in np.arange(len(filters_num)):
+            # Note: only need to adjust for stride effects
+            input_w = self._adjust_out_shape(input_w, 1, strides[l], 0)
+            input_h = self._adjust_out_shape(input_h, 1, strides[l], 0)
 
         if channels_first:
-            mid_net_out_shape = (kernel_size[-1][-1], input_h, input_w)
+            mid_net_out_shape = (filters_num[-1][-1], input_h, input_w)
 
         else:
-            mid_net_out_shape = (input_h, input_w, kernel_size[-1][-1])
+            mid_net_out_shape = (input_h, input_w, filters_num[-1][-1])
+
+        print("Input shape:", tuple(input_shape))
+        print("Shape before postprocessing layer:", mid_net_out_shape)
 
         self.pos_net = PostprocessNet(
             input_shape=mid_net_out_shape,
             num_classes=num_classes,
             channels_first=channels_first,
         )
+        print("Built postprocessing layer.")
 
     @staticmethod
     def _adjust_out_shape(
@@ -236,18 +251,81 @@ class FullResNet(nn.Module):
         return X_out
 
 
-def _test():
-    full_model = FullResNet()
+def get_data(device: str) -> t.Tuple[torch.Tensor, ...]:
+    X_train = np.load("datasets/train_set_x_orig.npy") / 255.0
+    X_test = np.load("datasets/test_set_x_orig.npy") / 255.0
 
-    num_train_epochs = 32
+    y_train = np.load("datasets/train_set_y_orig.npy")
+    y_test = np.load("datasets/test_set_y_orig.npy")
+
+    classes = np.load("datasets/classes.npy")
+
+    X_train_tensor = torch.Tensor(X_train).to(device)
+    y_train_tensor = torch.Tensor(y_train).to(device)
+
+    X_test_tensor = torch.Tensor(X_test)
+    y_test_tensor = torch.Tensor(y_test)
+
+    del X_train
+    del X_test
+    del y_train
+    del y_test
+
+    print("Classes:", classes)
+
+    return X_train_tensor, X_test_tensor, y_train_tensor, y_test_tensor, classes
+
+
+def _test():
+    num_train_epochs = 1
+    device = "cuda"
+
+    X_train, X_test, y_train, y_test, classes = get_data(device)
+
+    input_shape = X_train.shape[1:]
+    kernels_size = 3
+    filters_num = [
+        (64, 64, 256),  # Conv layer
+        (64, 64, 256),
+        (64, 64, 256),
+        (128, 128, 512),  # Conv layer
+        (128, 128, 512),
+        (128, 128, 512),
+        (128, 128, 512),
+        (256, 256, 1024),  # Conv layer
+        (256, 256, 1024),
+        (256, 256, 1024),
+        (256, 256, 1024),
+        (256, 256, 1024),
+        (256, 256, 1024),
+        (512, 512, 2048),  # Conv layer
+        (512, 512, 2048),
+        (512, 512, 2048),
+    ]
+    strides = [1, 1, 1, 2, 1, 1, 1, 2, 1, 1, 1, 1, 1, 2, 1, 1]
+    conv_shortcut_layers = {0, 3, 7, 13}
+    num_classes = 6
+
+    full_model = FullResNet(
+        input_shape=input_shape,
+        num_classes=num_classes,
+        kernels_size=kernels_size,
+        filters_num=filters_num,
+        strides=strides,
+        conv_shortcut_layers=conv_shortcut_layers,
+        channels_first=False,
+    ).to(device)
 
     criterion = nn.CrossEntropyLoss()
     optim = torch.optim.Adam(full_model.parameters(), lr=0.01)
 
+    X_y_data = torch.utils.data.TensorDataset(X_train, y_train)
+    dataloader = torch.utils.data.DataLoader(X_y_data, batch_size=32, shuffle=True)
+
     for i in np.arange(1, 1 + num_train_epochs):
         print(f"Epoch {i} / {num_train_epochs}...")
         # TODO.
-        for X_batch, y_batch in tqdm.auto.tqdm(None):
+        for X_batch, y_batch in tqdm.auto.tqdm(dataloader):
             y_preds = full_model(X_batch)
             loss = criterion(y_preds, y_batch)
             loss.backward()
