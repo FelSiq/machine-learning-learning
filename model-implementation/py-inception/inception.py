@@ -111,7 +111,16 @@ def data_gen(X, y, batch_size: int, shuffle: bool = False):
 
 
 def _test():
-    num_classes = 10
+    import sklearn.metrics
+    import os
+
+    train = True
+    inception_layers = 1
+    num_epochs_train = 256
+    checkpoint_path = f"inception_model_{inception_layers}"
+
+    X_train, X_eval, y_train, y_eval, classes = get_data()
+    num_classes = len(classes)
 
     full_model = trax.layers.Serial(
         trax.layers.Conv(
@@ -122,31 +131,37 @@ def _test():
         trax.layers.Dense(num_classes),
     )
 
-    X_train, X_eval, y_train, y_eval, classes = get_data()
+    if train:
+        train_generator = data_gen(X_train, y_train, batch_size=32)
+        eval_generator = data_gen(X_eval, y_eval, batch_size=32)
 
-    train_generator = data_gen(X_train, y_train, batch_size=32)
-    eval_generator = data_gen(X_eval, y_eval, batch_size=32)
+        train_task = trax.supervised.training.TrainTask(
+            labeled_data=train_generator,
+            loss_layer=trax.layers.CrossEntropyLossWithLogSoftmax(),
+            optimizer=trax.optimizers.Adam(0.01),
+            n_steps_per_checkpoint=5,
+        )
 
-    train_task = trax.supervised.training.TrainTask(
-        labeled_data=train_generator,
-        loss_layer=trax.layers.CrossEntropyLossWithLogSoftmax(),
-        optimizer=trax.optimizers.Adam(0.01),
-        n_steps_per_checkpoint=5,
-    )
+        eval_task = trax.supervised.training.EvalTask(
+            labeled_data=eval_generator,
+            metrics=[trax.layers.CrossEntropyLossWithLogSoftmax()],
+        )
 
-    eval_task = trax.supervised.training.EvalTask(
-        labeled_data=eval_generator,
-        metrics=[trax.layers.CrossEntropyLossWithLogSoftmax()],
-    )
+        loop = trax.supervised.training.Loop(
+            full_model,
+            train_task,
+            eval_tasks=eval_task,
+            output_dir=checkpoint_path,
+        )
 
-    loop = trax.supervised.training.Loop(
-        full_model,
-        train_task,
-        eval_tasks=eval_task,
-        output_dir="inception_model",
-    )
+        loop.run(n_steps=num_epochs_train)
+        loop.save_checkpoint()
 
-    loop.run(n_steps=10)
+    full_model.init_from_file(os.path.join(checkpoint_path, "model.pkl.gz"))
+
+    eval_preds = full_model(X_eval).argmax(axis=1)
+    eval_acc = sklearn.metrics.accuracy_score(eval_preds, y_eval)
+    print(f"Eval accuracy: {eval_acc:.4f}")
 
 
 if __name__ == "__main__":
