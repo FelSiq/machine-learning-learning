@@ -115,8 +115,8 @@ def _test():
     import os
 
     train = True
-    inception_layers = 1
-    num_epochs_train = 256
+    inception_layers = 2
+    num_epochs_train = 200
     checkpoint_path = f"inception_model_{inception_layers}"
 
     X_train, X_eval, y_train, y_eval, classes = get_data()
@@ -126,7 +126,7 @@ def _test():
         trax.layers.Conv(
             filters=256, kernel_size=(1, 1), strides=(1, 1), padding="SAME"
         ),
-        [inception_module() for _ in np.arange(1)],
+        [inception_module() for _ in np.arange(inception_layers)],
         trax.layers.Flatten(n_axes_to_keep=1),
         trax.layers.Dense(num_classes),
     )
