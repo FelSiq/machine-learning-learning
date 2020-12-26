@@ -120,8 +120,8 @@ def get_data(device: str) -> t.Tuple[torch.Tensor, ...]:
 def _test():
     import sklearn.metrics
 
-    num_train_epochs = 10
-    num_inception_layers = 2
+    num_train_epochs = 50
+    num_inception_layers = 3
     device = "cuda"
     checkpoint_path = f"models/inception_model_{num_inception_layers}.pt"
 
