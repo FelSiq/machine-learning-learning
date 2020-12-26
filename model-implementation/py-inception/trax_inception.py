@@ -19,8 +19,6 @@ def inception_module(
     layer are meant just to reduce computational cost, and are not part of
     the core idea of the inception module.
     """
-    in_channels = sum(channels_num_out)
-
     f_num1, f_num2, f_num3, f_num4 = channels_num_out
     b_num2, b_num3 = channels_num_bottleneck
 
@@ -66,8 +64,8 @@ def inception_module(
 
 
 def get_data() -> t.Tuple[np.ndarray, ...]:
-    X_train = np.load("datasets/train_set_x_orig.npy") / 255.0
-    X_test = np.load("datasets/test_set_x_orig.npy") / 255.0
+    X_train = np.load("datasets/train_set_x_orig.npy") / 255.
+    X_test = np.load("datasets/test_set_x_orig.npy") / 255.
 
     y_train = np.load("datasets/train_set_y_orig.npy").astype(int).ravel()
     y_test = np.load("datasets/test_set_y_orig.npy").astype(int).ravel()
@@ -81,7 +79,7 @@ def get_data() -> t.Tuple[np.ndarray, ...]:
     return X_train, X_test, y_train, y_test, classes
 
 
-def data_gen(X, y, batch_size: int, shuffle: bool = False):
+def data_gen(X, y, batch_size: int, shuffle: bool = True):
     inds = numpy.arange(X.shape[0])
 
     if shuffle:
@@ -90,8 +88,10 @@ def data_gen(X, y, batch_size: int, shuffle: bool = False):
     cur_ind = 0
 
     while True:
-        X_batch = X[inds[cur_ind : cur_ind + batch_size], :]
-        y_batch = y[inds[cur_ind : cur_ind + batch_size]]
+        cur_inds = inds[cur_ind : cur_ind + batch_size]
+
+        X_batch = X[cur_inds]
+        y_batch = y[cur_inds]
 
         cur_ind += batch_size
 
@@ -101,8 +101,10 @@ def data_gen(X, y, batch_size: int, shuffle: bool = False):
             if shuffle:
                 numpy.random.shuffle(inds)
 
-            X_batch_rem = X[inds[:cur_ind], :]
-            y_batch_rem = y[inds[:cur_ind]]
+            cur_inds = inds[:cur_ind]
+
+            X_batch_rem = X[cur_inds]
+            y_batch_rem = y[cur_inds]
 
             X_batch = np.vstack((X_batch, X_batch_rem))
             y_batch = np.concatenate((y_batch, y_batch_rem))
@@ -116,8 +118,8 @@ def _test():
 
     train = True
     inception_layers = 2
-    num_epochs_train = 200
-    checkpoint_path = f"inception_model_{inception_layers}"
+    num_epochs_train = 50
+    checkpoint_path = f"./inception_model_{inception_layers}"
 
     X_train, X_eval, y_train, y_eval, classes = get_data()
     num_classes = len(classes)
@@ -126,40 +128,41 @@ def _test():
         trax.layers.Conv(
             filters=256, kernel_size=(1, 1), strides=(1, 1), padding="SAME"
         ),
-        [inception_module() for _ in np.arange(inception_layers)],
-        trax.layers.Flatten(n_axes_to_keep=1),
+        [inception_module() for _ in range(inception_layers)],
+        trax.layers.Flatten(),
         trax.layers.Dense(num_classes),
+        trax.layers.LogSoftmax(),
     )
 
-    if train:
-        train_generator = data_gen(X_train, y_train, batch_size=32)
-        eval_generator = data_gen(X_eval, y_eval, batch_size=32)
+    train_generator = data_gen(X_train, y_train, batch_size=32, shuffle=True)
+    eval_generator = data_gen(X_eval, y_eval, batch_size=32, shuffle=True)
 
-        train_task = trax.supervised.training.TrainTask(
-            labeled_data=train_generator,
-            loss_layer=trax.layers.CrossEntropyLossWithLogSoftmax(),
-            optimizer=trax.optimizers.Adam(0.01),
-            n_steps_per_checkpoint=5,
-        )
+    criterion = trax.layers.CrossEntropyLoss()
+    optim = trax.optimizers.Adam(0.01, clip_grad_norm=5)
 
-        eval_task = trax.supervised.training.EvalTask(
-            labeled_data=eval_generator,
-            metrics=[trax.layers.CrossEntropyLossWithLogSoftmax()],
-        )
+    train_task = trax.supervised.training.TrainTask(
+        labeled_data=train_generator,
+        loss_layer=criterion,
+        optimizer=optim,
+        n_steps_per_checkpoint=5,
+    )
 
-        loop = trax.supervised.training.Loop(
-            full_model,
-            train_task,
-            eval_tasks=eval_task,
-            output_dir=checkpoint_path,
-        )
+    eval_task = trax.supervised.training.EvalTask(
+        labeled_data=eval_generator,
+        metrics=[trax.layers.CrossEntropyLoss()],
+    )
 
-        loop.run(n_steps=num_epochs_train)
-        loop.save_checkpoint()
+    loop = trax.supervised.training.Loop(
+        full_model,
+        train_task,
+        eval_tasks=eval_task,
+        output_dir=checkpoint_path,
+    )
 
-    full_model.init_from_file(os.path.join(checkpoint_path, "model.pkl.gz"))
+    loop.load_checkpoint(checkpoint_path)
+    loop.run(n_steps=num_epochs_train)
 
-    eval_preds = full_model(X_eval).argmax(axis=1)
+    eval_preds = loop.eval_model(X_eval).argmax(axis=1)
     eval_acc = sklearn.metrics.accuracy_score(eval_preds, y_eval)
     print(f"Eval accuracy: {eval_acc:.4f}")
 
