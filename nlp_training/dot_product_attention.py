@@ -25,7 +25,7 @@ def dp_attention(
     embed_dim = queries.shape[-1]
     scale_weight = np.sqrt(embed_dim) if scale else 1.0
 
-    aux = np.dot(queries, keys.T) / scale_weight
+    aux = np.dot(queries, np.swapaxes(keys, -1, -2)) / scale_weight
 
     if mask is not None:
         aux += mask
