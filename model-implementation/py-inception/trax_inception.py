@@ -54,9 +54,14 @@ def inception_module(
         ),
     )
 
+    # module = trax.layers.Serial(
+    #     trax.layers.Select(indices=[0, 0, 0, 0], n_in=1),
+    #     trax.layers.Parallel(path1, path2, path3, path4),
+    #     trax.layers.Concatenate(n_items=4),
+    # )
+
     module = trax.layers.Serial(
-        trax.layers.Select(indices=[0, 0, 0, 0], n_in=1),
-        trax.layers.Parallel(path1, path2, path3, path4),
+        trax.layers.Branch(path1, path2, path3, path4),
         trax.layers.Concatenate(n_items=4),
     )
 
@@ -75,6 +80,8 @@ def get_data() -> t.Tuple[np.ndarray, ...]:
     print("X_train:", X_train.shape, "X_test:", X_test.shape)
     print("y_train:", y_train.shape, "y_test:", y_test.shape)
     print("Classes:", classes)
+
+    print(y_train[:10])
 
     return X_train, X_test, y_train, y_test, classes
 
@@ -109,17 +116,16 @@ def data_gen(X, y, batch_size: int, shuffle: bool = True):
             X_batch = np.vstack((X_batch, X_batch_rem))
             y_batch = np.concatenate((y_batch, y_batch_rem))
 
-        yield X_batch, y_batch, np.ones(batch_size)
+        yield X_batch, y_batch
 
 
 def _test():
     import sklearn.metrics
     import os
 
-    train = True
     inception_layers = 2
-    num_epochs_train = 50
-    checkpoint_path = f"./inception_model_{inception_layers}"
+    num_epochs_train = 20
+    checkpoint_path = f"./trax_models/inception_model_{inception_layers}"
 
     X_train, X_eval, y_train, y_eval, classes = get_data()
     num_classes = len(classes)
@@ -131,14 +137,13 @@ def _test():
         [inception_module() for _ in range(inception_layers)],
         trax.layers.Flatten(),
         trax.layers.Dense(num_classes),
-        trax.layers.LogSoftmax(),
     )
 
     train_generator = data_gen(X_train, y_train, batch_size=32, shuffle=True)
     eval_generator = data_gen(X_eval, y_eval, batch_size=32, shuffle=True)
 
-    criterion = trax.layers.CrossEntropyLoss()
-    optim = trax.optimizers.Adam(0.01, clip_grad_norm=5)
+    criterion = trax.layers.CategoryCrossEntropy()
+    optim = trax.optimizers.Adam(0.01, clip_grad_norm=3)
 
     train_task = trax.supervised.training.TrainTask(
         labeled_data=train_generator,
@@ -149,7 +154,7 @@ def _test():
 
     eval_task = trax.supervised.training.EvalTask(
         labeled_data=eval_generator,
-        metrics=[trax.layers.CrossEntropyLoss()],
+        metrics=[trax.layers.CategoryCrossEntropy()],
     )
 
     loop = trax.supervised.training.Loop(
@@ -159,7 +164,6 @@ def _test():
         output_dir=checkpoint_path,
     )
 
-    loop.load_checkpoint(checkpoint_path)
     loop.run(n_steps=num_epochs_train)
 
     eval_preds = loop.eval_model(X_eval).argmax(axis=1)
