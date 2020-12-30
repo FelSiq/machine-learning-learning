@@ -40,7 +40,7 @@ class RNNNER(nn.Module):
 
         self.logits = nn.Linear(2 * embed_dim, num_tags)
 
-        self.softmax = nn.Softmax(dim=-1)
+        self.log_softmax = nn.LogSoftmax(dim=-1)
 
     def forward(self, X, X_lens):
         out = self.embedding(X)
@@ -48,7 +48,7 @@ class RNNNER(nn.Module):
         out = self.rnn(out)[0]
         out = self.pad_func(out)[0]
         out = self.logits(out)
-        out = self.softmax(out)
+        out = self.log_softmax(out)
         return out
 
 
@@ -82,7 +82,9 @@ def data_gen(X, y, batch_size: int, vocab, tags):
 
 
 def masked_cross_entropy(y_preds, y_batch, y_len, device):
-    loss = -torch.log(torch.gather(y_preds, 2, y_batch.unsqueeze(2)).squeeze())
+    # Note: in the model, we are computing LogSoftmax, and not Softmax.
+    # Hence, here we omit the torch.log().
+    loss = -torch.gather(y_preds, 2, y_batch.unsqueeze(2)).squeeze()
     mask = torch.arange(y_preds.shape[1]).repeat((y_preds.shape[0], 1)).to(device)
 
     for i, l in enumerate(y_len):
