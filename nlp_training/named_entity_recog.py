@@ -17,6 +17,8 @@ class RNNNER(nn.Module):
         embed_dim: int,
         num_tags: int,
         num_layers: int = 1,
+        bidirectional: bool = True,
+        dropout: float = 0.0,
     ):
         super(RNNNER, self).__init__()
 
@@ -30,15 +32,18 @@ class RNNNER(nn.Module):
             input_size=embed_dim,
             hidden_size=embed_dim,
             num_layers=num_layers,
-            bidirectional=True,
+            bidirectional=bidirectional,
             batch_first=True,
+            dropout=dropout if num_layers > 1 else 0.0,
         )
 
         self.pad_func = functools.partial(
             nn.utils.rnn.pad_packed_sequence, batch_first=True
         )
 
-        self.logits = nn.Linear(2 * embed_dim, num_tags)
+        self.dropout = nn.Dropout(dropout, inplace=True)
+
+        self.logits = nn.Linear((1 + int(bidirectional)) * embed_dim, num_tags)
 
         self.log_softmax = nn.LogSoftmax(dim=-1)
 
@@ -47,6 +52,7 @@ class RNNNER(nn.Module):
         out = self.pack_func(out, X_lens)
         out = self.rnn(out)[0]
         out = self.pad_func(out)[0]
+        out = self.dropout(out)
         out = self.logits(out)
         out = self.log_softmax(out)
         return out
@@ -81,17 +87,12 @@ def data_gen(X, y, batch_size: int, vocab, tags):
         yield collate_pad_seqs(X_batch, y_batch, vocab, tags)
 
 
-def masked_cross_entropy(y_preds, y_batch, y_len, device):
+def masked_cross_entropy(y_preds, y_batch, X_batch, pad_id: int):
     # Note: in the model, we are computing LogSoftmax, and not Softmax.
     # Hence, here we omit the torch.log().
     loss = -torch.gather(y_preds, 2, y_batch.unsqueeze(2)).squeeze()
-    mask = torch.arange(y_preds.shape[1]).repeat((y_preds.shape[0], 1)).to(device)
-
-    for i, l in enumerate(y_len):
-        mask[i] = mask[i] < l
-
+    mask = X_batch != pad_id
     loss = loss.masked_select(mask.bool()).mean()
-
     return loss
 
 
@@ -106,10 +107,24 @@ def calc_baseline_acc(y_train):
     return most_common_class_freq / sum(freq.values())
 
 
-def eval_model(model, X_eval, X_eval_lens, y_eval, baseline_acc):
-    print("\nEvaluating...")
+def eval_model(
+    model,
+    X_eval,
+    X_eval_lens,
+    y_eval,
+    baseline_acc,
+    verbose: bool = True,
+    cpu: bool = True,
+):
+    if verbose:
+        print("\nEvaluating...")
+
     model.eval()
-    y_preds = model(X_eval, X_eval_lens).argmax(axis=2).detach().cpu()
+    y_preds = model(X_eval, X_eval_lens).argmax(axis=2).detach()
+
+    if cpu:
+        y_preds = y_preds.cpu()
+
     eval_acc = 0.0
 
     for k, y_cur in enumerate(y_eval):
@@ -117,16 +132,22 @@ def eval_model(model, X_eval, X_eval_lens, y_eval, baseline_acc):
         eval_acc += sum(y_cur == preds_cur).item() / len(y_cur)
 
     eval_acc /= len(y_eval)
-    print(f"Evaluation acc: {eval_acc:.4f} (baseline: {baseline_acc:.4f})")
+
+    if verbose:
+        print(f"Evaluation acc: {eval_acc:.4f} (baseline: {baseline_acc:.4f})")
+
+    return eval_acc
 
 
 def _test():
     min_freq_vocab = 2
     hold_out_validation_frac = 0.025
-    train_epochs = 3
+    train_epochs = 5
     batch_size = 512
-    embed_dim = 128
-    num_layers = 2
+    embed_dim = 64
+    num_layers = 1
+    bidirectional = True
+    dropout = 0.8
     device = "cuda"
     checkpoint_path = "ner_torch_model.pt"
 
@@ -168,6 +189,8 @@ def _test():
         embed_dim=embed_dim,
         num_tags=len(tags),
         num_layers=num_layers,
+        bidirectional=bidirectional,
+        dropout=dropout,
     ).to(device)
 
     print(model)
@@ -186,20 +209,29 @@ def _test():
         dataloader = data_gen(
             X_train, y_train, batch_size=batch_size, vocab=vocab, tags=tags
         )
-        model.train()
+        train_acc = 0.0
+        num_batches = (len(X_train) + batch_size - 1) // batch_size
 
         for b, (X_batch, y_batch, X_lens, y_lens) in enumerate(dataloader, 1):
-            print(f"\r{b} / {(len(X_train) + batch_size - 1) // batch_size}", end=" ")
+            print(f"\r{b} / {num_batches}", end=" ")
+            model.train()
             X_batch = X_batch.to(device)
             y_batch = y_batch.to(device)
 
             optim.zero_grad()
             y_preds = model(X_batch, X_lens)
-            loss = masked_cross_entropy(y_preds, y_batch, y_lens, device)
+            loss = masked_cross_entropy(y_preds, y_batch, X_batch, vocab["<PAD>"])
             loss.backward()
             optim.step()
 
+            train_acc += eval_model(
+                model, X_batch, X_lens, y_batch, maj_class_acc, cpu=False, verbose=False
+            )
+
+        train_acc /= num_batches
+
         if epoch < train_epochs - 1:
+            print(f"\nTrain acc     : {train_acc:.4f}")
             eval_model(model, X_eval, X_eval_lens, y_eval, maj_class_acc)
 
     print("Finished training.")
