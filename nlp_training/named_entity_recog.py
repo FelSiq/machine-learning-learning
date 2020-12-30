@@ -16,7 +16,7 @@ class RNNNER(nn.Module):
         vocab_size: int,
         embed_dim: int,
         num_tags: int,
-        num_lstm: int = 1,
+        num_layers: int = 1,
     ):
         super(RNNNER, self).__init__()
 
@@ -26,10 +26,10 @@ class RNNNER(nn.Module):
             nn.utils.rnn.pack_padded_sequence, batch_first=True, enforce_sorted=False
         )
 
-        self.rnn = nn.LSTM(
+        self.rnn = nn.GRU(
             input_size=embed_dim,
             hidden_size=embed_dim,
-            num_layers=num_lstm,
+            num_layers=num_layers,
             bidirectional=True,
             batch_first=True,
         )
@@ -121,10 +121,10 @@ def eval_model(model, X_eval, X_eval_lens, y_eval, baseline_acc):
 def _test():
     min_freq_vocab = 2
     hold_out_validation_frac = 0.025
-    train_epochs = 0
+    train_epochs = 3
     batch_size = 512
     embed_dim = 128
-    num_lstm = 1
+    num_layers = 2
     device = "cuda"
     checkpoint_path = "ner_torch_model.pt"
 
@@ -165,8 +165,10 @@ def _test():
         vocab_size=len(vocab),
         embed_dim=embed_dim,
         num_tags=len(tags),
-        num_lstm=num_lstm,
+        num_layers=num_layers,
     ).to(device)
+
+    print(model)
 
     try:
         model.load_state_dict(torch.load(checkpoint_path))
