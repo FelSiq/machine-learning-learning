@@ -283,7 +283,7 @@ def _test():
     parser.add_argument(
         "--train-it-num",
         type=int,
-        default=400,
+        default=512,
         help="Number of training iterations.",
     )
     parser.add_argument(
@@ -307,27 +307,27 @@ def _test():
     parser.add_argument(
         "--style-rel-weight",
         type=float,
-        default=1.50,
+        default=8.0,
         help="Weight of style loss relative to the content loss. (a.k.a. 'beta'/'alpha' from the original paper)",
     )
     parser.add_argument(
         "--init-noise-ratio",
         type=float,
-        default=0.6,
+        default=0.3,
         help="Ratio of noise and content image interpolation while initializing generated image.",
     )
     parser.add_argument(
         "--style-layer-inds",
         nargs="+",
         type=int,
-        default=(6, 8, 10),
+        default=(6, 8, 9, 10),
         help="Indices of VGG16 Conv2d layers to use as style layers. Must be in {0, ..., 13}.",
     )
     parser.add_argument(
         "--style-layer-weights",
         nargs="+",
         type=float,
-        default=(0.25, 0.45, 0.30),
+        default=(0.20, 0.40, 0.20, 0.20),
         help="Weights for each Conv2d layer. Number of args must match '--style-layer-inds'.",
     )
     parser.add_argument(
@@ -368,8 +368,8 @@ def _test():
     print(model, end="\n\n")
     print("Configuration:")
     print("Device chosen                    :", device)
-    print("Style layer                      :", args.style_layer_inds)
-    print("Style weights                    :", style_weights)
+    print("Style layer indices              :", args.style_layer_inds)
+    print("Style layer weights              :", style_weights)
     print("Style relative weight to content :", args.style_rel_weight)
     print("Content layer index              :", args.content_layer_index)
 
