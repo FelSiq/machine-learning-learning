@@ -120,11 +120,24 @@ def get_model(
     user_defined_content_layer: int,
     user_defined_style_layers: t.Iterable[int],
     device: str,
+    replace_max_pool: bool = False,
 ) -> nn.ParameterList:
     # Note: load VGG16 pretrained model
     model = torchvision.models.vgg16(pretrained=True)
     model.eval()
     model = model.features
+
+    if replace_max_pool:
+        # Tip from: https://towardsdatascience.com/experiments-on-different-loss-configurations-for-style-transfer-7e3147eda55e
+        for i, layer in enumerate(model):
+            if isinstance(layer, nn.MaxPool2d):
+                model[i] = nn.AvgPool2d(
+                    kernel_size=layer.kernel_size,
+                    stride=layer.stride,
+                    ceil_mode=layer.ceil_mode,
+                    padding=layer.padding,
+                )
+
     model = model.to(device)
 
     # Note: cast user-defined conv layer indices to real conv layer indices
@@ -212,6 +225,7 @@ def train(
     img_content: torch.Tensor,
     img_style: torch.Tensor,
     train_it_num: int,
+    lr: float,
     style_weights: t.List[float],
     style_rel_weight: float,
     init_noise_ratio: float,
@@ -226,7 +240,7 @@ def train(
         img_style if init_from_style else img_content, init_noise_ratio
     )
 
-    optim = torch.optim.Adam([generated_img], lr=0.2)
+    optim = torch.optim.Adam([generated_img], lr=lr)
     print_fill = len(str(train_it_num))
 
     for i in np.arange(1, 1 + train_it_num):
@@ -303,6 +317,12 @@ def _test():
         help="Number of training iterations.",
     )
     parser.add_argument(
+        "--lr",
+        type=float,
+        default=0.02,
+        help="Adam optimizer learning rate.",
+    )
+    parser.add_argument(
         "--output-name",
         type=str,
         default="generated",
@@ -343,7 +363,7 @@ def _test():
         "--style-layer-weights",
         nargs="+",
         type=float,
-        default=(0.05, 0.10, 0.25, 0.35, 0.25),
+        default=(0.15, 0.30, 0.30, 0.20, 0.05),
         help="Weights for each Conv2d layer. Number of args must match '--style-layer-inds'.",
     )
     parser.add_argument(
@@ -393,18 +413,24 @@ def _test():
     print("Style layer weights              :", style_weights)
     print("Style relative weight to content :", args.style_rel_weight)
     print("Content layer index              :", args.content_layer_index)
+    print("Noise ratio initialization       :", args.init_noise_ratio)
     print("Init from style image            :", args.init_from_style)
+    print("Adam learning rate               :", args.lr)
+    print("\n\nStarted image generation...")
 
     generated_img = train(
         model=model,
         img_content=img_content,
         img_style=img_style,
         train_it_num=args.train_it_num,
+        lr=args.lr,
         style_weights=style_weights,
         style_rel_weight=args.style_rel_weight,
         init_noise_ratio=args.init_noise_ratio,
         init_from_style=args.init_from_style,
     )
+
+    print("Done.")
 
     save_generated_img(generated_img, args.output_name, args.output_format)
 
