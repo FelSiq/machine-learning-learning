@@ -189,6 +189,24 @@ def generate_output_img(generated_img: torch.Tensor) -> np.ndarray:
     return gen_img_np.astype(np.uint8)
 
 
+def init_generated_img(
+    base_image: torch.Tensor, init_noise_ratio: float
+) -> torch.Tensor:
+    assert 0.0 <= init_noise_ratio <= 1.0
+
+    base_init_img = base_image.contiguous()
+
+    generated_img = (
+        1.0 - init_noise_ratio
+    ) * base_init_img + 255.0 * init_noise_ratio * torch.rand_like(base_image)
+
+    generated_img.requires_grad = True
+
+    del base_init_img
+
+    return generated_img
+
+
 def train(
     model: nn.ParameterList,
     img_content: torch.Tensor,
@@ -197,19 +215,16 @@ def train(
     style_weights: t.List[float],
     style_rel_weight: float,
     init_noise_ratio: float,
+    init_from_style: bool,
     it_to_print: int = 100,
 ) -> torch.Tensor:
     assert np.isclose(1.0, sum(style_weights)), "Style weights do not sum to 1.0"
     assert style_rel_weight >= 0.0, "Style relative weight must be non-negative"
     assert len(style_weights) == len(_LAYER_GRAM_MAT_STYLE)
-    assert 0.0 <= init_noise_ratio <= 1.0
 
-    generated_img = (
-        1.0 - init_noise_ratio
-    ) * img_content.contiguous() + 255.0 * init_noise_ratio * torch.rand_like(
-        img_content
-    ).contiguous()
-    generated_img.requires_grad = True
+    generated_img = init_generated_img(
+        img_style if init_from_style else img_content, init_noise_ratio
+    )
 
     optim = torch.optim.Adam([generated_img], lr=0.2)
     print_fill = len(str(train_it_num))
@@ -303,7 +318,7 @@ def _test():
         "--content-layer-index",
         type=int,
         default=9,
-        help="Index of VGG16 Conv2d layers to use as content layer. Must be in {{0, ..., {_MAX_LAYER_INDEX}}}.",
+        help=f"Index of VGG16 Conv2d layers to use as content layer. Must be in {{0, ..., {_MAX_LAYER_INDEX}}}.",
     )
     parser.add_argument(
         "--style-rel-weight",
@@ -322,7 +337,7 @@ def _test():
         nargs="+",
         type=int,
         default=(6, 8, 9, 10, 12),
-        help="Indices of VGG16 Conv2d layers to use as style layers. Must be in {{0, ..., {_MAX_LAYER_INDEX}}}.",
+        help=f"Indices of VGG16 Conv2d layers to use as style layers. Must be in {{0, ..., {_MAX_LAYER_INDEX}}}.",
     )
     parser.add_argument(
         "--style-layer-weights",
@@ -334,7 +349,12 @@ def _test():
     parser.add_argument(
         "--cpu",
         action="store_true",
-        help="Ig given, run in CPU rather than GPU",
+        help="If given run in CPU rather than GPU",
+    )
+    parser.add_argument(
+        "--init-from-style",
+        action="store_true",
+        help="If given init the generated image from the style image rather than the content image.",
     )
     args = parser.parse_args()
 
@@ -373,6 +393,7 @@ def _test():
     print("Style layer weights              :", style_weights)
     print("Style relative weight to content :", args.style_rel_weight)
     print("Content layer index              :", args.content_layer_index)
+    print("Init from style image            :", args.init_from_style)
 
     generated_img = train(
         model=model,
@@ -382,6 +403,7 @@ def _test():
         style_weights=style_weights,
         style_rel_weight=args.style_rel_weight,
         init_noise_ratio=args.init_noise_ratio,
+        init_from_style=args.init_from_style,
     )
 
     save_generated_img(generated_img, args.output_name, args.output_format)
