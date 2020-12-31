@@ -60,7 +60,7 @@ def full_cost_fn(
     a_generated_styles: t.List[torch.Tensor],
     gram_mats_style: t.List[torch.Tensor],
     style_weights: t.List[float],
-    style_rel_weight: float = 4.0,
+    style_rel_weight: float,
 ):
     total_cost = content_cost_fn(
         a_content, a_generated_content
@@ -159,11 +159,18 @@ def get_model(
     return model
 
 
-def read_image(path: str, device: str) -> torch.Tensor:
-    img = torch.from_numpy(imageio.imread(path))
+def read_image(
+    path: str, device: str, shape: t.Optional[t.Tuple[int, int]] = None
+) -> torch.Tensor:
+    img = imageio.imread(path)
+    img = torch.from_numpy(img)
     img = img.float()
-    img = img.permute(2, 0, 1)  # Note: set channels first
+    img = img.permute(2, 1, 0)  # Note: set channels first
     img = img.unsqueeze(0)  # Note: add batch dimension
+
+    if shape is not None:
+        img = nn.functional.interpolate(img, size=tuple(shape))
+
     img = img.to(device)
 
     assert img.dim() == 4
@@ -173,7 +180,7 @@ def read_image(path: str, device: str) -> torch.Tensor:
 
 def generate_output_img(generated_img: torch.Tensor) -> np.ndarray:
     # Note: (channels first -> channels last) + (tensor -> numpy array)
-    gen_img_np = generated_img.squeeze().permute(1, 2, 0).detach().cpu().numpy()
+    gen_img_np = generated_img.squeeze().permute(2, 1, 0).detach().cpu().numpy()
 
     # Note: clip in-place to range [0, 255]
     gen_img_np.clip(0.0, 255.0, out=gen_img_np)
@@ -187,7 +194,7 @@ def train(
     img_style: torch.Tensor,
     train_it_num: int,
     style_weights: t.List[float],
-    style_rel_weight: float = 1.0,
+    style_rel_weight: float = 2.0,
     it_to_print: int = 100,
     noise_ratio: float = 0.6,
 ) -> torch.Tensor:
@@ -203,7 +210,7 @@ def train(
     ).contiguous()
     generated_img.requires_grad = True
 
-    optim = torch.optim.Adam([generated_img], lr=0.5)
+    optim = torch.optim.Adam([generated_img], lr=0.2)
     print_fill = len(str(train_it_num))
 
     for i in np.arange(1, 1 + train_it_num):
@@ -223,7 +230,7 @@ def train(
         )
 
         loss.backward(retain_graph=True)
-        nn.utils.clip_grad_norm_(generated_img, max_norm=3.0)
+        nn.utils.clip_grad_norm_(generated_img, max_norm=5.0)
         optim.step()
 
         if it_to_print > 0 and i % it_to_print == 0:
@@ -245,20 +252,17 @@ def _test():
     parser.add_argument(
         "--train-it-num",
         type=int,
-        nargs=1,
-        default=800,
+        default=400,
         help="Number of training iterations.",
     )
     parser.add_argument(
         "--content-layer-index",
-        nargs=1,
         type=int,
         default=9,
         help="Index of VGG16 Conv2d layers to use as content layer. Must be in {0, ..., 13}.",
     )
     parser.add_argument(
         "--style-rel-weight",
-        nargs=1,
         type=float,
         default=1.0,
         help="Weight of style loss relative to the content loss. (a.k.a. 'beta'/'alpha' from the original paper)",
@@ -267,14 +271,14 @@ def _test():
         "--style-layer-inds",
         nargs="+",
         type=int,
-        default=(2, 5, 8, 12),
+        default=(6, 8, 10),
         help="Indices of VGG16 Conv2d layers to use as style layers. Must be in {0, ..., 13}.",
     )
     parser.add_argument(
         "--style-layer-weights",
         nargs="+",
         type=float,
-        default=None,
+        default=(0.25, 0.45, 0.30),
         help="Weights for each Conv2d layer. Number of args must match '--style-layer-inds'.",
     )
     parser.add_argument(
@@ -295,8 +299,8 @@ def _test():
 
     device = "cpu" if args.cpu else "cuda"
 
-    img_content = read_image(args.content_image_path, device)
-    img_style = read_image(args.style_image_path, device)
+    img_content = read_image(args.content_image_path, device, shape=(900, 472))
+    img_style = read_image(args.style_image_path, device, shape=img_content.shape[-2:])
 
     model = get_model(
         img_content,
