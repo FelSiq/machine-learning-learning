@@ -55,19 +55,31 @@ def full_style_cost_fn(
     return total_style_loss
 
 
+def total_var_cost_fn(generated_img: torch.Tensor):
+    total_var_cost = torch.sum(
+        torch.abs(generated_img[..., :-1] - generated_img[..., 1:])
+    ) + torch.sum(torch.abs(generated_img[..., :-1, :] - generated_img[..., 1:, :]))
+
+    return total_var_cost
+
+
 def full_cost_fn(
+    generated_img: torch.Tensor,
     a_content: torch.Tensor,
     a_generated_content: torch.Tensor,
     a_generated_styles: t.List[torch.Tensor],
     gram_mats_style: t.List[torch.Tensor],
     style_weights: t.List[float],
     style_rel_weight: float,
+    lambda_: float,
 ):
-    total_cost = content_cost_fn(
-        a_content, a_generated_content
-    ) + style_rel_weight * full_style_cost_fn(
-        gram_mats_style, a_generated_styles, style_weights
+    total_cost = (
+        content_cost_fn(a_content, a_generated_content)
+        + style_rel_weight
+        * full_style_cost_fn(gram_mats_style, a_generated_styles, style_weights)
+        + lambda_ * total_var_cost_fn(generated_img)
     )
+
     return total_cost
 
 
@@ -230,11 +242,13 @@ def train(
     style_rel_weight: float,
     init_noise_ratio: float,
     init_from_style: bool,
+    lambda_: float = 1.0,
     it_to_print: int = 100,
 ) -> torch.Tensor:
     assert np.isclose(1.0, sum(style_weights)), "Style weights do not sum to 1.0"
     assert style_rel_weight >= 0.0, "Style relative weight must be non-negative"
     assert len(style_weights) == len(_LAYER_GRAM_MAT_STYLE)
+    assert lambda_ >= 0.0
 
     generated_img = init_generated_img(
         img_style if init_from_style else img_content, init_noise_ratio
@@ -251,12 +265,14 @@ def train(
         model(generated_img)
 
         loss = full_cost_fn(
+            generated_img=generated_img,
             a_content=_LAYER_ACT_CONTENT[0],
             a_generated_content=_LAYER_ACT_GENERATED_CONTENT[0],
             a_generated_styles=_LAYER_ACT_GENERATED_STYLES,
             gram_mats_style=_LAYER_GRAM_MAT_STYLE,
             style_weights=style_weights,
             style_rel_weight=style_rel_weight,
+            lambda_=lambda_,
         )
 
         loss.backward(retain_graph=True)
@@ -343,8 +359,14 @@ def _test():
     parser.add_argument(
         "--style-rel-weight",
         type=float,
-        default=32.0,
+        default=4096.0,
         help="Weight of style loss relative to the content loss. (a.k.a. 'beta'/'alpha' from the original paper)",
+    )
+    parser.add_argument(
+        "--reg-weight",
+        type=float,
+        default=1.0,
+        help="Regularization weight; used in total variation loss.",
     )
     parser.add_argument(
         "--init-noise-ratio",
@@ -356,7 +378,7 @@ def _test():
         "--style-layer-inds",
         nargs="+",
         type=int,
-        default=(6, 8, 9, 10, 12),
+        default=(4, 6, 9, 10, 12),
         help=f"Indices of VGG16 Conv2d layers to use as style layers. Must be in {{0, ..., {_MAX_LAYER_INDEX}}}.",
     )
     parser.add_argument(
@@ -416,6 +438,7 @@ def _test():
     print("Noise ratio initialization       :", args.init_noise_ratio)
     print("Init from style image            :", args.init_from_style)
     print("Adam learning rate               :", args.lr)
+    print("Regularization strenght          :", args.reg_weight)
     print("\n\nStarted image generation...")
 
     generated_img = train(
@@ -428,6 +451,7 @@ def _test():
         style_rel_weight=args.style_rel_weight,
         init_noise_ratio=args.init_noise_ratio,
         init_from_style=args.init_from_style,
+        lambda_=args.reg_weight,
     )
 
     print("Done.")
