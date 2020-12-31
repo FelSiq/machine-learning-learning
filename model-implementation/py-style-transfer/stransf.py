@@ -1,3 +1,10 @@
+"""
+TODO:
+    - train loop
+    - set style layer weights
+    - content loss is from which activation?
+    - no need for activation arguments, since were using global lists...
+"""
 import typing as t
 import os
 
@@ -9,7 +16,7 @@ import imageio
 
 
 _LAYER_ACT_GENERATED = []  # type: t.List[torch.Tensor]
-_LAYER_ACT_STYLE = []  # type: t.List[torch.Tensor]
+_LAYER_GRAM_MAT_STYLE = []  # type: t.List[torch.Tensor]
 _LAYER_ACT_CONTENT = []  # type: t.List[torch.Tensor]
 
 
@@ -44,8 +51,8 @@ def layer_style_cost_fn(layer_gram_mat_style, a_generated):
 def full_style_cost_fn(gram_mats_style, a_generated, style_weights: t.Sequence[float]):
     total_style_loss = 0.0
 
-    for i, style_weight in enumerate(style_weights):
-        total_style_loss = style_weight * layer_style_cost_fn(
+    for i, style_rel_weight in enumerate(style_weights):
+        total_style_loss = style_rel_weight * layer_style_cost_fn(
             gram_mats_style[i], a_generated
         )
 
@@ -54,14 +61,17 @@ def full_style_cost_fn(gram_mats_style, a_generated, style_weights: t.Sequence[f
 
 def full_cost_fn(
     a_content,
-    a_generated,
+    a_generated_content,
+    a_generated_styles,
     gram_mats_style,
     style_weights: t.Sequence[float],
-    style_weight: float = 4,
+    style_rel_weight: float = 4,
 ):
     total_cost = content_cost_fn(
-        a_content, a_generated
-    ) + style_weight * full_style_cost_fn(gram_mat_style, a_generated, style_weights)
+        a_content, a_generated_content
+    ) + style_rel_weight * full_style_cost_fn(
+        gram_mat_style, a_generated_styles, style_weights
+    )
     return total_cost
 
 
@@ -86,12 +96,26 @@ def add_hooks(model, act_container, conv_layer_inds):
     return hooks
 
 
-def remove_hooks(hooks):
+def fill_act_global_lists(model, input, container, inds: t.Union[int, t.Iterable[int]]):
+    if isinstance(inds, int):
+        inds = [inds]
+
+    hooks = add_hooks(model, container, inds)
+    model(input)
+
     for hook in hooks:
         hook.remove()
 
+    del hooks
 
-def get_model(img_content, img_style, user_defined_style_layers, device: str):
+
+def get_model(
+    img_content,
+    img_style,
+    user_defined_content_layer: int,
+    user_defined_style_layers: t.Iterable[int],
+    device: str,
+):
     model = torchvision.models.vgg16(pretrained=True).features
 
     model.eval()
@@ -100,22 +124,26 @@ def get_model(img_content, img_style, user_defined_style_layers, device: str):
 
     conv_layer_inds = [i for i, l in enumerate(model) if isinstance(l, nn.Conv2d)]
 
+    user_defined_style_layers = sorted(set(user_defined_style_layers))
+
     conv_layer_inds = [conv_layer_inds[k] for k in user_defined_style_layers]
 
-    hooks = add_hooks(model, _LAYER_ACT_STYLE, conv_layer_inds)
-    model(img_style)
-    remove_hooks(hooks)
+    fill_act_global_lists(
+        model, img_style, _LAYER_GRAM_MAT_STYLE, user_defined_style_layers
+    )
 
-    add_hooks(model, _LAYER_ACT_CONTENT, conv_layer_inds)
-    model(img_content)
-    remove_hooks(hooks)
+    for i, act in enumerate(_LAYER_GRAM_MAT_STYLE):
+        _LAYER_GRAM_MAT_STYLE[i] = gram_matrix(act)
 
+    fill_act_global_lists(
+        model, img_content, _LAYER_ACT_CONTENT, user_defined_content_layer
+    )
     add_hooks(model, _LAYER_ACT_CONTENT, conv_layer_inds)
 
     del conv_layer_inds
 
-    assert len(_LAYER_ACT_STYLE) == len(user_defined_style_layers)
-    assert len(_LAYER_ACT_CONTENT) == len(user_defined_style_layers)
+    assert len(_LAYER_GRAM_MAT_STYLE) == len(user_defined_style_layers)
+    assert len(_LAYER_ACT_CONTENT) == 1
 
     return model
 
@@ -140,19 +168,50 @@ def read_image(path: str, device: str):
     return img
 
 
-def generate_output(generated_img):
+def generate_output_img(generated_img):
     generated_img = generated_img.squeeze().permute(1, 2, 0).detach().cpu().numpy()
     generated_img = 255 * (generated_img - generated_img.max()) / np.ptp(generated_img)
     return generated_img.astype(np.uint8)
 
 
-def train(model, img_content, img_style, train_it_num: int):
+def train(
+    model,
+    img_content,
+    img_style,
+    content_ind: int,
+    style_inds: t.Sequence[int],
+    train_it_num: int,
+    style_weights: t.Sequence[float],
+    style_rel_weight: float = 4.0,
+):
+    if isinstance(style_inds, int):
+        style_inds = [style_inds]
+
+    assert content_ind >= 0
+    assert np.isclose(1.0, sum(style_weights)), "Style weights do not sum to 1.0"
+    assert style_rel_weight >= 0.0, "Style relative weight must be non-negative"
+    assert len(style_weights) == len(style_inds)
+
     generated_img = torch.randn_like(img_content, requires_grad=True)
+    optim = torch.optim.Adam(generated_img, lr=2.0)
 
-    for i in np.arange(train_it_num):
-        pass
+    for i in np.arange(1, 1 + train_it_num):
+        print(f"Iteration: {i} / {train_it_num}")
+        optim.zero_grad()
 
-    return generate_output(generated_img)
+        loss = full_cost_fn(
+            a_content=_LAYER_ACT_CONTENT[0],
+            a_generated_content=_LAYER_ACT_GENERATED[content_ind],
+            a_generated_styles=[_LAYER_ACT_GENERATED[j] for j in style_inds],
+            gram_mats_style=_LAYER_GRAM_MAT_STYLE,
+            style_weights=style_weights,
+            style_rel_weight=style_rel_weight,
+        )
+
+        loss.backprop()
+        optim.step()
+
+    return generate_output_img(generated_img)
 
 
 def _test():
@@ -164,18 +223,39 @@ def _test():
     )
     parser.add_argument("style_image_path", type=str, help="Path to the style image.")
     parser.add_argument(
-        "--num-train-it",
+        "--train-it-num",
         type=int,
         nargs=1,
         default=10,
         help="Number of training iterations.",
     )
     parser.add_argument(
-        "--style-layer-indices",
+        "--content-layer-index",
+        nargs=1,
+        type=int,
+        default=7,
+        help="Index of VGG16 Conv2d layers to use as content layer. Must be in {0, ..., 13}.",
+    )
+    parser.add_argument(
+        "--style-rel-weight",
+        nargs=1,
+        type=float,
+        default=4.0,
+        help="Weight of style loss relative to the content loss. (a.k.a. 'beta'/'alpha' from the original paper)",
+    )
+    parser.add_argument(
+        "--style-layer-inds",
         nargs="+",
         type=int,
         default=(6, 7, 8),
-        help="Indices of VGG16 Conv2d indices to use as style layers. Must be in {0, ..., 13}.",
+        help="Indices of VGG16 Conv2d layers to use as style layers. Must be in {0, ..., 13}.",
+    )
+    parser.add_argument(
+        "--style-layer-weights",
+        nargs="+",
+        type=float,
+        default=None,
+        help="Weights for each Conv2d layer. Number of args must match '--style-layer-inds'.",
     )
     parser.add_argument(
         "--cpu",
@@ -185,8 +265,13 @@ def _test():
     args = parser.parse_args()
 
     assert all(
-        map(lambda l: 0 <= l <= 13, args.style_layer_indices)
-    ), "Style layer indices must be in {0, ..., 13}"
+        map(lambda l: 0 <= l <= 13, args.style_layer_inds)
+    ), "Style layer inds must be in {0, ..., 13}"
+
+    assert (
+        0 <= args.content_layer_index <= 13
+    ), "Content layer index must be in {0, ..., 13}"
+    assert args.train_it_num > 0
 
     device = "cpu" if args.cpu else "cuda"
 
@@ -194,10 +279,31 @@ def _test():
     img_style = read_image(args.style_image_path, device)
 
     model = get_model(
-        img_content, img_style, frozenset(args.style_layer_indices), device
+        img_content,
+        img_style,
+        args.content_layer_index,
+        args.style_layer_inds,
+        device,
     )
 
-    generated_img = train(model, img_content, img_style, args.num_train_it)
+    print(model)
+
+    style_weights = args.style_layer_weights
+
+    if style_weights is None:
+        num_style_layers = len(args.style_layer_inds)
+        style_weights = num_style_layers * [1.0 / num_style_layers]
+
+    generated_img = train(
+        model=model,
+        img_content=img_content,
+        img_style=img_style,
+        content_ind=args.content_layer_index,
+        style_inds=args.style_layer_inds,
+        train_it_num=args.train_it_num,
+        style_weights=style_weights,
+        style_rel_weight=args.style_rel_weight,
+    )
 
     cur_dir_path = os.path.dirname(os.path.realpath(__file__))
     output_dir_path = os.path.join(cur_dir_path, "output")
