@@ -127,9 +127,9 @@ def get_model(
     model = model.to(device)
 
     # Note: cast user-defined conv layer indices to real conv layer indices
-    all_conv_layer_inds = [i for i, l in enumerate(model) if isinstance(l, nn.Conv2d)]
+    all_act_layer_inds = [i for i, l in enumerate(model) if isinstance(l, nn.ReLU)]
     user_defined_style_layers = sorted(set(user_defined_style_layers))
-    conv_layer_inds = [all_conv_layer_inds[k] for k in user_defined_style_layers]
+    conv_layer_inds = [all_act_layer_inds[k] for k in user_defined_style_layers]
 
     # Note: get style image activations
     fill_act_global_lists(
@@ -163,14 +163,6 @@ def read_image(path: str, device: str) -> torch.Tensor:
     img = torch.from_numpy(imageio.imread(path))
     img = img.float()
     img = img.permute(2, 0, 1)  # Note: set channels first
-
-    # Note: preprocessing required by pretrained torch VGG16
-    normalizer = torchvision.transforms.Normalize(
-        mean=[0.485, 0.456, 0.406],
-        std=[0.229, 0.224, 0.225],
-    )
-
-    img = normalizer(img)
     img = img.unsqueeze(0)  # Note: add batch dimension
     img = img.to(device)
 
@@ -180,8 +172,12 @@ def read_image(path: str, device: str) -> torch.Tensor:
 
 
 def generate_output_img(generated_img: torch.Tensor) -> np.ndarray:
+    # Note: (channels first -> channels last) + (tensor -> numpy array)
     gen_img_np = generated_img.squeeze().permute(1, 2, 0).detach().cpu().numpy()
-    gen_img_np = 255 * (gen_img_np - gen_img_np.max()) / np.ptp(gen_img_np)
+
+    # Note: clip in-place to range [0, 255]
+    gen_img_np.clip(0.0, 255.0, out=gen_img_np)
+
     return gen_img_np.astype(np.uint8)
 
 
@@ -191,15 +187,24 @@ def train(
     img_style: torch.Tensor,
     train_it_num: int,
     style_weights: t.List[float],
-    style_rel_weight: float = 4.0,
+    style_rel_weight: float = 1.0,
     it_to_print: int = 100,
+    noise_ratio: float = 0.6,
 ) -> torch.Tensor:
     assert np.isclose(1.0, sum(style_weights)), "Style weights do not sum to 1.0"
     assert style_rel_weight >= 0.0, "Style relative weight must be non-negative"
     assert len(style_weights) == len(_LAYER_GRAM_MAT_STYLE)
+    assert 0.0 <= noise_ratio <= 1.0
 
-    generated_img = torch.randn_like(img_content, requires_grad=True)
-    optim = torch.optim.Adam([generated_img], lr=2.0)
+    generated_img = (
+        1.0 - noise_ratio
+    ) * img_content.contiguous() + 255.0 * noise_ratio * torch.rand_like(
+        img_content
+    ).contiguous()
+    generated_img.requires_grad = True
+
+    optim = torch.optim.Adam([generated_img], lr=0.5)
+    print_fill = len(str(train_it_num))
 
     for i in np.arange(1, 1 + train_it_num):
         optim.zero_grad()
@@ -218,11 +223,13 @@ def train(
         )
 
         loss.backward(retain_graph=True)
-        nn.utils.clip_grad_norm_(generated_img, max_norm=2.0)
+        nn.utils.clip_grad_norm_(generated_img, max_norm=3.0)
         optim.step()
 
         if it_to_print > 0 and i % it_to_print == 0:
-            print(f"Iteration: {i} / {train_it_num} - loss: {loss.item():.4f}")
+            print(
+                f"Iteration: {i:<{print_fill}} / {train_it_num} - loss: {loss.item():.4f}"
+            )
 
     return generate_output_img(generated_img)
 
@@ -239,28 +246,28 @@ def _test():
         "--train-it-num",
         type=int,
         nargs=1,
-        default=3000,
+        default=800,
         help="Number of training iterations.",
     )
     parser.add_argument(
         "--content-layer-index",
         nargs=1,
         type=int,
-        default=7,
+        default=9,
         help="Index of VGG16 Conv2d layers to use as content layer. Must be in {0, ..., 13}.",
     )
     parser.add_argument(
         "--style-rel-weight",
         nargs=1,
         type=float,
-        default=4.0,
+        default=1.0,
         help="Weight of style loss relative to the content loss. (a.k.a. 'beta'/'alpha' from the original paper)",
     )
     parser.add_argument(
         "--style-layer-inds",
         nargs="+",
         type=int,
-        default=(6, 7, 8),
+        default=(2, 5, 8, 12),
         help="Indices of VGG16 Conv2d layers to use as style layers. Must be in {0, ..., 13}.",
     )
     parser.add_argument(
@@ -299,13 +306,19 @@ def _test():
         device,
     )
 
-    print(model)
-
     style_weights = args.style_layer_weights
 
     if style_weights is None:
         num_style_layers = len(args.style_layer_inds)
         style_weights = num_style_layers * [1.0 / num_style_layers]
+
+    print(model, end="\n\n")
+    print("Configuration:")
+    print("Device chosen                    :", device)
+    print("Style layer                      :", args.style_layer_inds)
+    print("Style weights                    :", style_weights)
+    print("Style relative weight to content :", args.style_rel_weight)
+    print("Content layer index              :", args.content_layer_index)
 
     generated_img = train(
         model=model,
