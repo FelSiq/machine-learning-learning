@@ -8,6 +8,7 @@ import numpy as np
 import imageio
 
 
+_MAX_LAYER_INDEX = 12
 _LAYER_ACT_GENERATED_CONTENT = []  # type: t.List[torch.Tensor]
 _LAYER_ACT_GENERATED_STYLES = []  # type: t.List[torch.Tensor]
 _LAYER_GRAM_MAT_STYLE = []  # type: t.List[torch.Tensor]
@@ -302,12 +303,12 @@ def _test():
         "--content-layer-index",
         type=int,
         default=9,
-        help="Index of VGG16 Conv2d layers to use as content layer. Must be in {0, ..., 13}.",
+        help="Index of VGG16 Conv2d layers to use as content layer. Must be in {{0, ..., {_MAX_LAYER_INDEX}}}.",
     )
     parser.add_argument(
         "--style-rel-weight",
         type=float,
-        default=8.0,
+        default=32.0,
         help="Weight of style loss relative to the content loss. (a.k.a. 'beta'/'alpha' from the original paper)",
     )
     parser.add_argument(
@@ -320,14 +321,14 @@ def _test():
         "--style-layer-inds",
         nargs="+",
         type=int,
-        default=(6, 8, 9, 10),
-        help="Indices of VGG16 Conv2d layers to use as style layers. Must be in {0, ..., 13}.",
+        default=(6, 8, 9, 10, 12),
+        help="Indices of VGG16 Conv2d layers to use as style layers. Must be in {{0, ..., {_MAX_LAYER_INDEX}}}.",
     )
     parser.add_argument(
         "--style-layer-weights",
         nargs="+",
         type=float,
-        default=(0.20, 0.40, 0.20, 0.20),
+        default=(0.05, 0.10, 0.25, 0.35, 0.25),
         help="Weights for each Conv2d layer. Number of args must match '--style-layer-inds'.",
     )
     parser.add_argument(
@@ -338,12 +339,12 @@ def _test():
     args = parser.parse_args()
 
     assert all(
-        map(lambda l: 0 <= l <= 13, args.style_layer_inds)
-    ), "Style layer inds must be in {0, ..., 13}"
+        map(lambda l: 0 <= l <= _MAX_LAYER_INDEX, args.style_layer_inds)
+    ), f"Style layer inds must be in {{0, ..., {_MAX_LAYER_INDEX}}}"
 
     assert (
-        0 <= args.content_layer_index <= 13
-    ), "Content layer index must be in {0, ..., 13}"
+        0 <= args.content_layer_index <= _MAX_LAYER_INDEX
+    ), f"Content layer index must be in {{0, ..., {_MAX_LAYER_INDEX}}}"
     assert args.train_it_num > 0
 
     device = "cpu" if args.cpu else "cuda"
