@@ -194,18 +194,18 @@ def train(
     img_style: torch.Tensor,
     train_it_num: int,
     style_weights: t.List[float],
-    style_rel_weight: float = 2.0,
+    style_rel_weight: float,
+    init_noise_ratio: float,
     it_to_print: int = 100,
-    noise_ratio: float = 0.6,
 ) -> torch.Tensor:
     assert np.isclose(1.0, sum(style_weights)), "Style weights do not sum to 1.0"
     assert style_rel_weight >= 0.0, "Style relative weight must be non-negative"
     assert len(style_weights) == len(_LAYER_GRAM_MAT_STYLE)
-    assert 0.0 <= noise_ratio <= 1.0
+    assert 0.0 <= init_noise_ratio <= 1.0
 
     generated_img = (
-        1.0 - noise_ratio
-    ) * img_content.contiguous() + 255.0 * noise_ratio * torch.rand_like(
+        1.0 - init_noise_ratio
+    ) * img_content.contiguous() + 255.0 * init_noise_ratio * torch.rand_like(
         img_content
     ).contiguous()
     generated_img.requires_grad = True
@@ -241,6 +241,37 @@ def train(
     return generate_output_img(generated_img)
 
 
+def save_generated_img(
+    generated_img: np.ndarray,
+    output_name: str,
+    output_format: str,
+    output_dir: str = "output",
+):
+    assert generated_img.ndim == 3
+
+    cur_dir_path = os.path.dirname(os.path.realpath(__file__))
+    output_dir_path = os.path.join(cur_dir_path, output_dir)
+
+    try:
+        os.mkdir(output_dir_path)
+        print(f"Created ouput directory: {output_dit_path}")
+
+    except FileExistsError:
+        pass
+
+    if not output_format.startswith("."):
+        output_format = "." + output_format
+
+    if not output_name.endswith(output_format):
+        output_name += output_format
+
+    imageio.imwrite(
+        os.path.join(output_dir_path, output_name),
+        generated_img,
+        format=output_format,
+    )
+
+
 def _test():
     import argparse
 
@@ -256,6 +287,18 @@ def _test():
         help="Number of training iterations.",
     )
     parser.add_argument(
+        "--output-name",
+        type=str,
+        default="generated",
+        help="Name of the generated output image.",
+    )
+    parser.add_argument(
+        "--output-format",
+        type=str,
+        default="jpg",
+        help="File type of the generated output image.",
+    )
+    parser.add_argument(
         "--content-layer-index",
         type=int,
         default=9,
@@ -264,8 +307,14 @@ def _test():
     parser.add_argument(
         "--style-rel-weight",
         type=float,
-        default=1.0,
+        default=1.50,
         help="Weight of style loss relative to the content loss. (a.k.a. 'beta'/'alpha' from the original paper)",
+    )
+    parser.add_argument(
+        "--init-noise-ratio",
+        type=float,
+        default=0.6,
+        help="Ratio of noise and content image interpolation while initializing generated image.",
     )
     parser.add_argument(
         "--style-layer-inds",
@@ -331,19 +380,10 @@ def _test():
         train_it_num=args.train_it_num,
         style_weights=style_weights,
         style_rel_weight=args.style_rel_weight,
+        init_noise_ratio=args.init_noise_ratio,
     )
 
-    cur_dir_path = os.path.dirname(os.path.realpath(__file__))
-    output_dir_path = os.path.join(cur_dir_path, "output")
-
-    try:
-        os.mkdir(output_dir_path)
-        print(f"Created ouput directory: {output_dit_path}")
-
-    except FileExistsError:
-        pass
-
-    imageio.imsave(os.path.join(output_dir_path, "test.jpg"), generated_img)
+    save_generated_img(generated_img, args.output_name, args.output_format)
 
 
 if __name__ == "__main__":
