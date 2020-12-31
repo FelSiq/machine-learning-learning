@@ -75,7 +75,7 @@ def hook_extract_activation_fn(act_container: t.List[torch.Tensor], l_ind: int):
         if len(act_container) <= l_ind:
             act_container.extend((l_ind - len(act_container) + 1) * [None])
 
-        act_container[l_ind] = output.detach()
+        act_container[l_ind] = output
 
     return hook
 
@@ -121,8 +121,9 @@ def get_model(
     device: str,
 ) -> nn.ParameterList:
     # Note: load VGG16 pretrained model
-    model = torchvision.models.vgg16(pretrained=True).features
+    model = torchvision.models.vgg16(pretrained=True)
     model.eval()
+    model = model.features
     model = model.to(device)
 
     # Note: cast user-defined conv layer indices to real conv layer indices
@@ -191,6 +192,7 @@ def train(
     train_it_num: int,
     style_weights: t.List[float],
     style_rel_weight: float = 4.0,
+    it_to_print: int = 100,
 ) -> torch.Tensor:
     assert np.isclose(1.0, sum(style_weights)), "Style weights do not sum to 1.0"
     assert style_rel_weight >= 0.0, "Style relative weight must be non-negative"
@@ -200,7 +202,6 @@ def train(
     optim = torch.optim.Adam([generated_img], lr=2.0)
 
     for i in np.arange(1, 1 + train_it_num):
-        print(f"Iteration: {i} / {train_it_num}")
         optim.zero_grad()
 
         # Note: the actual output does not matter since the activations
@@ -216,8 +217,12 @@ def train(
             style_rel_weight=style_rel_weight,
         )
 
-        loss.backward()
+        loss.backward(retain_graph=True)
+        nn.utils.clip_grad_norm_(generated_img, max_norm=2.0)
         optim.step()
+
+        if it_to_print > 0 and i % it_to_print == 0:
+            print(f"Iteration: {i} / {train_it_num} - loss: {loss.item():.4f}")
 
     return generate_output_img(generated_img)
 
@@ -234,7 +239,7 @@ def _test():
         "--train-it-num",
         type=int,
         nargs=1,
-        default=10,
+        default=3000,
         help="Number of training iterations.",
     )
     parser.add_argument(
