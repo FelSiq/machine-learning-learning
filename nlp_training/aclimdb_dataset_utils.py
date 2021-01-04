@@ -16,16 +16,29 @@ class IterableDataset(torch.utils.data.IterableDataset):
         self.seed = 16
 
     def __iter__(self):
-        # worker_info = torch.utils.data.get_worker_info()
-        random.seed(self.seed)
-        random.shuffle(self.X)
+        worker_info = torch.utils.data.get_worker_info()
 
-        random.seed(self.seed)
-        random.shuffle(self.y)
+        if worker_info is None:
+            random.seed(self.seed)
+            random.shuffle(self.X)
 
-        self.seed += 1
+            random.seed(self.seed)
+            random.shuffle(self.y)
 
-        return iter(zip(self.X, self.y))
+            self.seed += 1
+
+            return iter(zip(self.X, self.y))
+
+        total_size = len(self.X)
+
+        batch_per_worker = (
+            total_size + worker_info.num_workers - 1
+        ) // worker_info.num_workers
+
+        ind_start = batch_per_worker * worker_info.id
+        ind_end = min(ind_start + batch_per_worker, len(self.X))
+
+        return iter(zip(self.X[ind_start:ind_end], self.y[ind_start:ind_end]))
 
     def __len__(self):
         return len(self.X)

@@ -21,6 +21,11 @@ class Model(nn.Module):
     ):
         super(Model, self).__init__()
 
+        self._num_directions = 1 + int(bidirectional)
+        self._num_layers = num_layers
+        self._rnn_hidden_size = rnn_hidden_size
+        self._dense_size = self._num_directions * rnn_hidden_size
+
         self.embed = nn.Embedding(vocab_size, embed_dim)
 
         self.lstm = nn.LSTM(
@@ -32,13 +37,31 @@ class Model(nn.Module):
             dropout=dropout if num_layers > 1 else 0.0,
         )
 
-        self.dense = nn.Linear(rnn_hidden_size, 1)
+        self.dense = nn.Linear(self._dense_size, 1)
 
     def forward(self, X, X_orig_lens: t.Sequence[int]):
         out = self.embed(X)
+
+        # Shape: (num_layers * num_directions, batch, hidden_size)
         _, (out, _) = self.lstm(out)
-        out = out.squeeze()
+
+        # Shape: (num_layers, num_directions, batch, hidden_size)
+        out = out.view(
+            self._num_layers, self._num_directions, -1, self._rnn_hidden_size
+        )
+
+        # Shape: (num_directions, batch, hidden_size)
+        out = out[-1]
+
+        # Shape: (batch, num_directions * hidden_size)
+        if self._num_directions > 1:
+            out = out.permute(1, 0, 2).reshape(-1, self._dense_size)
+
+        else:
+            out = out.squeeze()
+
         out = self.dense(out)
+
         return out
 
 
@@ -80,10 +103,10 @@ def _test():
     model = Model(
         vocab_size=len(vocab),
         embed_dim=64,
-        rnn_hidden_size=128,
+        rnn_hidden_size=64,
         num_layers=1,
-        dropout=0.0,
-        bidirectional=False,
+        dropout=0.1,
+        bidirectional=True,
     )
 
     try:
