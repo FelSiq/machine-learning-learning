@@ -104,10 +104,10 @@ def _test():
 
     model = Model(
         vocab_size=len(vocab),
-        embed_dim=32,
+        embed_dim=16,
         rnn_hidden_size=64,
         num_layers=1,
-        dropout=0.4,
+        dropout=0.5,
         bidirectional=True,
     )
 
