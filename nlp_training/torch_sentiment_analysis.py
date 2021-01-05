@@ -27,8 +27,7 @@ class Model(nn.Module):
         self._dense_size = self._num_directions * rnn_hidden_size
 
         self.embed = nn.Embedding(vocab_size, embed_dim)
-
-        self.lstm = nn.LSTM(
+        self.rnn = nn.LSTM(
             embed_dim,
             rnn_hidden_size,
             num_layers=num_layers,
@@ -36,16 +35,19 @@ class Model(nn.Module):
             batch_first=True,
             dropout=dropout if num_layers > 1 else 0.0,
         )
-
         self.dropout = nn.Dropout(dropout, inplace=True)
-
         self.dense = nn.Linear(self._dense_size, 1)
 
     def forward(self, X, X_orig_lens: t.Sequence[int]):
         out = self.embed(X)
 
         # Shape: (num_layers * num_directions, batch, hidden_size)
-        _, (out, _) = self.lstm(out)
+        _, out = self.rnn(out)
+
+        if isinstance(self.rnn, nn.LSTM):
+            # Note: LSTM outputs both hidden state cell and cell states
+            # GRUs outputs only a single tensor.
+            out = out[0]
 
         # Shape: (num_layers, num_directions, batch, hidden_size)
         out = out.view(
@@ -63,9 +65,7 @@ class Model(nn.Module):
             out = out.squeeze()
 
         out = self.dropout(out)
-
         out = self.dense(out)
-
         return out
 
 
@@ -141,6 +141,7 @@ def _test():
             y_preds = model(X_batch, X_orig_lens).squeeze()
             loss = criterion(y_preds, y_batch)
             loss.backward()
+            nn.utils.clip_grad_value_(model.parameters(), 1.0)
             optim.step()
 
             with torch.no_grad():
