@@ -2,6 +2,7 @@ import typing as t
 import os
 import pickle
 import random
+import collections
 
 import torch
 import torch.nn as nn
@@ -44,18 +45,30 @@ class IterableDataset(torch.utils.data.IterableDataset):
         return len(self.X)
 
 
-def get_vocab(base_dir_path: str, unk_token: str = "<UNK>", pad_token: str = "<PAD>"):
+def get_vocab(
+    X: t.Sequence[t.Sequence[str]],
+    stop_words: t.Set[str],
+    unk_token: str = "<UNK>",
+    pad_token: str = "<PAD>",
+    min_freq_count: int = 2,
+):
+    freqs = collections.Counter()
+
+    for x in X:
+        freqs.update(map(str.lower, x))
+
+    unique_tokens = sorted(
+        [k for k, v in freqs.items() if v >= min_freq_count and k not in stop_words]
+    )
+
     vocab = dict()
     vocab[pad_token] = 0
     vocab[unk_token] = 1
 
-    with open(os.path.join(base_dir_path, "imdb.vocab")) as f:
-        unique_tokens = set(f.read().strip().split("\n"))
-
     vocab.update(
         zip(
-            sorted(unique_tokens),
-            range(1 + len(vocab), 1 + len(vocab) + len(unique_tokens)),
+            unique_tokens,
+            range(len(vocab), len(vocab) + len(unique_tokens)),
         )
     )
 
@@ -78,51 +91,45 @@ def load_dir(base_dir_path: str, train: bool):
     return X, y
 
 
-def preprocess_data(verbose: bool = True):
+def preprocess_sentence(
+    tokens: t.Sequence[str], vocab, stop_words: t.Set[str]
+) -> t.Sequence[str]:
+    new_sentence = [
+        vocab.get(token.lower(), vocab["<UNK>"])
+        for token in tokens
+        if token not in stop_words
+    ]
+    return new_sentence
+
+
+def preprocess_sentences(
+    X: t.Sequence[t.Sequence[str]], y: t.Sequence[t.Any], vocab, stop_words: t.Set[str]
+):
+    for i, tokens in enumerate(X):
+        X[i] = preprocess_sentence(tokens, vocab, stop_words)
+
+    # Note: remove possibly empty instances
+    i = 0
+
+    while i < len(X):
+        if not X[i]:
+            X.pop(i)
+            y.pop(i)
+
+        else:
+            i += 1
+
+
+def preprocess_data(
+    remove_stop_words: bool = False,
+    verbose: bool = True,
+    mix_test_in_train_frac: float = 0.0,
+):
     script_dir = os.path.dirname(os.path.realpath(__file__))
     base_dir_path = os.path.join(script_dir, "corpus/aclImdb")
 
-    vocab = get_vocab(base_dir_path)
-
     X_train, y_train = load_dir(base_dir_path, train=True)
     X_eval, y_eval = load_dir(base_dir_path, train=False)
-
-    if verbose:
-        print(f"Got {len(vocab)} tokens in vocab file.")
-        print(f"Train dataset size: {len(X_train)}.")
-        print(f"Test dataset size : {len(X_eval)}.")
-
-    for tokens in X_train:
-        for j, token in enumerate(tokens):
-            tokens[j] = vocab.get(token, vocab["<UNK>"])
-
-    for tokens in X_eval:
-        for j, token in enumerate(tokens):
-            tokens[j] = vocab.get(token, vocab["<UNK>"])
-
-    res = (X_train, y_train, X_eval, y_eval, vocab)
-
-    out_path = os.path.join(script_dir, "corpus", "aclimdb_preprocessed.pickle")
-
-    with open(out_path, "wb") as fout:
-        pickle.dump(res, fout)
-
-    print(f"Crated output .pickle file with preprocessed data: {out_path}")
-
-
-def get_data(
-    device: str,
-    max_len_train: t.Optional[int] = None,
-    max_len_eval: t.Optional[int] = None,
-    mix_test_in_train_frac: float = 0.0,
-    verbose: bool = True,
-):
-    script_dir = os.path.dirname(os.path.realpath(__file__))
-
-    with open(
-        os.path.join(script_dir, "corpus", "aclimdb_preprocessed.pickle"), "rb"
-    ) as fin:
-        X_train, y_train, X_eval, y_eval, vocab = pickle.load(fin)
 
     random.seed(16)
     random.shuffle(X_train)
@@ -140,6 +147,51 @@ def get_data(
 
         X_eval = X_eval[size:]
         y_eval = y_eval[size:]
+
+    if remove_stop_words:
+        stop_words = set(nltk.corpus.stopwords.words("english"))
+        if verbose:
+            print("Will remove stop words.")
+
+    else:
+        stop_words = set()
+
+    vocab = get_vocab(X_train, stop_words)
+
+    if verbose:
+        print(f"Got {len(vocab)} tokens in vocab file.")
+        print(f"Train dataset size : {len(X_train)}.")
+        print(f"Test dataset size  : {len(X_eval)}.")
+
+    preprocess_sentences(X_train, y_train, vocab, stop_words)
+    preprocess_sentences(X_eval, y_eval, vocab, stop_words)
+
+    if verbose:
+        print(f"Train dataset size after preprocessing : {len(X_train)}.")
+        print(f"Test dataset size after preprocessing  : {len(X_eval)}.")
+
+    res = (X_train, y_train, X_eval, y_eval, vocab)
+
+    out_path = os.path.join(script_dir, "corpus", "aclimdb_preprocessed.pickle")
+
+    with open(out_path, "wb") as fout:
+        pickle.dump(res, fout)
+
+    print(f"Crated output .pickle file with preprocessed data: {out_path}")
+
+
+def get_data(
+    device: str,
+    max_len_train: t.Optional[int] = None,
+    max_len_eval: t.Optional[int] = None,
+    verbose: bool = True,
+):
+    script_dir = os.path.dirname(os.path.realpath(__file__))
+
+    with open(
+        os.path.join(script_dir, "corpus", "aclimdb_preprocessed.pickle"), "rb"
+    ) as fin:
+        X_train, y_train, X_eval, y_eval, vocab = pickle.load(fin)
 
     if max_len_train is not None:
         X_train = X_train[:max_len_train]
@@ -190,4 +242,5 @@ def get_data(
 
 
 if __name__ == "__main__":
-    preprocess_data()
+    nltk.download("stopwords")
+    preprocess_data(remove_stop_words=True, mix_test_in_train_frac=0.75)

@@ -100,12 +100,7 @@ def _test():
     train_epochs = 5
     checkpoint_path = "model_torch_sentiment_analysis.pt"
 
-    gen_train, gen_eval, vocab = aclimdb_dataset_utils.get_data(
-        device,
-        max_len_train=None,
-        max_len_eval=None,
-        mix_test_in_train_frac=0.75,
-    )
+    gen_train, gen_eval, vocab = aclimdb_dataset_utils.get_data(device)
 
     model = Model(
         vocab_size=len(vocab),
