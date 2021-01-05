@@ -114,6 +114,8 @@ def get_data(
     device: str,
     max_len_train: t.Optional[int] = None,
     max_len_eval: t.Optional[int] = None,
+    mix_test_in_train_frac: float = 0.0,
+    verbose: bool = True,
 ):
     script_dir = os.path.dirname(os.path.realpath(__file__))
 
@@ -130,6 +132,15 @@ def get_data(
     random.shuffle(y_train)
     random.shuffle(y_eval)
 
+    if mix_test_in_train_frac > 0.0:
+        size = int(mix_test_in_train_frac * len(X_eval))
+
+        X_train.extend(X_eval[:size])
+        y_train.extend(y_eval[:size])
+
+        X_eval = X_eval[size:]
+        y_eval = y_eval[size:]
+
     if max_len_train is not None:
         X_train = X_train[:max_len_train]
         y_train = y_train[:max_len_train]
@@ -137,6 +148,13 @@ def get_data(
     if max_len_eval is not None:
         X_eval = X_eval[:max_len_eval]
         y_eval = y_eval[:max_len_eval]
+
+    if verbose:
+        print("Train data size :", len(X_train))
+        print("Eval data size  :", len(X_eval))
+
+    assert len(X_train) == len(y_train)
+    assert len(X_eval) == len(y_eval)
 
     def collate_pad_seqs_fn(batch):
         X_batch, y_batch = zip(*batch)
