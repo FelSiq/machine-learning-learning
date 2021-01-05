@@ -17,7 +17,7 @@ class Model(nn.Module):
         rnn_hidden_size: int,
         num_layers: int,
         dropout: float = 0.0,
-        bidirectional: bool = False,
+        bidirectional: bool = True,
     ):
         super(Model, self).__init__()
 
@@ -36,6 +36,8 @@ class Model(nn.Module):
             batch_first=True,
             dropout=dropout if num_layers > 1 else 0.0,
         )
+
+        self.dropout = nn.Dropout(dropout, inplace=True)
 
         self.dense = nn.Linear(self._dense_size, 1)
 
@@ -59,6 +61,8 @@ class Model(nn.Module):
 
         else:
             out = out.squeeze()
+
+        out = self.dropout(out)
 
         out = self.dense(out)
 
@@ -97,15 +101,18 @@ def _test():
     checkpoint_path = "model_torch_sentiment_analysis.pt"
 
     gen_train, gen_eval, vocab = aclimdb_dataset_utils.get_data(
-        device, max_len_train=None, max_len_eval=None
+        device,
+        max_len_train=None,
+        max_len_eval=None,
+        mix_test_in_train_frac=0.75,
     )
 
     model = Model(
         vocab_size=len(vocab),
-        embed_dim=64,
+        embed_dim=32,
         rnn_hidden_size=64,
         num_layers=1,
-        dropout=0.1,
+        dropout=0.4,
         bidirectional=True,
     )
 
