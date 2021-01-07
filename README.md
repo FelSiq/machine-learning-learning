@@ -1,9 +1,9 @@
-# A personal repository to keep my Machine Learning study code
+# My personal repository to keep my Machine Learning study code
 In this repository I keep all my relevant code related to my machine learning and data science studies for future reference.
 
 All code here were made for the sake of practice.
 
-# Useful links that I used to study and I think that they lead to very good materials
+# Useful links that I studied and I think that lead to very good materials
 Here I will compile several links that lead to free materials available online that I used to study machine learning, data science and some basic pre-requisites such as advanced math-related topics. If a link is in this list, them it is because I believe that it was worth my time taking the course and reading the material.
 
 There are many, many, many more left out here in the wild, but the main purpose of this list is to keep only courses that I truly completed from the start to the end.
