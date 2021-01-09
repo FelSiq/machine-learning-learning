@@ -6,14 +6,14 @@ All code here were made for the sake of practice.
 # Useful links that I studied and I think that lead to very good materials
 Here I will compile several links that lead to free materials available online that I used to study machine learning, data science and some basic pre-requisites such as advanced math-related topics. If a link is in this list, them it is because I believe that it was worth my time taking the course and reading the material.
 
-There are many, many, many more left out here in the wild, but the main purpose of this list is to keep only courses that I truly completed from the start to the end.
+There are many, many, many more left out here in the wild, but the main purpose of this list is to keep only courses that I truly completed from the start until the end.
 
-At the end of this Readme I will build a list with links that lead to very interesting courses that I have not taken so far and I may take in the future.
+At the end of this Readme I will build a list with links that lead to very interesting courses that I have not taken so far but I may take in the future.
 
 ## Full courses that I recommend
 
 ### Math
-1. [MIT 18.06 Linear Algebra Course by Gilbert Strang](https://ocw.mit.edu/courses/mathematics/18-06-linear-algebra-spring-2010/index.htm)
+1. [MIT 18.06 Linear Algebra](https://ocw.mit.edu/courses/mathematics/18-06-linear-algebra-spring-2010/index.htm)
 	- Resources: Video Lectures, Assigments (with solutions), Exams (with solutions)
 	- Instructor: Gilbert Strang
 	- Taught in: 2010
@@ -37,7 +37,7 @@ At the end of this Readme I will build a list with links that lead to very inter
 
 ### Machine Learning
 1. [Stanford CS229 Machine Learning](http://cs229.stanford.edu/)
-	- Resources: [Video Lectures (2018)](https://www.youtube.com/playlist?list=PLoROMvodv4rMiGQp3WXShtMGgzqpfVfbU), Assignments (no solutions, depends the year offered), Exams (no solutions, depends of the year offered), Course Notes
+	- Resources: [Video Lectures (2018)](https://www.youtube.com/playlist?list=PLoROMvodv4rMiGQp3WXShtMGgzqpfVfbU), Assignments (no solutions, depends the year offered), Exams (no solutions, and also depends on the year offered), Course Notes
 	- Instructor: Andrew Ng
 	- Taught in: every year.
 
@@ -48,16 +48,16 @@ At the end of this Readme I will build a list with links that lead to very inter
 
 3. [Stanford CS231n Convolutional Neural Networks for Visual Recognition](http://cs231n.stanford.edu/)
 	- Resources: [Video Lectures (2017)](https://www.youtube.com/playlist?list=PL3FW7Lu3i5JvHM8ljYj-zLfQRF3EO8sYv), Assignments (no solutions), Course Notes
-	- Instructor: Many.
+	- Instructor: Many (Fei-fei Li, Justin Johnson and Serena Young in 2017's lectures)
 	- Taught in: every year.
 
 4. [UCL COMPM050/COMPGI13 Introduction to Reinforcement Learning](https://www.davidsilver.uk/teaching/)
-	- Resources: Video Lectures, Single Assignment, Single Exam (with solutions)
+	- Resources: Video Lectures, Single Assignment (no solution), Single Exam (with solutions)
 	- Instructor: David Silver
 	- Taught in: 2015
 
 5. [Stanford CS234 Reinforcement Learning](https://www.youtube.com/playlist?list=PLoROMvodv4rOSOPzutgyCTapiGlY2Nd8u)
-	- Resources: Video Lecture. The lecture notes and assignments (no solutions) were previously available in the Stanford website, but I can not find those anymore. Maybe with some luck you can still find somewhere...
+	- Resources: Video Lectures. The lecture notes and assignments (no solutions) were previously available in the Stanford website, but I can not find those anymore. Maybe with some luck you can still find somewhere...
 	- Instructor: Emma Brunskill
 	- Taught in: 2019
 
@@ -70,7 +70,7 @@ At the end of this Readme I will build a list with links that lead to very inter
 	- Instructor and main Assistants: Sharon Zhou, Eda Zhou, Eric Zelikman.
 
 8. [Coursera Natural Language Processing Specialization](https://www.coursera.org/learn/attention-models-in-nlp/home/info)
-	- Resources: 4 full courses (with 4 weeks each) about using Statistical Modeals and Machine Learning with text data.
+	- Resources: 4 full courses (with 4 weeks each) about using Statistical Models, Traditional Machine Learning and Deep Learning with text/sequential data.
 	- Instructor and main Assistants: Younes Bensouda Mourri, Łukasz Kaiser, Eddy Shyu.
 
 
@@ -113,7 +113,7 @@ At the end of this Readme I will build a list with links that lead to very inter
 ## Full courses that I haven't taken (until now), but I'm willing to take some time
 1. [Stanford CS230 Deep Learning](https://cs230.stanford.edu/)
 	- Resources: Video Lectures, Links to related papers, Slides.
-	- Instructors: Andre Ng and Kian Katanforoosh
+	- Instructors: Andrew Ng and Kian Katanforoosh
 	- Taught in: every year.
 
 2. [UC Berkeley CS 285 Deep Reinforcement Learning](http://rail.eecs.berkeley.edu/deeprlcourse/)
