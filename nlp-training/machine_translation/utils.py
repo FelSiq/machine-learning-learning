@@ -1,12 +1,12 @@
 import typing as t
 import random
 import functools
-import itertools
 
 import csv
 import sentencepiece
 import pandas as pd
 import torch
+import torch.nn as nn
 
 
 InstType = t.Union[torch.Tensor, t.List[int]]
@@ -18,6 +18,7 @@ class IterableDataset(torch.utils.data.IterableDataset):
         datagen,
         tokenizer_en: sentencepiece.SentencePieceProcessor,
         tokenizer_fi: sentencepiece.SentencePieceProcessor,
+        max_sentence_len: int = 256,
     ):
         super(IterableDataset, self).__init__()
 
@@ -26,16 +27,22 @@ class IterableDataset(torch.utils.data.IterableDataset):
         self._seed = 0
         self._tokenizer_en = tokenizer_en
         self._tokenizer_fi = tokenizer_fi
+        self._max_sentence_len = max_sentence_len
 
     def __iter__(self):
-        batch = next(self.datagen)
-        batch = self._process_batch(batch)
+        def _iter():
+            for batch in self.datagen:
+                batch = self._process_batch(batch)
 
-        random.seed(self._seed)
-        random.shuffle(batch)
-        self._seed += 1
+                random.seed(self._seed)
+                random.shuffle(batch)
+                self._seed = (self._seed + 1) % int(1e7)
 
-        return iter(batch)
+                for inst in batch:
+                    if len(inst) <= self._max_sentence_len:
+                        yield inst
+
+        return _iter()
 
     def __len__(self):
         return len(self.data)
@@ -63,7 +70,7 @@ class IterableDataset(torch.utils.data.IterableDataset):
     def _process_batch(self, batch) -> t.List[t.Tuple[InstType, InstType]]:
         processed_batch = []  # type: t.List[t.Tuple[t.List[int], t.List[int]]]
 
-        for s_en, s_fi in batch:
+        for i, (s_en, s_fi) in batch.iterrows():
             s_en_enc = self._process_sentence(
                 s_en, self._tokenizer_en, append_eos=True, append_bos=False
             )
@@ -128,13 +135,17 @@ def get_data_stream(
     filepath: str,
     tokenizer_en: sentencepiece.SentencePieceProcessor,
     tokenizer_fi: sentencepiece.SentencePieceProcessor,
+    batch_size: int,
     max_dataset_size: t.Optional[int] = None,
+    max_sentence_len: int = 256,
 ):
     data = load_data_from_file(
         filepath, max_dataset_size=max_dataset_size, chunksize=512
     )
 
-    dataset = IterableDataset(data, tokenizer_en, tokenizer_fi)
+    dataset = IterableDataset(
+        data, tokenizer_en, tokenizer_fi, max_sentence_len=max_sentence_len
+    )
 
     collate_fn = functools.partial(pre_collate_fn, pad_id=tokenizer_en.pad_id())
 
@@ -142,4 +153,4 @@ def get_data_stream(
         dataset, batch_size=batch_size, collate_fn=collate_fn
     )
 
-    return itertools.cycle(datagen)
+    return datagen
