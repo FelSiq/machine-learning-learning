@@ -1,7 +1,6 @@
 """
 TODO:
 - model Evalutation
-- Shift right in target in forward to enable teacher forcing procedure
 - Output decodification
 """
 import typing as t
@@ -112,14 +111,25 @@ class FiEnTranslator(nn.Module):
         out, _ = self.decoder_lstm(out)
         out = self.dense(out)
 
-        # Note: change seq dimension <-> batch dimension
-        # out = torch.transpose(out, 1, 0)
-
         return out
 
 
+def calc_acc(preds: torch.Tensor, true: torch.Tensor, pad_id: int) -> float:
+    with torch.no_grad():
+        # Note: select only non-pad tokens
+        mask = true != pad_id
+
+        total_correct = (
+            torch.masked_select(preds.argmax(dim=1) == true, mask).sum().item()
+        )
+        total_valid_tokens = mask.sum().item()
+        acc = total_correct / total_valid_tokens
+
+    return acc
+
+
 def _test():
-    train_epochs = 2
+    train_epochs = 10
     checkpoint_path = "checkpoint.pt"
     batch_size = 4
     device = "cuda"
@@ -180,6 +190,8 @@ def _test():
             sent_source_lens,
             sent_target_lens,
         ) in tqdm.auto.tqdm(train_datagen, total=epoch_batches_num):
+            optim.zero_grad()
+
             sent_target_preds = model(sent_source_batch, sent_target_batch)
 
             sent_target_preds = sent_target_preds.view(-1, vocab_size_target)
@@ -189,9 +201,15 @@ def _test():
             loss.backward()
             optim.step()
 
+            train_acc += calc_acc(
+                sent_target_preds, sent_target_batch, tokenizer_fi.pad_id()
+            )
+
+        train_acc /= epoch_batches_num
+
         model.eval()
         print(f"Train acc : {train_acc:.4f}")
-        print(f"Eval acc  : {eval_acc:.4f}")
+        # print(f"Eval acc  : {eval_acc:.4f}")
 
     # torch.save(model.state_dict(), checkpoint_path)
     print("Done.")
