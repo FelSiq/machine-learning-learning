@@ -1,0 +1,4 @@
+sentencepiece
+torch
+pandas
+tqdm
