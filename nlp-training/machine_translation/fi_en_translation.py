@@ -4,6 +4,7 @@ TODO:
 - Output decodification
 """
 import typing as t
+import functools
 
 import tqdm
 import torch
@@ -83,18 +84,47 @@ def calc_acc(preds: torch.Tensor, true: torch.Tensor, pad_id: int) -> float:
 def _test():
     train_epochs = 10
     checkpoint_path = "checkpoint.pt"
-    batch_size = 4
+    batch_size_train = 4
+    batch_size_eval = 4
     device = "cuda"
+    max_sentence_len_train = 256
+    max_sentence_len_eval = 256
 
-    tokenizer_en = sentencepiece.SentencePieceProcessor(model_file="vocab/en_bpe.model")
-    tokenizer_fi = sentencepiece.SentencePieceProcessor(model_file="vocab/fi_bpe.model")
+    train_size = 7196119
+    eval_size = 72689
+    train_size = 1024
+    eval_size = 32
+
+    tokenizer_en = sentencepiece.SentencePieceProcessor(
+        model_file="./vocab/en_bpe.model"
+    )
+    tokenizer_fi = sentencepiece.SentencePieceProcessor(
+        model_file="./vocab/fi_bpe.model"
+    )
 
     vocab_size_source = tokenizer_fi.vocab_size()
     vocab_size_target = tokenizer_en.vocab_size()
 
-    datagen_train = get_data_stream("en-fi-train.txt", 1024)
-    datagen_eval = get_data_stream("en-fi-eval.txt", 64)
-    epoch_batches_num = (len(dataset) + batch_size - 1) // batch_size  # TODO: fix this.
+    datagen_train = functools.partial(
+        utils.get_data_stream,
+        filepath="./corpus/en-fi-train.txt",
+        tokenizer_en=tokenizer_en,
+        tokenizer_fi=tokenizer_fi,
+        batch_size=batch_size_train,
+        max_dataset_size=train_size,
+        max_sentence_len=max_sentence_len_train,
+    )
+    datagen_eval = functools.partial(
+        utils.get_data_stream,
+        filepath="./corpus/en-fi-eval.txt",
+        tokenizer_en=tokenizer_en,
+        tokenizer_fi=tokenizer_fi,
+        batch_size=batch_size_eval,
+        max_dataset_size=eval_size,
+        max_sentence_len=max_sentence_len_eval,
+    )
+
+    epoch_batches_num = (train_size + batch_size_train - 1) // batch_size_train
 
     model = FiEnTranslator(
         vocab_size_source=vocab_size_source,
@@ -128,7 +158,7 @@ def _test():
             sent_target_batch,
             sent_source_lens,
             sent_target_lens,
-        ) in tqdm.auto.tqdm(train_datagen, total=epoch_batches_num):
+        ) in tqdm.auto.tqdm(datagen_train(), total=epoch_batches_num):
             optim.zero_grad()
 
             sent_source_batch = sent_source_batch.to(device)
@@ -146,6 +176,10 @@ def _test():
             train_acc += calc_acc(
                 sent_target_preds, sent_target_batch, tokenizer_fi.pad_id()
             )
+
+            del sent_source_batch
+            del sent_target_batch
+            del sent_target_preds
 
         train_acc /= epoch_batches_num
 
