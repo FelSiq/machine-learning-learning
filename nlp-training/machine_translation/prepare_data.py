@@ -24,7 +24,7 @@ def split_train_eval_sets(train_frac: float = 0.99):
     del train_size
 
 
-def create_byte_pair_encoding_vocab(max_sentences: int = int(4e6)):
+def create_byte_pair_encoding_vocab(max_sentences: int = int(3.5e6)):
     datagen = utils.load_data_from_file("corpus/en-fi-train.txt", max_sentences, None)
 
     datagen["en"].to_csv("corpus/en-only.txt", index=False, header=False)
@@ -53,13 +53,17 @@ if __name__ == "__main__":
     if os.path.isfile("corpus/en-fi-train.txt") and os.path.isfile(
         "corpus/en-fi-eval.txt"
     ):
-        print("Train/eval files found. Skipping data split.")
+        print("Train/eval files found, skipping data split.")
 
     else:
         print("Splitting data into train and evaluation files...")
         split_train_eval_sets()
         print("Done.")
 
-    print("Creating Byte Pair Encoding vocabulary using train files...")
-    create_byte_pair_encoding_vocab()
-    print("Done.")
+    if os.path.isfile("vocab/fi_bpe.model") and os.path.isfile("vocab/en_bpe.model"):
+        print("Byte Pair Encoding vocabulary files found, skipping this step.")
+
+    else:
+        print("Creating Byte Pair Encoding vocabulary using train files...")
+        create_byte_pair_encoding_vocab()
+        print("Done.")
