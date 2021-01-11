@@ -1,3 +1,9 @@
+"""
+TODO:
+- model Evalutation
+- Shift right in target in forward to enable teacher forcing procedure
+- Output decodification
+"""
 import typing as t
 import random
 import functools
@@ -21,6 +27,9 @@ class IterableDataset(torch.utils.data.IterableDataset):
         random.shuffle(self.data)
         self._seed += 1
         return iter(self.data)
+
+    def __len__(self):
+        return len(self.data)
 
 
 def pre_collate_fn(
@@ -56,8 +65,8 @@ def pre_collate_fn(
 class FiEnTranslator(nn.Module):
     def __init__(
         self,
-        input_vocab_size: int,
-        target_vocab_size: int,
+        vocab_size_source: int,
+        vocab_size_target: int,
         d_model: int,
         n_encoder_layers: int,
         n_decoder_layers: int,
@@ -67,12 +76,12 @@ class FiEnTranslator(nn.Module):
         super(FiEnTranslator, self).__init__()
 
         self.input_encoder = nn.Sequential(
-            nn.Embedding(input_vocab_size, d_model),
+            nn.Embedding(vocab_size_source, d_model),
             nn.LSTM(d_model, d_model, num_layers=n_encoder_layers),
         )
 
         self.pre_attention_decoder = nn.Sequential(
-            nn.Embedding(target_vocab_size, d_model),
+            nn.Embedding(vocab_size_target, d_model),
             nn.LSTM(d_model, d_model),
         )
 
@@ -80,7 +89,7 @@ class FiEnTranslator(nn.Module):
 
         self.decoder_lstm = nn.LSTM(d_model, d_model, num_layers=n_decoder_layers)
 
-        self.dense = nn.Linear(d_model, target_vocab_size)
+        self.dense = nn.Linear(d_model, vocab_size_target)
 
         self._pad_id = pad_id
 
@@ -112,24 +121,33 @@ class FiEnTranslator(nn.Module):
 def _test():
     train_epochs = 2
     checkpoint_path = "checkpoint.pt"
+    batch_size = 4
+    device = "cuda"
 
     tokenizer_en = sentencepiece.SentencePieceProcessor(model_file="vocab/en_bpe.model")
     tokenizer_fi = sentencepiece.SentencePieceProcessor(model_file="vocab/fi_bpe.model")
 
     data_train, data_eval = utils.get_train_eval_data(
-        tokenizer_en, tokenizer_fi, max_dataset_size=1024, chunksize=128
+        tokenizer_en,
+        tokenizer_fi,
+        max_dataset_size=1024,
+        chunksize=512,
+        device=device,
     )
 
     dataset = IterableDataset(data_train)
     collate_fn = functools.partial(pre_collate_fn, pad_id=tokenizer_en.pad_id())
 
     train_datagen = torch.utils.data.DataLoader(
-        dataset, batch_size=128, collate_fn=collate_fn
+        dataset, batch_size=batch_size, collate_fn=collate_fn
     )
 
+    vocab_size_source = tokenizer_fi.vocab_size()
+    vocab_size_target = tokenizer_en.vocab_size()
+
     model = FiEnTranslator(
-        input_vocab_size=32000,
-        target_vocab_size=32000,
+        vocab_size_source=vocab_size_source,
+        vocab_size_target=vocab_size_target,
         d_model=1024,
         n_encoder_layers=2,
         n_decoder_layers=2,
@@ -137,7 +155,7 @@ def _test():
         num_heads=4,
     )
     optim = torch.optim.Adam(model.parameters(), 0.01)
-    criterion = nn.CrossEntropyLoss()
+    criterion = nn.CrossEntropyLoss(ignore_index=tokenizer_fi.pad_id())
 
     try:
         model.load_state_dict(torch.load(checkpoint_path))
@@ -145,6 +163,10 @@ def _test():
 
     except FileNotFoundError:
         pass
+
+    model = model.to(device)
+
+    epoch_batches_num = (len(dataset) + batch_size - 1) // batch_size
 
     for epoch in range(1, 1 + train_epochs):
         print(f"Epoch: {epoch} / {train_epochs} ...")
@@ -157,9 +179,12 @@ def _test():
             sent_target_batch,
             sent_source_lens,
             sent_target_lens,
-        ) in tqdm.auto.tqdm(train_datagen):
+        ) in tqdm.auto.tqdm(train_datagen, total=epoch_batches_num):
             sent_target_preds = model(sent_source_batch, sent_target_batch)
-            print(sent_target_preds.shape, sent_target_batch.shape)
+
+            sent_target_preds = sent_target_preds.view(-1, vocab_size_target)
+            sent_target_batch = sent_target_batch.reshape(-1)
+
             loss = criterion(sent_target_preds, sent_target_batch)
             loss.backward()
             optim.step()
