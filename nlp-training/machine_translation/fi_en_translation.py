@@ -4,8 +4,6 @@ TODO:
 - Output decodification
 """
 import typing as t
-import random
-import functools
 
 import tqdm
 import torch
@@ -13,52 +11,6 @@ import torch.nn as nn
 import sentencepiece
 
 import utils
-
-
-class IterableDataset(torch.utils.data.IterableDataset):
-    def __init__(self, data: t.List[t.Tuple[utils.InstType, utils.InstType]]):
-        super(IterableDataset, self).__init__()
-        self.data = data
-        self._seed = 0
-
-    def __iter__(self):
-        random.seed(self._seed)
-        random.shuffle(self.data)
-        self._seed += 1
-        return iter(self.data)
-
-    def __len__(self):
-        return len(self.data)
-
-
-def pre_collate_fn(
-    batch: t.Tuple[t.List[torch.Tensor], t.List[torch.Tensor]], pad_id: int
-) -> t.Tuple[torch.Tensor, torch.Tensor, t.List[int], t.List[int]]:
-    sent_source_batch, sent_target_batch = zip(*batch)
-
-    sent_source_lens = list(map(len, sent_source_batch))
-    sent_target_lens = list(map(len, sent_target_batch))
-
-    batch_size = len(sent_source_batch)
-
-    # Note: concatenate all data in order to pad both batches to the same size
-    all_data = (*sent_source_batch, *sent_target_batch)
-
-    # Note: cast a list of tensors to a single 2-D tensor AND pad to
-    # the same length.
-    all_data = nn.utils.rnn.pad_sequence(
-        all_data,
-        padding_value=pad_id,
-        batch_first=True,
-    )
-    # Note: switch sequence length <-> batch dimension
-    all_data = torch.transpose(all_data, 1, 0)
-
-    # Note: separate the data into the original batches
-    sent_source_batch = all_data[:, :batch_size]
-    sent_target_batch = all_data[:, batch_size:]
-
-    return sent_source_batch, sent_target_batch, sent_source_lens, sent_target_lens
 
 
 class FiEnTranslator(nn.Module):
@@ -137,23 +89,12 @@ def _test():
     tokenizer_en = sentencepiece.SentencePieceProcessor(model_file="vocab/en_bpe.model")
     tokenizer_fi = sentencepiece.SentencePieceProcessor(model_file="vocab/fi_bpe.model")
 
-    data_train, data_eval = utils.get_train_eval_data(
-        tokenizer_en,
-        tokenizer_fi,
-        max_dataset_size=1024,
-        chunksize=512,
-        device=device,
-    )
-
-    dataset = IterableDataset(data_train)
-    collate_fn = functools.partial(pre_collate_fn, pad_id=tokenizer_en.pad_id())
-
-    train_datagen = torch.utils.data.DataLoader(
-        dataset, batch_size=batch_size, collate_fn=collate_fn
-    )
-
     vocab_size_source = tokenizer_fi.vocab_size()
     vocab_size_target = tokenizer_en.vocab_size()
+
+    datagen_train = get_data_stream("en-fi-train.txt", 1024)
+    datagen_eval = get_data_stream("en-fi-eval.txt", 64)
+    epoch_batches_num = (len(dataset) + batch_size - 1) // batch_size  # TODO: fix this.
 
     model = FiEnTranslator(
         vocab_size_source=vocab_size_source,
@@ -176,8 +117,6 @@ def _test():
 
     model = model.to(device)
 
-    epoch_batches_num = (len(dataset) + batch_size - 1) // batch_size
-
     for epoch in range(1, 1 + train_epochs):
         print(f"Epoch: {epoch} / {train_epochs} ...")
 
@@ -191,6 +130,9 @@ def _test():
             sent_target_lens,
         ) in tqdm.auto.tqdm(train_datagen, total=epoch_batches_num):
             optim.zero_grad()
+
+            sent_source_batch = sent_source_batch.to(device)
+            sent_target_batch = sent_target_batch.to(device)
 
             sent_target_preds = model(sent_source_batch, sent_target_batch)
 

@@ -1,5 +1,7 @@
 import typing as t
 import random
+import functools
+import itertools
 
 import csv
 import sentencepiece
@@ -10,11 +12,77 @@ import torch
 InstType = t.Union[torch.Tensor, t.List[int]]
 
 
+class IterableDataset(torch.utils.data.IterableDataset):
+    def __init__(
+        self,
+        datagen,
+        tokenizer_en: sentencepiece.SentencePieceProcessor,
+        tokenizer_fi: sentencepiece.SentencePieceProcessor,
+    ):
+        super(IterableDataset, self).__init__()
+
+        self.datagen = datagen
+
+        self._seed = 0
+        self._tokenizer_en = tokenizer_en
+        self._tokenizer_fi = tokenizer_fi
+
+    def __iter__(self):
+        batch = next(self.datagen)
+        batch = self._process_batch(batch)
+
+        random.seed(self._seed)
+        random.shuffle(batch)
+        self._seed += 1
+
+        return iter(batch)
+
+    def __len__(self):
+        return len(self.data)
+
+    @classmethod
+    def _process_sentence(
+        cls,
+        sentence: str,
+        tokenizer: sentencepiece.SentencePieceProcessor,
+        append_eos: bool,
+        append_bos: bool,
+    ) -> InstType:
+        sentence_enc = tokenizer.encode(sentence)
+
+        if append_eos:
+            sentence_enc.append(tokenizer.eos_id())
+
+        if append_bos:
+            sentence_enc.append(tokenizer.bos_id())
+
+        sentence_enc = torch.tensor(sentence_enc, dtype=torch.long)
+
+        return sentence_enc
+
+    def _process_batch(self, batch) -> t.List[t.Tuple[InstType, InstType]]:
+        processed_batch = []  # type: t.List[t.Tuple[t.List[int], t.List[int]]]
+
+        for s_en, s_fi in batch:
+            s_en_enc = self._process_sentence(
+                s_en, self._tokenizer_en, append_eos=True, append_bos=False
+            )
+            s_fi_enc = self._process_sentence(
+                s_fi, self._tokenizer_fi, append_eos=False, append_bos=True
+            )
+
+            processed_batch.append((s_fi_enc, s_en_enc))
+
+        return processed_batch
+
+
 def load_data_from_file(
-    max_dataset_size: t.Optional[int] = None, chunksize: t.Optional[int] = None
+    filepath: str,
+    max_dataset_size: t.Optional[int] = None,
+    chunksize: t.Optional[int] = None,
 ):
     datagen = pd.read_csv(
-        "corpus/en-fi.txt",
+        filepath,
         sep="\t",
         nrows=max_dataset_size,
         index_col=None,
@@ -26,117 +94,52 @@ def load_data_from_file(
     return datagen
 
 
-def process_sentence(
-    sentence: str,
-    tokenizer: sentencepiece.SentencePieceProcessor,
-    as_tensor: bool = False,
-    device: str = "cpu",
-) -> InstType:
-    sentence_enc = tokenizer.encode(sentence)
-    sentence_enc.append(tokenizer.eos_id())
+def pre_collate_fn(
+    batch: t.Tuple[t.List[torch.Tensor], t.List[torch.Tensor]], pad_id: int
+) -> t.Tuple[torch.Tensor, torch.Tensor, t.List[int], t.List[int]]:
+    sent_source_batch, sent_target_batch = zip(*batch)
 
-    if as_tensor:
-        sentence_enc = torch.tensor(sentence_enc, dtype=torch.long, device=device)
+    sent_source_lens = list(map(len, sent_source_batch))
+    sent_target_lens = list(map(len, sent_target_batch))
 
-    return sentence_enc
+    batch_size = len(sent_source_batch)
+
+    # Note: concatenate all data in order to pad both batches to the same size
+    all_data = (*sent_source_batch, *sent_target_batch)
+
+    # Note: cast a list of tensors to a single 2-D tensor AND pad to
+    # the same length.
+    all_data = nn.utils.rnn.pad_sequence(
+        all_data,
+        padding_value=pad_id,
+        batch_first=True,
+    )
+    # Note: switch sequence length <-> batch dimension
+    all_data = torch.transpose(all_data, 1, 0)
+
+    # Note: separate the data into the original batches
+    sent_source_batch = all_data[:, :batch_size]
+    sent_target_batch = all_data[:, batch_size:]
+
+    return sent_source_batch, sent_target_batch, sent_source_lens, sent_target_lens
 
 
-def get_data(
+def get_data_stream(
+    filepath: str,
     tokenizer_en: sentencepiece.SentencePieceProcessor,
     tokenizer_fi: sentencepiece.SentencePieceProcessor,
     max_dataset_size: t.Optional[int] = None,
-    chunksize: t.Optional[int] = None,
-    as_tensor: bool = False,
-    device: str = "cpu",
-    finnish_first: bool = True,
-) -> t.List[t.Tuple[InstType, InstType]]:
-    datagen = load_data_from_file(max_dataset_size, chunksize)
-
-    data = []  # type: t.List[t.Tuple[t.List[int], t.List[int]]]
-
-    for block in datagen:
-        for i, (s_en, s_fi) in block.iterrows():
-            s_en_enc = process_sentence(s_en, tokenizer_en, as_tensor, device)
-            s_fi_enc = process_sentence(s_fi, tokenizer_fi, as_tensor, device)
-
-            if finnish_first:
-                data.append((s_fi_enc, s_en_enc))
-
-            else:
-                data.append((s_en_enc, s_fi_enc))
-
-    return data
-
-
-def filter_by_length(sequences: t.List[t.Tuple[InstType, InstType]], max_seq_len: int):
-    i = 0
-    dropped = 0
-
-    while i < len(sequences):
-        seq_a, seq_b = sequences[i]
-
-        if max(len(seq_a), len(seq_b)) > max_seq_len:
-            sequences.pop(i)
-            dropped += 1
-
-        else:
-            i += 1
-
-    return dropped
-
-
-def get_train_eval_data(
-    tokenizer_en: sentencepiece.SentencePieceProcessor,
-    tokenizer_fi: sentencepiece.SentencePieceProcessor,
-    max_dataset_size: t.Optional[int] = None,
-    chunksize: t.Optional[int] = None,
-    train_frac: float = 0.99,
-    max_seq_len_train: int = 256,
-    max_seq_len_eval: int = 512,
-    random_seed: int = 16,
-    as_tensor: bool = True,
-    device: str = "cpu",
-    verbose: bool = True,
-) -> t.List[t.Tuple[InstType, InstType]]:
-    assert 0.0 <= train_frac <= 1.0
-
-    data = get_data(
-        tokenizer_en,
-        tokenizer_fi,
-        as_tensor=as_tensor,
-        max_dataset_size=max_dataset_size,
-        chunksize=chunksize,
-        device=device,
+):
+    data = load_data_from_file(
+        filepath, max_dataset_size=max_dataset_size, chunksize=512
     )
 
-    random.seed(random_seed)
-    random.shuffle(data)
+    dataset = IterableDataset(data, tokenizer_en, tokenizer_fi)
 
-    train_size = int(train_frac * len(data))
-    eval_size = len(data) - train_size
+    collate_fn = functools.partial(pre_collate_fn, pad_id=tokenizer_en.pad_id())
 
-    data_train = data[:train_size]
-    data_eval = data[train_size:]
+    datagen = torch.utils.data.DataLoader(
+        dataset, batch_size=batch_size, collate_fn=collate_fn
+    )
 
-    dropped_train = filter_by_length(data_train, max_seq_len_train)
-    dropped_eval = filter_by_length(data_eval, max_seq_len_eval)
-
-    if verbose:
-        print("Data information:")
-        print("Data type  :", type(data_train[0]))
-        print("Train size :", len(data_train))
-        print("Eval size  :", len(data_eval))
-        print(
-            f"Filtered {dropped_train} of {train_size} "
-            f"({100. * dropped_train / train_size:.2f}) "
-            f"train setences due to length (> {max_seq_len_train})."
-        )
-        print(
-            f"Filtered {dropped_eval} of {eval_size} "
-            f"({100. * dropped_eval / eval_size:.2f}) "
-            f"eval setences due to length (> {max_seq_len_eval})."
-        )
-
-    del data
-
-    return data_train, data_eval
+    return itertools.cycle(datagen)
