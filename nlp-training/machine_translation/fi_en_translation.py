@@ -1,6 +1,6 @@
 """
 TODO:
-- model Evalutation
+- Model evalutation
 - Output decodification
 """
 import typing as t
@@ -82,7 +82,8 @@ def calc_acc(preds: torch.Tensor, true: torch.Tensor, pad_id: int) -> float:
 
 
 def _test():
-    train_epochs = 10
+    train_epochs = 2
+    epochs_per_checkpoint = 1
     checkpoint_path = "checkpoint.pt"
     batch_size_train = 4
     batch_size_eval = 4
@@ -92,7 +93,7 @@ def _test():
 
     train_size = 7196119
     eval_size = 72689
-    train_size = 1024
+    train_size = 10000
     eval_size = 32
 
     tokenizer_en = sentencepiece.SentencePieceProcessor(
@@ -184,11 +185,14 @@ def _test():
         train_acc /= epoch_batches_num
 
         model.eval()
+
         print(f"Train acc : {train_acc:.4f}")
         # print(f"Eval acc  : {eval_acc:.4f}")
 
-    # torch.save(model.state_dict(), checkpoint_path)
-    print("Done.")
+        if epoch % epochs_per_checkpoint == 0 or epoch == train_epochs:
+            print("Saving checkpoint...")
+            torch.save(model.state_dict(), checkpoint_path)
+            print("Done.")
 
 
 if __name__ == "__main__":
