@@ -1,5 +1,6 @@
 import os
 
+import csv
 import sentencepiece
 import pandas as pd
 
@@ -16,10 +17,20 @@ def split_train_eval_sets(train_frac: float = 0.99):
     print("Eval size      :", len(data) - train_size)
 
     data.iloc[:train_size, :].to_csv(
-        "./corpus/en-fi-train.txt", index=False, header=False
+        "./corpus/en-fi-train.txt",
+        index=False,
+        header=False,
+        quoting=csv.QUOTE_NONE,
+        quotechar="",
+        sep="\t",
     )
     data.iloc[train_size:, :].to_csv(
-        "./corpus/en-fi-eval.txt", index=False, header=False
+        "./corpus/en-fi-eval.txt",
+        index=False,
+        header=False,
+        quoting=csv.QUOTE_NONE,
+        quotechar="",
+        sep="\t",
     )
 
     del data
@@ -52,8 +63,8 @@ def create_byte_pair_encoding_vocab(max_sentences: int = int(3.5e6)):
 
 
 if __name__ == "__main__":
-    if os.path.isfile("corpus/en-fi-train.txt") and os.path.isfile(
-        "corpus/en-fi-eval.txt"
+    if os.path.isfile("./corpus/en-fi-train.txt") and os.path.isfile(
+        "./corpus/en-fi-eval.txt"
     ):
         print("Train/eval files found, skipping data split.")
 
