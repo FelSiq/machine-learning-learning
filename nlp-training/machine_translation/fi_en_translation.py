@@ -47,8 +47,8 @@ def pre_collate_fn(
     all_data = torch.transpose(all_data, 1, 0)
 
     # Note: separate the data into the original batches
-    sent_source_batch = all_data[:batch_size]
-    sent_target_batch = all_data[batch_size:]
+    sent_source_batch = all_data[:, :batch_size]
+    sent_target_batch = all_data[:, batch_size:]
 
     return sent_source_batch, sent_target_batch, sent_source_lens, sent_target_lens
 
@@ -88,16 +88,23 @@ class FiEnTranslator(nn.Module):
         sent_source_enc, _ = self.input_encoder(sent_source)
         sent_target_enc, _ = self.pre_attention_decoder(sent_target)
 
-        pad_mask = sent_source_enc != self._pad_id
+        pad_mask = torch.transpose(sent_source == self._pad_id, 1, 0)
 
-        out = self.attention_layer(
+        out, _ = self.attention_layer(
             query=sent_target_enc,
             key=sent_source_enc,
             value=sent_source_enc,
-            kesent_target_padding_mask=pad_mask,
+            key_padding_mask=pad_mask,
         )
+
+        # Note: skip connection
+        out = out + sent_target_enc
+
         out, _ = self.decoder_lstm(out)
         out = self.dense(out)
+
+        # Note: change seq dimension <-> batch dimension
+        # out = torch.transpose(out, 1, 0)
 
         return out
 
@@ -152,6 +159,7 @@ def _test():
             sent_target_lens,
         ) in tqdm.auto.tqdm(train_datagen):
             sent_target_preds = model(sent_source_batch, sent_target_batch)
+            print(sent_target_preds.shape, sent_target_batch.shape)
             loss = criterion(sent_target_preds, sent_target_batch)
             loss.backward()
             optim.step()

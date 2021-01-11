@@ -101,7 +101,8 @@ def get_train_eval_data(
         as_tensor=as_tensor,
         max_dataset_size=max_dataset_size,
         chunksize=chunksize,
-        device=device)
+        device=device,
+    )
 
     random.seed(random_seed)
     random.shuffle(data)

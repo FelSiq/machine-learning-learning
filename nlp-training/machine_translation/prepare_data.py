@@ -11,7 +11,7 @@ if __name__ == "__main__":
     datagen["fi"].to_csv("corpus/fi-only.txt", index=False, header=False)
 
     del datagen
-    
+
     sentencepiece.SentencePieceTrainer.train(
         input="corpus/en-only.txt",
         model_prefix="vocab/en_bpe",
