@@ -70,14 +70,19 @@ def get_data(
 
 def filter_by_length(sequences: t.List[t.Tuple[InstType, InstType]], max_seq_len: int):
     i = 0
+    dropped = 0
+
     while i < len(sequences):
         seq_a, seq_b = sequences[i]
 
         if max(len(seq_a), len(seq_b)) > max_seq_len:
             sequences.pop(i)
+            dropped += 1
 
         else:
             i += 1
+
+    return dropped
 
 
 def get_train_eval_data(
@@ -87,7 +92,7 @@ def get_train_eval_data(
     chunksize: t.Optional[int] = None,
     train_frac: float = 0.99,
     max_seq_len_train: int = 256,
-    max_seq_len_eval: int = 256,
+    max_seq_len_eval: int = 512,
     random_seed: int = 16,
     as_tensor: bool = True,
     device: str = "cpu",
@@ -108,18 +113,29 @@ def get_train_eval_data(
     random.shuffle(data)
 
     train_size = int(train_frac * len(data))
+    eval_size = len(data) - train_size
 
     data_train = data[:train_size]
     data_eval = data[train_size:]
 
-    filter_by_length(data_train, max_seq_len_train)
-    filter_by_length(data_eval, max_seq_len_eval)
+    dropped_train = filter_by_length(data_train, max_seq_len_train)
+    dropped_eval = filter_by_length(data_eval, max_seq_len_eval)
 
     if verbose:
         print("Data information:")
         print("Data type  :", type(data_train[0]))
         print("Train size :", len(data_train))
         print("Eval size  :", len(data_eval))
+        print(
+            f"Filtered {dropped_train} of {train_size} "
+            f"({100. * dropped_train / train_size:.2f}) "
+            f"train setences due to length (> {max_seq_len_train})."
+        )
+        print(
+            f"Filtered {dropped_eval} of {eval_size} "
+            f"({100. * dropped_eval / eval_size:.2f}) "
+            f"eval setences due to length (> {max_seq_len_eval})."
+        )
 
     del data
 
