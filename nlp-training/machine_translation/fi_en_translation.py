@@ -2,6 +2,8 @@
 TODO:
 - Model evalutation
 - Output decodification
+- Set up a learning rate warm-up + decay
+- Train with more data for more epochs and see what happens
 """
 import typing as t
 import functools
@@ -82,7 +84,7 @@ def calc_acc(preds: torch.Tensor, true: torch.Tensor, pad_id: int) -> float:
 
 
 def _test():
-    train_epochs = 2
+    train_epochs = 1
     epochs_per_checkpoint = 1
     checkpoint_path = "checkpoint.pt"
     batch_size_train = 4
@@ -93,7 +95,7 @@ def _test():
 
     train_size = 7196119
     eval_size = 72689
-    train_size = 10000
+    train_size = 20000
     eval_size = 32
 
     tokenizer_en = sentencepiece.SentencePieceProcessor(

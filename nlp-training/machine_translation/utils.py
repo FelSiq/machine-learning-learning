@@ -138,9 +138,15 @@ def get_data_stream(
     batch_size: int,
     max_dataset_size: t.Optional[int] = None,
     max_sentence_len: int = 256,
+    chunksize: int = 4096,
 ):
+    # Note: a big chunksize is better because it helps breaking possible
+    # sequence bias since we will be shuffling only example within the
+    # same data chunk.
     data = load_data_from_file(
-        filepath, max_dataset_size=max_dataset_size, chunksize=512
+        filepath,
+        max_dataset_size=max_dataset_size,
+        chunksize=chunksize,
     )
 
     dataset = IterableDataset(
