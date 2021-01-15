@@ -72,11 +72,11 @@ class FiEnTranslator(nn.Module):
 def calc_acc(
     preds: torch.Tensor,
     true: torch.Tensor,
-    pad_id: t.Optional[int] = None,
-    ignore_pad_ind: bool = False,
+    pad_id: t.Optional[int],
+    ignore_pad_id: bool,
 ) -> float:
     with torch.no_grad():
-        if ignore_pad_ind:
+        if ignore_pad_id:
             if pad_id is None:
                 raise TypeError("'ignore_pad_ind' is True but 'pad_id' is None.")
 
@@ -95,12 +95,127 @@ def calc_acc(
     return acc
 
 
+def calc_loss(model, sent_source_batch, sent_target_batch, criterion, device):
+    sent_source_batch = sent_source_batch.to(device)
+    sent_target_batch = sent_target_batch.to(device)
+
+    sent_target_preds = model(sent_source_batch, sent_target_batch)
+
+    # Note: shift to the left here in order to remove BOS.
+    sent_target_batch = sent_target_batch[1:, ...]
+    sent_target_preds = sent_target_preds[:-1, ...]
+
+    vocab_size_target = sent_target_preds.shape[-1]
+    sent_target_preds = sent_target_preds.view(-1, vocab_size_target)
+    sent_target_batch = sent_target_batch.reshape(-1)
+
+    loss = criterion(sent_target_preds, sent_target_batch)
+
+    return loss, sent_target_preds, sent_target_batch
+
+
+def run_train_epoch(
+    model,
+    optim,
+    criterion,
+    device,
+    datagen_train,
+    pad_id: t.Optional[int],
+    ignore_pad_id: bool,
+):
+    train_acc = total_train_loss = 0.0
+    total_epochs = 0
+
+    model.train()
+
+    for (
+        sent_source_batch,
+        sent_target_batch,
+        sent_source_lens,
+        sent_target_lens,
+    ) in datagen_train:
+        optim.zero_grad()
+
+        loss, sent_target_preds, sent_target_batch = calc_loss(
+            model, sent_source_batch, sent_target_batch, criterion, device
+        )
+
+        loss.backward()
+        optim.step()
+
+        train_acc += calc_acc(
+            sent_target_preds,
+            sent_target_batch,
+            pad_id=pad_id,
+            ignore_pad_id=ignore_pad_id,
+        )
+        total_train_loss += loss.item()
+
+        del sent_source_batch
+        del sent_target_batch
+        del sent_target_preds
+
+        total_epochs += 1
+
+    train_acc /= total_epochs
+    total_train_loss /= total_epochs
+
+    return train_acc, total_train_loss
+
+
+def run_eval_epoch(
+    model,
+    scheduler,
+    criterion,
+    device,
+    datagen_eval,
+    pad_id: t.Optional[int],
+    ignore_pad_id: bool,
+):
+    eval_acc = total_eval_loss = 0.0
+    total_epochs = 0
+
+    model.eval()
+
+    for (
+        sent_source_batch,
+        sent_target_batch,
+        sent_source_lens,
+        sent_target_lens,
+    ) in datagen_eval:
+        loss, sent_target_preds, sent_target_batch = calc_loss(
+            model, sent_source_batch, sent_target_batch, criterion, device
+        )
+
+        eval_acc += calc_acc(
+            sent_target_preds,
+            sent_target_batch,
+            pad_id=pad_id,
+            ignore_pad_id=ignore_pad_id,
+        )
+        total_eval_loss += loss.item()
+
+        del sent_source_batch
+        del sent_target_batch
+        del sent_target_preds
+
+        total_epochs += 1
+
+    eval_acc /= total_epochs
+    total_eval_loss /= total_epochs
+
+    scheduler.step(total_eval_loss)
+
+    return eval_acc, total_eval_loss
+
+
 def _test():
-    train_epochs = 40
+    train_epochs = 20
     checkpoint_path = "checkpoint.pt"
     device = "cuda"
-    load_checkpoint = True
-    epochs_per_checkpoint = 0
+    load_checkpoint = False
+    epochs_per_checkpoint = 5
+    ignore_pad_id = False
 
     max_sentence_len_train = 256
     max_sentence_len_eval = 256
@@ -109,12 +224,12 @@ def _test():
     n_encoder_layers = 2
     n_heads = 4
 
+    batch_size_train = 4
+    batch_size_eval = 4
     # train_size = 7196119
     # eval_size = 72689
-    batch_size_train = 4
-    batch_size_eval = 1
-    train_size = 2
-    eval_size = 1
+    train_size = 2000
+    eval_size = 100
 
     tokenizer_en = sentencepiece.SentencePieceProcessor(
         model_file="./vocab/en_bpe.model"
@@ -145,8 +260,6 @@ def _test():
         max_sentence_len=max_sentence_len_eval,
     )
 
-    epoch_batches_num = (train_size + batch_size_train - 1) // batch_size_train
-
     model = FiEnTranslator(
         vocab_size_source=vocab_size_source,
         vocab_size_target=vocab_size_target,
@@ -158,6 +271,13 @@ def _test():
     )
 
     optim = torch.optim.Adam(model.parameters(), 0.01)
+
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+        optim,
+        factor=0.5,
+        min_lr=0.0001,
+        verbose=True,
+    )
 
     if load_checkpoint:
         try:
@@ -174,54 +294,46 @@ def _test():
     else:
         model = model.to(device)
 
-    # criterion = nn.CrossEntropyLoss(ignore_index=tokenizer_fi.pad_id())
-    criterion = nn.CrossEntropyLoss()
+    if ignore_pad_id:
+        criterion = nn.CrossEntropyLoss()
+
+    else:
+        criterion = nn.CrossEntropyLoss(ignore_index=tokenizer_fi.pad_id())
+
+    epoch_batches_num_train = (train_size + batch_size_train - 1) // batch_size_train
+    epoch_batches_num_eval = (eval_size + batch_size_eval - 1) // batch_size_eval
+
+    full_datagen_train = lambda: tqdm.auto.tqdm(
+        datagen_train(), total=epoch_batches_num_train
+    )
+    full_datagen_eval = lambda: tqdm.auto.tqdm(
+        datagen_eval(), total=epoch_batches_num_eval
+    )
 
     for epoch in range(1, 1 + train_epochs):
         print(f"Epoch: {epoch} / {train_epochs} ...")
 
-        train_acc = total_train_loss = 0.0
-        model.train()
+        acc_train, loss_train = run_train_epoch(
+            model,
+            optim,
+            criterion,
+            device,
+            full_datagen_train(),
+            pad_id=tokenizer_en.pad_id(),
+            ignore_pad_id=ignore_pad_id,
+        )
+        acc_eval, loss_eval = run_eval_epoch(
+            model,
+            scheduler,
+            criterion,
+            device,
+            full_datagen_eval(),
+            pad_id=tokenizer_en.pad_id(),
+            ignore_pad_id=ignore_pad_id,
+        )
 
-        for (
-            sent_source_batch,
-            sent_target_batch,
-            sent_source_lens,
-            sent_target_lens,
-        ) in tqdm.auto.tqdm(datagen_train(), total=epoch_batches_num):
-            optim.zero_grad()
-
-            sent_source_batch = sent_source_batch.to(device)
-            sent_target_batch = sent_target_batch.to(device)
-
-            sent_target_preds = model(sent_source_batch, sent_target_batch)
-
-            # Note: shift to the left here in order to remove BOS.
-            sent_target_batch = sent_target_batch[1:, ...]
-            sent_target_preds = sent_target_preds[:-1, ...]
-
-            sent_target_preds = sent_target_preds.view(-1, vocab_size_target)
-            sent_target_batch = sent_target_batch.reshape(-1)
-
-            loss = criterion(sent_target_preds, sent_target_batch)
-            loss.backward()
-            optim.step()
-
-            train_acc += calc_acc(sent_target_preds, sent_target_batch)
-
-            total_train_loss += loss.item()
-
-            del sent_source_batch
-            del sent_target_batch
-            del sent_target_preds
-
-        train_acc /= epoch_batches_num
-        total_train_loss /= epoch_batches_num
-
-        model.eval()
-
-        print(f"Train loss: {total_train_loss:.4f} - Train acc : {train_acc:.4f}")
-        # print(f"Eval acc  : {eval_acc:.4f}")
+        print(f"Train loss : {loss_train:.4f} - Train acc : {acc_train:.4f}")
+        print(f"Eval loss  : {loss_eval:.4f} - EVal acc  : {acc_eval:.4f}")
 
         if epochs_per_checkpoint > 0 and (
             epoch % epochs_per_checkpoint == 0 or epoch == train_epochs
