@@ -53,15 +53,15 @@ class IterableDataset(torch.utils.data.IterableDataset):
         sentence: str,
         tokenizer: sentencepiece.SentencePieceProcessor,
         append_eos: bool,
-        append_bos: bool,
+        insert_bos: bool,
     ) -> InstType:
         sentence_enc = tokenizer.encode(sentence)
 
+        if insert_bos:
+            sentence_enc.insert(0, tokenizer.bos_id())
+
         if append_eos:
             sentence_enc.append(tokenizer.eos_id())
-
-        if append_bos:
-            sentence_enc.append(tokenizer.bos_id())
 
         sentence_enc = torch.tensor(sentence_enc, dtype=torch.long)
 
@@ -72,7 +72,7 @@ class IterableDataset(torch.utils.data.IterableDataset):
 
         for i, (s_en, s_fi) in batch.iterrows():
             s_fi_enc = self._process_sentence(
-                s_fi, self._tokenizer_fi, append_eos=True, append_bos=False
+                s_fi, self._tokenizer_fi, append_eos=True, insert_bos=False
             )
 
             # Note: we're appending Beginning of Sentence (BOS) at the english
@@ -81,7 +81,7 @@ class IterableDataset(torch.utils.data.IterableDataset):
             # Also note that we need to remove the BOS while calculating the
             # Cross Entropy loss function to simulate a 'shift to the left'.
             s_en_enc = self._process_sentence(
-                s_en, self._tokenizer_en, append_eos=True, append_bos=True
+                s_en, self._tokenizer_en, append_eos=True, insert_bos=True
             )
 
             # Note: format is (source sentence, target sentence)
