@@ -84,7 +84,7 @@ def calc_acc(
             mask = true != pad_id
 
             total_correct = (
-                torch.masked_select(preds.argmax(dim=1) == true, mask).sum().item()
+                torch.masked_select(preds.argmax(dim=-1) == true, mask).sum().item()
             )
             total_valid_tokens = mask.sum().item()
             acc = total_correct / total_valid_tokens
@@ -105,8 +105,12 @@ def calc_loss(model, sent_source_batch, sent_target_batch, criterion, device):
     sent_target_batch = sent_target_batch[1:, ...]
     sent_target_preds = sent_target_preds[:-1, ...]
 
+    # Note: switch batch_dim <-> sequence_dim
+    sent_target_batch = torch.transpose(sent_target_batch, 0, 1)
+    sent_target_preds = torch.transpose(sent_target_preds, 0, 1)
+
     vocab_size_target = sent_target_preds.shape[-1]
-    sent_target_preds = sent_target_preds.view(-1, vocab_size_target)
+    sent_target_preds = sent_target_preds.reshape(-1, vocab_size_target)
     sent_target_batch = sent_target_batch.reshape(-1)
 
     loss = criterion(sent_target_preds, sent_target_batch)
@@ -210,12 +214,12 @@ def run_eval_epoch(
 
 
 def _test():
-    train_epochs = 20
+    train_epochs = 400
     checkpoint_path = "checkpoint.pt"
     device = "cuda"
     load_checkpoint = False
-    epochs_per_checkpoint = 5
-    ignore_pad_id = False
+    epochs_per_checkpoint = 0
+    ignore_pad_id = True
 
     max_sentence_len_train = 256
     max_sentence_len_eval = 256
@@ -228,8 +232,8 @@ def _test():
     batch_size_eval = 4
     # train_size = 7196119
     # eval_size = 72689
-    train_size = 2000
-    eval_size = 100
+    train_size = 4
+    eval_size = 4
 
     tokenizer_en = sentencepiece.SentencePieceProcessor(
         model_file="./vocab/en_bpe.model"
@@ -270,7 +274,7 @@ def _test():
         n_heads=n_heads,
     )
 
-    optim = torch.optim.Adam(model.parameters(), 0.5)
+    optim = torch.optim.Adam(model.parameters(), 0.01)
 
     start_epoch = 1
 
@@ -315,7 +319,7 @@ def _test():
     )
 
     for epoch in range(start_epoch, start_epoch + train_epochs):
-        print(f"Epoch: {epoch} / {train_epochs} ...")
+        print(f"Epoch: {epoch} / {start_epoch + train_epochs - 1} ...")
 
         acc_train, loss_train = run_train_epoch(
             model,
