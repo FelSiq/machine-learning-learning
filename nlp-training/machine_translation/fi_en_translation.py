@@ -96,10 +96,10 @@ def calc_acc(
 
 
 def _test():
-    train_epochs = 400
+    train_epochs = 40
     checkpoint_path = "checkpoint.pt"
     device = "cuda"
-    load_checkpoint = False
+    load_checkpoint = True
     epochs_per_checkpoint = 0
 
     max_sentence_len_train = 256
@@ -156,20 +156,26 @@ def _test():
         pad_id=tokenizer_en.pad_id(),
         n_heads=n_heads,
     )
-    optim = torch.optim.Adam(model.parameters(), 0.01)
 
-    # criterion = nn.CrossEntropyLoss(ignore_index=tokenizer_fi.pad_id())
-    criterion = nn.CrossEntropyLoss()
+    optim = torch.optim.Adam(model.parameters(), 0.01)
 
     if load_checkpoint:
         try:
-            model.load_state_dict(torch.load(checkpoint_path))
+            checkpoint = torch.load(checkpoint_path, map_location="cpu")
             print("Loaded checkpoint file.")
+
+            model.load_state_dict(checkpoint["model"])
+            model.to(device)
+            optim.load_state_dict(checkpoint["optim"])
 
         except FileNotFoundError:
             pass
 
-    model = model.to(device)
+    else:
+        model = model.to(device)
+
+    # criterion = nn.CrossEntropyLoss(ignore_index=tokenizer_fi.pad_id())
+    criterion = nn.CrossEntropyLoss()
 
     for epoch in range(1, 1 + train_epochs):
         print(f"Epoch: {epoch} / {train_epochs} ...")
@@ -221,7 +227,11 @@ def _test():
             epoch % epochs_per_checkpoint == 0 or epoch == train_epochs
         ):
             print("Saving checkpoint...")
-            torch.save(model.state_dict(), checkpoint_path)
+            checkpoint = {
+                "model": model.state_dict(),
+                "optim": optim.state_dict(),
+            }
+            torch.save(checkpoint, checkpoint_path)
             print("Done.")
 
 
