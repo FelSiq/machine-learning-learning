@@ -1,9 +1,6 @@
 """
 TODO:
-- Model evalutation
 - Output decodification
-- Set up a learning rate warm-up + decay
-- Train with more data for more epochs and see what happens
 """
 import typing as t
 import functools
