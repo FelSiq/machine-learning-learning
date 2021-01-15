@@ -270,14 +270,9 @@ def _test():
         n_heads=n_heads,
     )
 
-    optim = torch.optim.Adam(model.parameters(), 0.01)
+    optim = torch.optim.Adam(model.parameters(), 0.5)
 
-    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-        optim,
-        factor=0.5,
-        min_lr=0.0001,
-        verbose=True,
-    )
+    start_epoch = 1
 
     if load_checkpoint:
         try:
@@ -287,6 +282,7 @@ def _test():
             model.load_state_dict(checkpoint["model"])
             model.to(device)
             optim.load_state_dict(checkpoint["optim"])
+            start_epoch = checkpoint["epoch"]
 
         except FileNotFoundError:
             pass
@@ -300,6 +296,14 @@ def _test():
     else:
         criterion = nn.CrossEntropyLoss(ignore_index=tokenizer_fi.pad_id())
 
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+        optim,
+        factor=0.5,
+        patience=5,
+        min_lr=0.0001,
+        verbose=True,
+    )
+
     epoch_batches_num_train = (train_size + batch_size_train - 1) // batch_size_train
     epoch_batches_num_eval = (eval_size + batch_size_eval - 1) // batch_size_eval
 
@@ -310,7 +314,7 @@ def _test():
         datagen_eval(), total=epoch_batches_num_eval
     )
 
-    for epoch in range(1, 1 + train_epochs):
+    for epoch in range(start_epoch, start_epoch + train_epochs):
         print(f"Epoch: {epoch} / {train_epochs} ...")
 
         acc_train, loss_train = run_train_epoch(
@@ -342,6 +346,7 @@ def _test():
             checkpoint = {
                 "model": model.state_dict(),
                 "optim": optim.state_dict(),
+                "epoch": epoch,
             }
             torch.save(checkpoint, checkpoint_path)
             print("Done.")
