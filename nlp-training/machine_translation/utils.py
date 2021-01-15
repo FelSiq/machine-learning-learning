@@ -71,13 +71,20 @@ class IterableDataset(torch.utils.data.IterableDataset):
         processed_batch = []  # type: t.List[t.Tuple[t.List[int], t.List[int]]]
 
         for i, (s_en, s_fi) in batch.iterrows():
-            s_en_enc = self._process_sentence(
-                s_en, self._tokenizer_en, append_eos=True, append_bos=False
-            )
             s_fi_enc = self._process_sentence(
-                s_fi, self._tokenizer_fi, append_eos=False, append_bos=True
+                s_fi, self._tokenizer_fi, append_eos=True, append_bos=False
             )
 
+            # Note: we're appending Beginning of Sentence (BOS) at the english
+            # (target) sentences in order to use Teacher Forcing later without
+            # needing to shift one place to the right each target sentence.
+            # Also note that we need to remove the BOS while calculating the
+            # Cross Entropy loss function to simulate a 'shift to the left'.
+            s_en_enc = self._process_sentence(
+                s_en, self._tokenizer_en, append_eos=True, append_bos=True
+            )
+
+            # Note: format is (source sentence, target sentence)
             processed_batch.append((s_fi_enc, s_en_enc))
 
         return processed_batch
