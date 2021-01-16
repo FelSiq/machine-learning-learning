@@ -26,15 +26,11 @@ class FiEnTranslator(nn.Module):
     ):
         super(FiEnTranslator, self).__init__()
 
-        self.input_encoder = nn.Sequential(
-            nn.Embedding(vocab_size_source, d_model),
-            nn.LSTM(d_model, d_model, num_layers=n_encoder_layers),
-        )
+        self.embedding_source = nn.Embedding(vocab_size_source, d_model)
+        self.input_encoder_rnn = nn.LSTM(d_model, d_model, num_layers=n_encoder_layers)
 
-        self.pre_attention_decoder = nn.Sequential(
-            nn.Embedding(vocab_size_target, d_model),
-            nn.LSTM(d_model, d_model),
-        )
+        self.embedding_target = nn.Embedding(vocab_size_target, d_model)
+        self.pre_attention_decoder_rnn = nn.LSTM(d_model, d_model)
 
         self.attention_layer = nn.MultiheadAttention(d_model, n_heads)
 
@@ -44,17 +40,44 @@ class FiEnTranslator(nn.Module):
 
         self._pad_id = pad_id
 
-    def forward(self, sent_source: torch.Tensor, sent_target: torch.Tensor):
-        sent_source_enc, _ = self.input_encoder(sent_source)
-        sent_target_enc, _ = self.pre_attention_decoder(sent_target)
+    def forward(
+        self,
+        sent_source: torch.Tensor,
+        sent_target: torch.Tensor,
+        len_source,
+        len_target,
+    ):
+        _total_length = max(max(len_source), max(len_target))
 
-        pad_mask = torch.transpose(sent_source == self._pad_id, 1, 0)
+        sent_source = self.embedding_source(sent_source)
+        sent_source = nn.utils.rnn.pack_padded_sequence(
+            sent_source, len_source, enforce_sorted=False
+        )
+        sent_source_enc, _ = self.input_encoder_rnn(sent_source)
+        sent_source_enc, _ = nn.utils.rnn.pad_packed_sequence(
+            sent_source,
+            padding_value=self._pad_id,
+            total_length=_total_length,
+        )
+
+        sent_target = self.embedding_target(sent_target)
+        sent_target = nn.utils.rnn.pack_padded_sequence(
+            sent_target, len_target, enforce_sorted=False
+        )
+        sent_target_enc, _ = self.pre_attention_decoder_rnn(sent_target)
+        sent_target_enc, _ = nn.utils.rnn.pad_packed_sequence(
+            sent_target,
+            padding_value=self._pad_id,
+            total_length=_total_length,
+        )
+
+        # pad_mask = torch.transpose(sent_source == self._pad_id, 1, 0)
 
         out, _ = self.attention_layer(
             query=sent_target_enc,
             key=sent_source_enc,
             value=sent_source_enc,
-            key_padding_mask=pad_mask,
+            # key_padding_mask=pad_mask,
         )
 
         # Note: skip connection
@@ -92,11 +115,21 @@ def calc_acc(
     return acc
 
 
-def calc_loss(model, sent_source_batch, sent_target_batch, criterion, device):
+def calc_loss(
+    model,
+    sent_source_batch,
+    sent_target_batch,
+    sent_source_lens,
+    sent_target_lens,
+    criterion,
+    device,
+):
     sent_source_batch = sent_source_batch.to(device)
     sent_target_batch = sent_target_batch.to(device)
 
-    sent_target_preds = model(sent_source_batch, sent_target_batch)
+    sent_target_preds = model(
+        sent_source_batch, sent_target_batch, sent_source_lens, sent_target_lens
+    )
 
     # Note: shift to the left here in order to remove BOS.
     sent_target_batch = sent_target_batch[1:, ...]
@@ -138,7 +171,13 @@ def run_train_epoch(
         optim.zero_grad()
 
         loss, sent_target_preds, sent_target_batch = calc_loss(
-            model, sent_source_batch, sent_target_batch, criterion, device
+            model,
+            sent_source_batch,
+            sent_target_batch,
+            sent_source_lens,
+            sent_target_lens,
+            criterion,
+            device,
         )
 
         loss.backward()
@@ -185,7 +224,13 @@ def run_eval_epoch(
         sent_target_lens,
     ) in datagen_eval:
         loss, sent_target_preds, sent_target_batch = calc_loss(
-            model, sent_source_batch, sent_target_batch, criterion, device
+            model,
+            sent_source_batch,
+            sent_target_batch,
+            sent_source_lens,
+            sent_target_lens,
+            criterion,
+            device,
         )
 
         eval_acc += calc_acc(
@@ -229,8 +274,8 @@ def _test():
     batch_size_eval = 4
     # train_size = 7196119
     # eval_size = 72689
-    train_size = 4
-    eval_size = 4
+    train_size = 20
+    eval_size = 10
 
     tokenizer_en = sentencepiece.SentencePieceProcessor(
         model_file="./vocab/en_bpe.model"
