@@ -257,7 +257,7 @@ def run_eval_epoch(
 
 def _test():
     train_epochs = 400
-    checkpoint_path = "checkpoint.pt"
+    checkpoint_path = "checkpoint.tar"
     device = "cuda"
     load_checkpoint = False
     epochs_per_checkpoint = 0
@@ -318,7 +318,7 @@ def _test():
 
     optim = torch.optim.Adam(model.parameters(), 0.01)
 
-    start_epoch = 1
+    start_epoch = 0
 
     if load_checkpoint:
         try:
@@ -362,8 +362,8 @@ def _test():
         datagen_eval(), total=epoch_batches_num_eval
     )
 
-    for epoch in range(start_epoch, start_epoch + train_epochs):
-        print(f"Epoch: {epoch} / {start_epoch + train_epochs - 1} ...")
+    for epoch in range(1 + start_epoch, 1 + start_epoch + train_epochs):
+        print(f"Epoch: {epoch} / {start_epoch + train_epochs} ...")
 
         acc_train, loss_train = run_train_epoch(
             model,
