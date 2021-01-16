@@ -42,46 +42,39 @@ class FiEnTranslator(nn.Module):
 
     def forward(
         self,
-        sent_source: torch.Tensor,
-        sent_target: torch.Tensor,
-        len_source: t.Sequence[int],
-        len_target: t.Sequence[int],
+        x: torch.Tensor,
+        y: torch.Tensor,
+        len_x: t.Sequence[int],
+        len_y: t.Sequence[int],
     ):
-        _total_length = max(max(len_source), max(len_target))
+        _total_length = max(max(len_x), max(len_y))
 
-        sent_source = self.embedding_source(sent_source)
-        sent_source = nn.utils.rnn.pack_padded_sequence(
-            sent_source, len_source, enforce_sorted=False
-        )
-        sent_source_enc, _ = self.input_encoder_rnn(sent_source)
-        sent_source_enc, _ = nn.utils.rnn.pad_packed_sequence(
-            sent_source,
+        x = self.embedding_source(x)
+        x = nn.utils.rnn.pack_padded_sequence(x, len_x, enforce_sorted=False)
+        x, _ = self.input_encoder_rnn(x)
+        x, _ = nn.utils.rnn.pad_packed_sequence(
+            x,
             padding_value=self._pad_id,
             total_length=_total_length,
         )
 
-        sent_target = self.embedding_target(sent_target)
-        sent_target = nn.utils.rnn.pack_padded_sequence(
-            sent_target, len_target, enforce_sorted=False
-        )
-        sent_target_enc, _ = self.pre_attention_decoder_rnn(sent_target)
-        sent_target_enc, _ = nn.utils.rnn.pad_packed_sequence(
-            sent_target,
+        y = self.embedding_target(y)
+        y = nn.utils.rnn.pack_padded_sequence(y, len_y, enforce_sorted=False)
+        y, _ = self.pre_attention_decoder_rnn(y)
+        y, _ = nn.utils.rnn.pad_packed_sequence(
+            y,
             padding_value=self._pad_id,
             total_length=_total_length,
         )
-
-        # pad_mask = torch.transpose(sent_source == self._pad_id, 1, 0)
 
         out, _ = self.attention_layer(
-            query=sent_target_enc,
-            key=sent_source_enc,
-            value=sent_source_enc,
-            # key_padding_mask=pad_mask,
+            query=y,
+            key=x,
+            value=x,
         )
 
         # Note: skip connection
-        out = out + sent_target_enc
+        out = out + y
 
         out, _ = self.decoder_lstm(out)
         out = self.dense(out)
@@ -265,8 +258,8 @@ def get_data_streams(
     batch_size_eval = 4
     # train_size = 7196119
     # eval_size = 72689
-    train_size = 20
-    eval_size = 10
+    train_size = 4
+    eval_size = 4
 
     datagen_train = functools.partial(
         utils.get_data_stream,
@@ -361,11 +354,11 @@ def get_model_optim_scheduler(
 
 
 def _test():
-    train_epochs = 10
+    train_epochs = 500
     checkpoint_path = "./checkpoint.tar"
     device = "cuda"
     load_checkpoint = True
-    epochs_per_checkpoint = 10
+    epochs_per_checkpoint = 0
     ignore_pad_id = True
 
     tokenizer_en = sentencepiece.SentencePieceProcessor(
