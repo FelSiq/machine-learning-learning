@@ -44,8 +44,8 @@ class FiEnTranslator(nn.Module):
         self,
         sent_source: torch.Tensor,
         sent_target: torch.Tensor,
-        len_source,
-        len_target,
+        len_source: t.Sequence[int],
+        len_target: t.Sequence[int],
     ):
         _total_length = max(max(len_source), max(len_target))
 
@@ -340,7 +340,9 @@ def _test():
         criterion = nn.CrossEntropyLoss()
 
     else:
-        criterion = nn.CrossEntropyLoss(ignore_index=tokenizer_fi.pad_id())
+        criterion = nn.CrossEntropyLoss(
+            ignore_index=tokenizer_fi.pad_id(), size_average=True
+        )
 
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
         optim,
