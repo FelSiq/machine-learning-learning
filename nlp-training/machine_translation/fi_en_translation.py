@@ -255,37 +255,18 @@ def run_eval_epoch(
     return eval_acc, total_eval_loss
 
 
-def _test():
-    train_epochs = 400
-    checkpoint_path = "checkpoint.tar"
-    device = "cuda"
-    load_checkpoint = False
-    epochs_per_checkpoint = 0
-    ignore_pad_id = True
-
+def get_data_streams(
+    tokenizer_en: sentencepiece.SentencePieceProcessor,
+    tokenizer_fi: sentencepiece.SentencePieceProcessor,
+):
     max_sentence_len_train = 256
     max_sentence_len_eval = 256
-    d_model = 1024
-    n_decoder_layers = 2
-    n_encoder_layers = 2
-    n_heads = 4
-
     batch_size_train = 4
     batch_size_eval = 4
     # train_size = 7196119
     # eval_size = 72689
     train_size = 20
     eval_size = 10
-
-    tokenizer_en = sentencepiece.SentencePieceProcessor(
-        model_file="./vocab/en_bpe.model"
-    )
-    tokenizer_fi = sentencepiece.SentencePieceProcessor(
-        model_file="./vocab/fi_bpe.model"
-    )
-
-    vocab_size_source = tokenizer_fi.vocab_size()
-    vocab_size_target = tokenizer_en.vocab_size()
 
     datagen_train = functools.partial(
         utils.get_data_stream,
@@ -305,6 +286,39 @@ def _test():
         max_dataset_size=eval_size,
         max_sentence_len=max_sentence_len_eval,
     )
+
+    epoch_batches_num_train = (train_size + batch_size_train - 1) // batch_size_train
+    epoch_batches_num_eval = (eval_size + batch_size_eval - 1) // batch_size_eval
+
+    full_datagen_train = lambda: tqdm.auto.tqdm(
+        datagen_train(), total=epoch_batches_num_train
+    )
+    full_datagen_eval = lambda: tqdm.auto.tqdm(
+        datagen_eval(), total=epoch_batches_num_eval
+    )
+
+    return full_datagen_train, full_datagen_eval
+
+
+def get_model_optim_scheduler(
+    tokenizer_en: sentencepiece.SentencePieceProcessor,
+    tokenizer_fi: sentencepiece.SentencePieceProcessor,
+    device: str,
+    load_checkpoint: bool,
+    checkpoint_path: str,
+) -> t.Tuple[
+    nn.Module, torch.optim.Adam, torch.optim.lr_scheduler.ReduceLROnPlateau, int
+]:
+    d_model = 1024
+    n_decoder_layers = 2
+    n_encoder_layers = 2
+    n_heads = 4
+
+    scheduler_patience = 5
+    scheduler_ratio = 0.5
+
+    vocab_size_source = tokenizer_fi.vocab_size()
+    vocab_size_target = tokenizer_en.vocab_size()
 
     model = FiEnTranslator(
         vocab_size_source=vocab_size_source,
@@ -326,15 +340,48 @@ def _test():
             print("Loaded checkpoint file.")
 
             model.load_state_dict(checkpoint["model"])
-            model.to(device)
+            model = model.to(device)
             optim.load_state_dict(checkpoint["optim"])
             start_epoch = checkpoint["epoch"]
 
         except FileNotFoundError:
             pass
 
-    else:
-        model = model.to(device)
+    model = model.to(device)
+
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+        optim,
+        factor=scheduler_ratio,
+        patience=scheduler_patience,
+        min_lr=0.0001,
+        verbose=True,
+    )
+
+    return model, optim, scheduler, start_epoch
+
+
+def _test():
+    train_epochs = 10
+    checkpoint_path = "./checkpoint.tar"
+    device = "cuda"
+    load_checkpoint = True
+    epochs_per_checkpoint = 10
+    ignore_pad_id = True
+
+    tokenizer_en = sentencepiece.SentencePieceProcessor(
+        model_file="./vocab/en_bpe.model"
+    )
+    tokenizer_fi = sentencepiece.SentencePieceProcessor(
+        model_file="./vocab/fi_bpe.model"
+    )
+
+    model, optim, scheduler, start_epoch = get_model_optim_scheduler(
+        tokenizer_en,
+        tokenizer_fi,
+        device,
+        load_checkpoint,
+        checkpoint_path,
+    )
 
     if ignore_pad_id:
         criterion = nn.CrossEntropyLoss()
@@ -344,23 +391,7 @@ def _test():
             ignore_index=tokenizer_fi.pad_id(), size_average=True
         )
 
-    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-        optim,
-        factor=0.5,
-        patience=5,
-        min_lr=0.0001,
-        verbose=True,
-    )
-
-    epoch_batches_num_train = (train_size + batch_size_train - 1) // batch_size_train
-    epoch_batches_num_eval = (eval_size + batch_size_eval - 1) // batch_size_eval
-
-    full_datagen_train = lambda: tqdm.auto.tqdm(
-        datagen_train(), total=epoch_batches_num_train
-    )
-    full_datagen_eval = lambda: tqdm.auto.tqdm(
-        datagen_eval(), total=epoch_batches_num_eval
-    )
+    datagen_train, datagen_eval = get_data_streams(tokenizer_en, tokenizer_fi)
 
     for epoch in range(1 + start_epoch, 1 + start_epoch + train_epochs):
         print(f"Epoch: {epoch} / {start_epoch + train_epochs} ...")
@@ -370,7 +401,7 @@ def _test():
             optim,
             criterion,
             device,
-            full_datagen_train(),
+            datagen_train(),
             pad_id=tokenizer_en.pad_id(),
             ignore_pad_id=ignore_pad_id,
         )
@@ -379,13 +410,13 @@ def _test():
             scheduler,
             criterion,
             device,
-            full_datagen_eval(),
+            datagen_eval(),
             pad_id=tokenizer_en.pad_id(),
             ignore_pad_id=ignore_pad_id,
         )
 
         print(f"Train loss : {loss_train:.4f} - Train acc : {acc_train:.4f}")
-        print(f"Eval loss  : {loss_eval:.4f} - EVal acc  : {acc_eval:.4f}")
+        print(f"Eval loss  : {loss_eval:.4f} - Eval acc  : {acc_eval:.4f}")
 
         if epochs_per_checkpoint > 0 and (
             epoch % epochs_per_checkpoint == 0 or epoch == train_epochs
