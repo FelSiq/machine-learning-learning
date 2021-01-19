@@ -4,6 +4,7 @@ TODO:
 """
 import typing as t
 import functools
+import math
 
 import tqdm
 import torch
@@ -13,30 +14,39 @@ import sentencepiece
 import utils
 
 
-class FiEnTranslator(nn.Module):
+class FiEnTranslatorRNN(nn.Module):
     def __init__(
         self,
         vocab_size_source: int,
         vocab_size_target: int,
         d_model: int,
-        n_encoder_layers: int,
-        n_decoder_layers: int,
+        num_encoder_layers: int,
+        num_decoder_layers: int,
         n_heads: int,
         pad_id: int,
+        bidirectional: bool = True,
     ):
-        super(FiEnTranslator, self).__init__()
+        super(FiEnTranslatorRNN, self).__init__()
 
         self.embedding_source = nn.Embedding(vocab_size_source, d_model)
-        self.input_encoder_rnn = nn.LSTM(d_model, d_model, num_layers=n_encoder_layers)
+        self.input_encoder_rnn = nn.LSTM(
+            d_model, d_model, num_layers=num_encoder_layers, bidirectional=bidirectional
+        )
 
         self.embedding_target = nn.Embedding(vocab_size_target, d_model)
-        self.pre_attention_decoder_rnn = nn.LSTM(d_model, d_model)
+        self.pre_attention_decoder_rnn = nn.LSTM(
+            d_model, d_model, bidirectional=bidirectional
+        )
 
-        self.attention_layer = nn.MultiheadAttention(d_model, n_heads)
+        d_model_bi = (1 + int(bidirectional)) * d_model
 
-        self.decoder_lstm = nn.LSTM(d_model, d_model, num_layers=n_decoder_layers)
+        self.attention_layer = nn.MultiheadAttention(d_model_bi, n_heads)
 
-        self.dense = nn.Linear(d_model, vocab_size_target)
+        self.decoder_lstm = nn.LSTM(
+            d_model_bi, d_model_bi, num_layers=num_decoder_layers
+        )
+
+        self.dense = nn.Linear(d_model_bi, vocab_size_target)
 
         self._pad_id = pad_id
 
@@ -82,6 +92,80 @@ class FiEnTranslator(nn.Module):
         return out
 
 
+class PositionalEncoding(nn.Module):
+    # Source: https://pytorch.org/tutorials/beginner/transformer_tutorial.html
+    def __init__(self, d_model, dropout=0.0, max_len=30):
+        super(PositionalEncoding, self).__init__()
+        self.dropout = nn.Dropout(p=dropout)
+
+        pe = torch.zeros(max_len, d_model)
+        position = torch.arange(0, max_len, dtype=torch.float).unsqueeze(1)
+        div_term = torch.exp(
+            torch.arange(0, d_model, 2).float() * (-math.log(100.0) / d_model)
+        )
+        pe[:, 0::2] = torch.sin(position * div_term)
+        pe[:, 1::2] = torch.cos(position * div_term)
+        pe = pe.unsqueeze(0).transpose(0, 1)
+        self.register_buffer("pe", pe)
+
+    def forward(self, x):
+        x = x + self.pe[: x.size(0), :]
+        return self.dropout(x)
+
+
+class FiEnTranslatorTransformer(nn.Module):
+    def __init__(
+        self,
+        n_in_vocab: int,
+        n_out_vocab: int,
+        d_model: int,
+        nhead: int,
+        dim_feedforward: int,
+        num_encoder_layers: int,
+        num_decoder_layers: int,
+        dropout: float,
+        device: str,
+    ):
+        super(FiEnTranslatorTransformer, self).__init__()
+
+        self.model_type = "Transformer"
+
+        self.input_X = nn.Sequential(
+            nn.Embedding(n_in_vocab, d_model),
+            PositionalEncoding(d_model, dropout=dropout, max_len=d_model),
+        )
+
+        self.input_Y = nn.Sequential(
+            nn.Embedding(n_in_vocab, d_model),
+            PositionalEncoding(d_model, dropout=dropout, max_len=d_model),
+        )
+
+        self.transformer = nn.Transformer(
+            d_model,
+            nhead,
+            num_encoder_layers=num_encoder_layers,
+            num_decoder_layers=num_decoder_layers,
+            dim_feedforward=dim_feedforward,
+        )
+
+        self.linear = nn.Linear(d_model, n_out_vocab)
+
+        self.device = device
+
+    def forward(self, X, Y, x_len=None, y_len=None):
+        y_len = Y.shape[0]
+
+        _mask = torch.triu(
+            torch.full((y_len, y_len), float("-inf"), device=self.device), diagonal=1
+        )
+
+        X = self.input_X(X)
+        Y = self.input_Y(Y)
+        X = self.transformer(X, Y, tgt_mask=_mask)
+        X = self.linear(X)
+        return X
+
+
 def calc_acc(
     preds: torch.Tensor,
     true: torch.Tensor,
@@ -96,9 +180,10 @@ def calc_acc(
             # Note: select only non-pad tokens
             mask = true != pad_id
 
-            total_correct = (
-                torch.masked_select(preds.argmax(dim=-1) == true, mask).sum().item()
-            )
+            preds = preds.argmax(dim=-1)
+
+            total_correct = torch.masked_select(preds == true, mask).sum().item()
+
             total_valid_tokens = mask.sum().item()
             acc = total_correct / total_valid_tokens
 
@@ -256,10 +341,8 @@ def get_data_streams(
     max_sentence_len_eval = 256
     batch_size_train = 4
     batch_size_eval = 4
-    # train_size = 7196119
-    # eval_size = 72689
-    train_size = 4
-    eval_size = 4
+    train_size = min(1024, 7196119)
+    eval_size = min(128, 72689)
 
     datagen_train = functools.partial(
         utils.get_data_stream,
@@ -302,10 +385,12 @@ def get_model_optim_scheduler(
 ) -> t.Tuple[
     nn.Module, torch.optim.Adam, torch.optim.lr_scheduler.ReduceLROnPlateau, int
 ]:
-    d_model = 1024
-    n_decoder_layers = 2
-    n_encoder_layers = 2
-    n_heads = 4
+    d_model = 512
+    bidirectional = True
+    num_decoder_layers = 4
+    num_encoder_layers = 4
+    n_heads = 8
+    dropout = 0.1
 
     scheduler_patience = 5
     scheduler_ratio = 0.5
@@ -313,17 +398,33 @@ def get_model_optim_scheduler(
     vocab_size_source = tokenizer_fi.vocab_size()
     vocab_size_target = tokenizer_en.vocab_size()
 
-    model = FiEnTranslator(
+    """
+    # Note: unused, much less eficient than the transformer one
+    model = FiEnTranslatorRNN(
         vocab_size_source=vocab_size_source,
         vocab_size_target=vocab_size_target,
         d_model=d_model,
-        n_encoder_layers=n_encoder_layers,
-        n_decoder_layers=n_decoder_layers,
+        num_encoder_layers=num_encoder_layers,
+        num_decoder_layers=num_decoder_layers,
         pad_id=tokenizer_en.pad_id(),
         n_heads=n_heads,
+        bidirectional=bidirectional,
+    )
+    """
+
+    model = FiEnTranslatorTransformer(
+        n_in_vocab=vocab_size_source,
+        n_out_vocab=vocab_size_target,
+        d_model=256,  # Note: d_model = max sentence len
+        nhead=n_heads,
+        dropout=dropout,
+        dim_feedforward=d_model,
+        num_encoder_layers=num_encoder_layers,
+        num_decoder_layers=num_decoder_layers,
+        device=device,
     )
 
-    optim = torch.optim.Adam(model.parameters(), 0.01)
+    optim = torch.optim.Adam(model.parameters(), 1e-4)
 
     start_epoch = 0
 
@@ -353,8 +454,38 @@ def get_model_optim_scheduler(
     return model, optim, scheduler, start_epoch
 
 
+def predict(model, sentence, device, tokenizer_fi, tokenizer_en):
+    model.eval()
+    prepared = torch.tensor(
+        tokenizer_fi.encode(sentence), dtype=torch.long, device=device
+    ).unsqueeze(0)
+
+    prepared = prepared.to(device)
+    out = torch.zeros((1, 256), device=device, dtype=torch.long)
+    out[0][0] = tokenizer_fi.pad_id()
+
+    out = torch.transpose(out, 0, 1)
+    prepared = torch.transpose(prepared, 0, 1)
+
+    i = 0
+    last_token = None
+    eos_id = tokenizer_en.eos_id()
+
+    while i < 256 and last_token != eos_id:
+        pred = model(prepared, out)
+        ind = pred[i - 1].squeeze().argmax(dim=-1)
+        last_token = ind.item()
+        out[i][0] = last_token
+        i += 1
+
+    out = out.squeeze().detach().cpu().numpy().tolist()
+
+    print("Test input sentence (finnish) :", sentence)
+    print("Model's output      (english) :", tokenizer_en.decode(out))
+
+
 def _test():
-    train_epochs = 500
+    train_epochs = 1
     checkpoint_path = "./checkpoint.tar"
     device = "cuda"
     load_checkpoint = True
@@ -422,6 +553,9 @@ def _test():
             }
             torch.save(checkpoint, checkpoint_path)
             print("Done.")
+
+    test_inp = "Olen tehnyt sen!"
+    predict(model, test_inp, device, tokenizer_fi, tokenizer_en)
 
 
 if __name__ == "__main__":
