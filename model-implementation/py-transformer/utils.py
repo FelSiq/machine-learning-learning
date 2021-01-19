@@ -56,7 +56,7 @@ class PositionalEncoding(nn.Module):
         pe = torch.zeros(max_len, d_model)
         position = torch.arange(0, max_len, dtype=torch.float).unsqueeze(1)
         div_term = torch.exp(
-            torch.arange(0, d_model, 2).float() * (-math.log(10000.0) / d_model)
+            torch.arange(0, d_model, 2).float() * (-math.log(100.0) / d_model)
         )
         pe[:, 0::2] = torch.sin(position * div_term)
         pe[:, 1::2] = torch.cos(position * div_term)
@@ -68,7 +68,33 @@ class PositionalEncoding(nn.Module):
         return self.dropout(x)
 
 
-def load_date():
+def insert_noise(human_readable):
+    random_start_num = random.randint(0, 5)
+    random_end_num = random.randint(0, 5)
+
+    human_readable = list(human_readable)
+
+    noise_ind = np.random.random(size=len(human_readable)) <= 0.05
+    noise_ind = np.flatnonzero(noise_ind)
+
+    for i in noise_ind:
+        human_readable[i] = chr(random.randind(0, 256))
+
+    for _ in range(random_start_num):
+        noise = [chr(random.randint(0, 256)) for _ in range(random.randint(1, 10))]
+        noise.append(" ")
+        noise.extend(human_readable)
+        human_readable = noise
+
+    for _ in range(random_end_num):
+        noise = [chr(random.randint(0, 256)) for _ in range(random.randint(1, 10))]
+        noise.insert(0, " ")
+        human_readable.extend(noise)
+
+    return "".join(human_readable)
+
+
+def load_date(insert_noise: bool):
     """
     Loads some fake dates
     :returns: tuple containing human readable string, machine readable string, and date object
@@ -79,8 +105,8 @@ def load_date():
         human_readable = format_date(
             dt, format=random.choice(FORMATS), locale="en_US"
         )  # locale=random.choice(LOCALES))
-        human_readable = human_readable.lower()
-        human_readable = human_readable.replace(",", "")
+        if insert_noise:
+            human_readable = insert_noise(human_readable)
         machine_readable = dt.isoformat()
 
     except AttributeError as e:
@@ -89,7 +115,7 @@ def load_date():
     return human_readable, machine_readable, dt
 
 
-def load_dataset(m):
+def load_dataset(m, insert_noise: bool = False):
     """
     Loads a dataset with m examples and vocabularies
     :m: the number of examples to generate
@@ -100,7 +126,7 @@ def load_dataset(m):
     dataset = []
 
     for i in tqdm(range(m)):
-        h, m, _ = load_date()
+        h, m, _ = load_date(insert_noise)
         if h is not None:
             dataset.append((h, m))
             human_vocab.update(tuple(h))
@@ -119,30 +145,24 @@ def load_dataset(m):
 
 
 def prepare_data(dataset, vocab_x, vocab_y, max_size: int = 80):
-    prepared_data = []
-    masks = []
+    X_data = []
+    Y_data = []
 
     eos_tok = vocab_x["<eos>"]
     unk_tok_x = vocab_x["<unk>"]
     pad_id = vocab_x["<pad>"]
 
     for X, y in dataset:
-        inst = [vocab_x.get(c, unk_tok_x) for c in X]
-        inst.append(eos_tok)
+        x = [vocab_x.get(c, unk_tok_x) for c in X]
+        x.append(eos_tok)
+        x += [pad_id] * (max_size - len(x))
+        y = [pad_id] + [vocab_y[c] for c in y]
 
-        mask = [0] * len(inst)
+        if len(x) <= max_size:
+            X_data.append(x)
+            Y_data.append(y)
 
-        inst += [vocab_y[c] for c in y]
-        mask += [1] * (len(inst) - len(mask))
+    X_data = torch.tensor(X_data, dtype=torch.long)
+    Y_data = torch.tensor(Y_data, dtype=torch.long)
 
-        inst += [eos_tok] + [pad_id] * (max_size - len(inst) - 1)
-        mask += [0] * (max_size - len(mask))
-
-        if len(inst) <= max_size:
-            prepared_data.append(inst)
-            masks.append(mask)
-
-    prepared_data = torch.tensor(prepared_data, dtype=torch.long)
-    masks = torch.tensor(masks, dtype=torch.bool)
-
-    return prepared_data, masks
+    return X_data, Y_data
