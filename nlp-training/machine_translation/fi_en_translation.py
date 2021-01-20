@@ -467,7 +467,7 @@ def predict(model, sentence, device, tokenizer_fi, tokenizer_en):
     out = torch.transpose(out, 0, 1)
     prepared = torch.transpose(prepared, 0, 1)
 
-    i = 0
+    i = 1
     last_token = None
     eos_id = tokenizer_en.eos_id()
 
@@ -478,7 +478,7 @@ def predict(model, sentence, device, tokenizer_fi, tokenizer_en):
         out[i][0] = last_token
         i += 1
 
-    out = out.squeeze().detach().cpu().numpy().tolist()
+    out = out.squeeze().detach().cpu().numpy().tolist()[1:]
 
     print("Test input sentence (finnish) :", sentence)
     print("Model's output      (english) :", tokenizer_en.decode(out))
