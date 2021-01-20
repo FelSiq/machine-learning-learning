@@ -38,9 +38,9 @@ class IterableDataset(torch.utils.data.IterableDataset):
                 random.shuffle(batch)
                 self._seed = (self._seed + 1) % int(1e7)
 
-                for inst in batch:
-                    if len(inst) <= self._max_sentence_len:
-                        yield inst
+                for fi, en in batch:
+                    if max(len(fi), len(en)) <= self._max_sentence_len:
+                        yield (fi, en)
 
         return _iter()
 
