@@ -1,7 +1,3 @@
-"""
-TODO:
-- Output decodification
-"""
 import typing as t
 import functools
 import math
