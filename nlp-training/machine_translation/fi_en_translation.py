@@ -487,7 +487,7 @@ def predict(model, sentence, device, tokenizer_fi, tokenizer_en):
 
 
 def _test():
-    train_epochs = 1
+    train_epochs = 0
     checkpoint_path = "./checkpoint.tar"
     device = "cuda"
     load_checkpoint = True
@@ -509,52 +509,53 @@ def _test():
         checkpoint_path,
     )
 
-    if ignore_pad_id:
-        criterion = nn.CrossEntropyLoss()
+    if train_epochs > 0:
+        if ignore_pad_id:
+            criterion = nn.CrossEntropyLoss()
 
-    else:
-        criterion = nn.CrossEntropyLoss(
-            ignore_index=tokenizer_fi.pad_id(), size_average=True
-        )
+        else:
+            criterion = nn.CrossEntropyLoss(
+                ignore_index=tokenizer_fi.pad_id(), size_average=True
+            )
 
-    datagen_train, datagen_eval = get_data_streams(tokenizer_en, tokenizer_fi)
+        datagen_train, datagen_eval = get_data_streams(tokenizer_en, tokenizer_fi)
 
-    for epoch in range(1 + start_epoch, 1 + start_epoch + train_epochs):
-        print(f"Epoch: {epoch} / {start_epoch + train_epochs} ...")
+        for epoch in range(1 + start_epoch, 1 + start_epoch + train_epochs):
+            print(f"Epoch: {epoch} / {start_epoch + train_epochs} ...")
 
-        acc_train, loss_train = run_train_epoch(
-            model,
-            optim,
-            criterion,
-            device,
-            datagen_train(),
-            pad_id=tokenizer_en.pad_id(),
-            ignore_pad_id=ignore_pad_id,
-        )
-        acc_eval, loss_eval = run_eval_epoch(
-            model,
-            scheduler,
-            criterion,
-            device,
-            datagen_eval(),
-            pad_id=tokenizer_en.pad_id(),
-            ignore_pad_id=ignore_pad_id,
-        )
+            acc_train, loss_train = run_train_epoch(
+                model,
+                optim,
+                criterion,
+                device,
+                datagen_train(),
+                pad_id=tokenizer_en.pad_id(),
+                ignore_pad_id=ignore_pad_id,
+            )
+            acc_eval, loss_eval = run_eval_epoch(
+                model,
+                scheduler,
+                criterion,
+                device,
+                datagen_eval(),
+                pad_id=tokenizer_en.pad_id(),
+                ignore_pad_id=ignore_pad_id,
+            )
 
-        print(f"Train loss : {loss_train:.4f} - Train acc : {acc_train:.4f}")
-        print(f"Eval loss  : {loss_eval:.4f} - Eval acc  : {acc_eval:.4f}")
+            print(f"Train loss : {loss_train:.4f} - Train acc : {acc_train:.4f}")
+            print(f"Eval loss  : {loss_eval:.4f} - Eval acc  : {acc_eval:.4f}")
 
-        if epochs_per_checkpoint > 0 and (
-            epoch % epochs_per_checkpoint == 0 or epoch == train_epochs
-        ):
-            print("Saving checkpoint...")
-            checkpoint = {
-                "model": model.state_dict(),
-                "optim": optim.state_dict(),
-                "epoch": epoch,
-            }
-            torch.save(checkpoint, checkpoint_path)
-            print("Done.")
+            if epochs_per_checkpoint > 0 and (
+                epoch % epochs_per_checkpoint == 0 or epoch == train_epochs
+            ):
+                print("Saving checkpoint...")
+                checkpoint = {
+                    "model": model.state_dict(),
+                    "optim": optim.state_dict(),
+                    "epoch": epoch,
+                }
+                torch.save(checkpoint, checkpoint_path)
+                print("Done.")
 
     test_inp = "Olen tehnyt sen!"
     predict(model, test_inp, device, tokenizer_fi, tokenizer_en)
