@@ -456,13 +456,15 @@ def get_model_optim_scheduler(
 
 def predict(model, sentence, device, tokenizer_fi, tokenizer_en):
     model.eval()
-    prepared = torch.tensor(
-        tokenizer_fi.encode(sentence), dtype=torch.long, device=device
-    ).unsqueeze(0)
+
+    prepared = tokenizer_fi.encode(sentence)
+    prepared.append(tokenizer_fi.eos_id())
+    prepared += (256 - len(prepared)) * [tokenizer_fi.pad_id()]
+    prepared = torch.tensor(prepared, dtype=torch.long, device=device).unsqueeze(0)
 
     prepared = prepared.to(device)
     out = torch.zeros((1, 256), device=device, dtype=torch.long)
-    out[0][0] = tokenizer_fi.pad_id()
+    out[0][0] = tokenizer_fi.bos_id()
 
     out = torch.transpose(out, 0, 1)
     prepared = torch.transpose(prepared, 0, 1)
@@ -471,14 +473,14 @@ def predict(model, sentence, device, tokenizer_fi, tokenizer_en):
     last_token = None
     eos_id = tokenizer_en.eos_id()
 
-    while i < 256 and last_token != eos_id:
+    while i < 255 and last_token != eos_id:
         pred = model(prepared, out)
         ind = pred[i - 1].squeeze().argmax(dim=-1)
         last_token = ind.item()
         out[i][0] = last_token
         i += 1
 
-    out = out.squeeze().detach().cpu().numpy().tolist()[1:]
+    out = out.squeeze().detach().cpu().numpy().tolist()[1:i]
 
     print("Test input sentence (finnish) :", sentence)
     print("Model's output      (english) :", tokenizer_en.decode(out))
