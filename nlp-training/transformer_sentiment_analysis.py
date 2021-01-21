@@ -1,10 +1,32 @@
 import typing as t
+import math
 
 import torch.nn as nn
 import torch
 import pandas as pd
 import bpemb
 import tqdm
+
+
+class PositionalEncoding(nn.Module):
+    # Source: https://pytorch.org/tutorials/beginner/transformer_tutorial.html
+    def __init__(self, d_model, max_len, dropout=0.0):
+        super(PositionalEncoding, self).__init__()
+        self.dropout = nn.Dropout(p=dropout)
+
+        pe = torch.zeros(max_len, d_model)
+        position = torch.arange(0, max_len, dtype=torch.float).unsqueeze(1)
+        div_term = torch.exp(
+            torch.arange(0, d_model, 2).float() * (-math.log(10000.0) / d_model)
+        )
+        pe[:, 0::2] = torch.sin(position * div_term)
+        pe[:, 1::2] = torch.cos(position * div_term)
+        pe = pe.unsqueeze(0).transpose(0, 1)
+        self.register_buffer("pe", pe)
+
+    def forward(self, x):
+        x = x + self.pe[: x.size(0), :]
+        return self.dropout(x)
 
 
 class Model(nn.Module):
@@ -14,8 +36,10 @@ class Model(nn.Module):
         num_layers: int,
         dim_feedforward: int,
         embeddings: torch.Tensor,
+        max_len: int,
         padding_idx: int,
         dropout: float = 0.3,
+        freeze_embedding: bool = True,
     ):
         super(Model, self).__init__()
 
@@ -29,7 +53,10 @@ class Model(nn.Module):
         )
 
         self.weights = nn.Sequential(
-            nn.Embedding.from_pretrained(embeddings, padding_idx=padding_idx),
+            nn.Embedding.from_pretrained(
+                embeddings, padding_idx=padding_idx, freeze=freeze_embedding
+            ),
+            PositionalEncoding(num_emb_dim, max_len, dropout=dropout),
             nn.TransformerEncoder(_encoder_layers, num_layers),
             nn.Linear(num_emb_dim, 1),
         )
@@ -86,8 +113,20 @@ def _test():
     train_epochs = 10
     batch_size_train = 64
     batch_size_eval = 64
-    max_input_len = 64
     device = "cuda"
+    checkpoint_path = "tsa_checkpoint.tar"
+    use_checkpoint = True
+
+    max_input_len = 64
+    nhead = 10
+    num_layers = 12
+    dim_feedforward = 128
+
+    # Note: if False, use the pretrained embedding just as a warn-start rather than
+    # a fixed layer. This is recommended since we'll alse be adding positional encoding
+    # to the transformer model, which will corrupt the original pretrained embeddings
+    # in some sense.
+    freeze_embedding = False
 
     torch_data_train, torch_data_eval, codec = get_data(max_input_len=max_input_len)
 
@@ -103,16 +142,34 @@ def _test():
     embeddings = torch.tensor(codec.vectors, dtype=torch.float32)
 
     model = Model(
-        nhead=10,
-        num_layers=2,
-        dim_feedforward=128,
+        nhead=nhead,
+        num_layers=num_layers,
+        dim_feedforward=dim_feedforward,
+        max_len=max_input_len,
         embeddings=embeddings,
         padding_idx=codec.spm.eos_id(),
-    ).to(device)
+        freeze_embedding=freeze_embedding,
+    )
 
     criterion = nn.BCEWithLogitsLoss()
+    optim = torch.optim.Adam(model.parameters(), 1e-4)
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+        optim, factor=0.5, patience=3, verbose=True
+    )
 
-    optim = torch.optim.Adam(model.parameters(), 1e-3)
+    if use_checkpoint:
+        try:
+            checkpoint = torch.load(checkpoint_path)
+            model.load_state_dict(checkpoint["model"])
+            model.to(device)
+            optim.load_state_dict(checkpoint["optim"])
+            scheduler.load_state_dict(checkpoint["scheduler"])
+            print("Loaded checkpoint file.")
+
+        except FileNotFoundError:
+            pass
+
+    model = model.to(device)
 
     for epoch in range(1, 1 + train_epochs):
         print(f"Epoch: {epoch:4d} / {train_epochs:4d} ...")
@@ -167,6 +224,18 @@ def _test():
 
         print(f"train loss: {train_loss:4.4f} - train acc: {train_acc:4.4f}")
         print(f"eval  loss: {eval_loss:4.4f} - eval  acc: {eval_acc:4.4f}")
+
+        scheduler.step(eval_loss)
+
+    if use_checkpoint:
+        checkpoint = {
+            "model": model.state_dict(),
+            "optim": optim.state_dict(),
+            "scheduler": scheduler.state_dict(),
+        }
+
+        torch.save(checkpoint, checkpoint_path)
+        print("Saved checkpoint.")
 
 
 if __name__ == "__main__":
