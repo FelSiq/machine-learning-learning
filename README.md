@@ -109,6 +109,10 @@ At the end of this Readme I will build a list with links that lead to very inter
 	- Author: Jay Alammar
 	- Year: 2020
 
+7. [Transformer Architecture: The Positional Encoding](https://kazemnejad.com/blog/transformer_architecture_positional_encoding/)
+	- Author: Amirhossein Kazemnejad
+	- Year: 2019
+
 
 ## Full courses that I haven't taken (until now), but I'm willing to take some time
 1. [Stanford CS230 Deep Learning](https://cs230.stanford.edu/)
