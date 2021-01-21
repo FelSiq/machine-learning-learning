@@ -123,7 +123,7 @@ def _test():
     dim_feedforward = 128
 
     # Note: if False, use the pretrained embedding just as a warm-start rather than
-    # a fixed layer. This is recommended since we'll alse be adding positional encoding
+    # a fixed layer. This is recommended since we'll also be adding positional encoding
     # to the transformer model, which will corrupt the original pretrained embeddings
     # in some sense.
     freeze_embedding = False
