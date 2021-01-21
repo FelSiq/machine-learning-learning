@@ -97,7 +97,7 @@ class PositionalEncoding(nn.Module):
         pe = torch.zeros(max_len, d_model)
         position = torch.arange(0, max_len, dtype=torch.float).unsqueeze(1)
         div_term = torch.exp(
-            torch.arange(0, d_model, 2).float() * (-math.log(100.0) / d_model)
+            torch.arange(0, d_model, 2).float() * (-math.log(10000.0) / d_model)
         )
         pe[:, 0::2] = torch.sin(position * div_term)
         pe[:, 1::2] = torch.cos(position * div_term)
@@ -337,8 +337,8 @@ def get_data_streams(
     max_sentence_len_eval = 256
     batch_size_train = 4
     batch_size_eval = 4
-    train_size = min(1024, 7196119)
-    eval_size = min(128, 72689)
+    train_size = min(512000, 7196119)
+    eval_size = min(40000, 72689)
 
     datagen_train = functools.partial(
         utils.get_data_stream,
@@ -487,7 +487,7 @@ def _test():
     checkpoint_path = "./checkpoint.tar"
     device = "cuda"
     load_checkpoint = True
-    epochs_per_checkpoint = 0
+    epochs_per_checkpoint = 1
     ignore_pad_id = True
 
     tokenizer_en = sentencepiece.SentencePieceProcessor(
@@ -553,7 +553,7 @@ def _test():
                 torch.save(checkpoint, checkpoint_path)
                 print("Done.")
 
-    test_inp = "Olen tehnyt sen!"
+    test_inp = "Oletko yhteistyökykyinen, aktiivinen ja vastuuntuntoinen opiskelija?"
     predict(model, test_inp, device, tokenizer_fi, tokenizer_en)
 
 
