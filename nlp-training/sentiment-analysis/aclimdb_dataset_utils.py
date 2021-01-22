@@ -189,7 +189,7 @@ def get_data(
     script_dir = os.path.dirname(os.path.realpath(__file__))
 
     with open(
-        os.path.join(script_dir, "corpus", "aclimdb_preprocessed.pickle"), "rb"
+        os.path.join(script_dir, "../corpus", "aclimdb_preprocessed.pickle"), "rb"
     ) as fin:
         X_train, y_train, X_eval, y_eval, vocab = pickle.load(fin)
 
