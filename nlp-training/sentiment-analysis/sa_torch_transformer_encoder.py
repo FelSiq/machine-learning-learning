@@ -70,10 +70,10 @@ def get_data(
 ):
     col_types = {"sentence": str, "label": int}
     data_train = pd.read_csv(
-        "./corpus/SST-2/train.tsv", sep="\t", dtype=col_types, nrows=n
+        "../corpus/SST-2/train.tsv", sep="\t", dtype=col_types, nrows=n
     )
     data_eval = pd.read_csv(
-        "./corpus/SST-2/dev.tsv", sep="\t", dtype=col_types, nrows=n
+        "../corpus/SST-2/dev.tsv", sep="\t", dtype=col_types, nrows=n
     )
 
     codec = bpemb.BPEmb(lang="en", vs=vocab_size, add_pad_emb=True)
