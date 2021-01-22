@@ -126,7 +126,7 @@ def preprocess_data(
     mix_test_in_train_frac: float = 0.0,
 ):
     script_dir = os.path.dirname(os.path.realpath(__file__))
-    base_dir_path = os.path.join(script_dir, "corpus/aclImdb")
+    base_dir_path = os.path.join(script_dir, "../corpus/aclImdb")
 
     X_train, y_train = load_dir(base_dir_path, train=True)
     X_eval, y_eval = load_dir(base_dir_path, train=False)
@@ -172,7 +172,7 @@ def preprocess_data(
 
     res = (X_train, y_train, X_eval, y_eval, vocab)
 
-    out_path = os.path.join(script_dir, "corpus", "aclimdb_preprocessed.pickle")
+    out_path = os.path.join(script_dir, "../corpus", "aclimdb_preprocessed.pickle")
 
     with open(out_path, "wb") as fout:
         pickle.dump(res, fout)
