@@ -110,7 +110,7 @@ def get_data(
 
 
 def _test():
-    train_epochs = 10
+    train_epochs = 20
     batch_size_train = 64
     batch_size_eval = 64
     device = "cuda"
@@ -121,6 +121,7 @@ def _test():
     nhead = 10
     num_layers = 12
     dim_feedforward = 128
+    dropout = 0.5
 
     # Note: if False, use the pretrained embedding just as a warm-start rather than
     # a fixed layer. This is recommended since we'll also be adding positional encoding
@@ -149,6 +150,7 @@ def _test():
         embeddings=embeddings,
         padding_idx=codec.spm.eos_id(),
         freeze_embedding=freeze_embedding,
+        dropout=dropout,
     )
 
     criterion = nn.BCEWithLogitsLoss()
