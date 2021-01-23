@@ -129,7 +129,7 @@ def build_n_gram(
 
 
 def get_sentences(n: t.Optional[int] = None):
-    with open("corpus/en_US.twitter.txt") as f:
+    with open("../corpus/en_US.twitter.txt") as f:
         corpus = f.read()
 
     sentences = corpus.split("\n")

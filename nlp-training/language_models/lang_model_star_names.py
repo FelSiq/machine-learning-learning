@@ -48,7 +48,7 @@ def get_data(max_length: int, train_frac: float = 0.9, verbose: bool = True):
         seq = seq[:max_length]
         return torch.tensor(seq, dtype=torch.float32)
 
-    data = pd.read_csv("./corpus/star_names.txt", squeeze=False, header=None)
+    data = pd.read_csv("../corpus/star_names.txt", squeeze=False, header=None)
     data = data.sample(frac=1, random_state=16)
     train_size = int(data.shape[0] * train_frac)
 
@@ -281,7 +281,7 @@ def _test():
     print(40 * "=")
 
     raw_data = frozenset(
-        pd.read_csv("./corpus/star_names.txt", squeeze=True, header=None)
+        pd.read_csv("../corpus/star_names.txt", squeeze=True, header=None)
     )
     memorized = []
     is_in_train_set = 0
