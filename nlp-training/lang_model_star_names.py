@@ -153,7 +153,25 @@ def eval_step(model, criterion, eval_dataloader, vocab, device):
     return eval_loss, eval_acc
 
 
-def generate(model, max_length: int, vocab, vocab_inv, device, start_id: int = None):
+def logsoftmax_sample(logits, temperature=1.0):
+    assert 0 <= temperature <= 1.0
+
+    log_probs = nn.functional.log_softmax(logits, dim=-1)
+    # Note: sample uniform U(1e-6, 1 - 1e-6)
+    u = torch.rand_like(log_probs) * (1 - 2e-6) + 1e-6
+    g = -torch.log(-torch.log(u))
+    return torch.argmax(log_probs + g * temperature, axis=-1)
+
+
+def generate(
+    model,
+    max_length: int,
+    vocab,
+    vocab_inv,
+    device,
+    temperature: float = 1.0,
+    start_id: int = None,
+):
     model.eval()
     hc = None
 
@@ -170,9 +188,8 @@ def generate(model, max_length: int, vocab, vocab_inv, device, start_id: int = N
 
     for i in range(1, 1 + max_length):
         next_token = next_token.float()
-        probs, hc = model(next_token, hc_in=hc, return_hc=True)
-        probs = probs.squeeze(0)
-        next_token = torch.multinomial(nn.functional.softmax(probs, dim=1), 1)
+        logits, hc = model(next_token, hc_in=hc, return_hc=True)
+        next_token = logsoftmax_sample(logits, temperature)
 
         if next_token == vocab["<eos>"]:
             break
@@ -183,7 +200,7 @@ def generate(model, max_length: int, vocab, vocab_inv, device, start_id: int = N
 
 
 def _test():
-    train_epochs = 1000
+    train_epochs = 0
     train_batch_size = 128
     eval_batch_size = 128
     max_length = 48
@@ -262,9 +279,22 @@ def _test():
 
     # Test model.
     print(40 * "=")
+
+    raw_data = frozenset(
+        pd.read_csv("./corpus/star_names.txt", squeeze=True, header=None)
+    )
+    memorized = []
+    is_in_train_set = 0
+
     for i in range(20):
-        res = generate(model, max_length, vocab, vocab_inv, device)
+        res = generate(model, max_length, vocab, vocab_inv, device, temperature=0.8)
         print("Test:", i + 1, res)
+        if res in raw_data:
+            is_in_train_set += 1
+            memorized.append(res)
+
+    print("Generated instances memorized in network:", is_in_train_set)
+    print("Memorized:", memorized)
     print(40 * "=")
 
 
