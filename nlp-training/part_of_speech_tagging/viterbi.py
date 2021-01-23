@@ -118,7 +118,7 @@ def viterbi(words: t.List[str], model: t.Dict[str, t.Any], vocab: t.Dict[str, in
     return tags
 
 
-def get_vocab(path: str = "corpus/hmm_vocab.txt") -> t.Dict[str, int]:
+def get_vocab(path: str = "../corpus/hmm_vocab.txt") -> t.Dict[str, int]:
     vocab = dict()
 
     with open(path) as f:
@@ -143,14 +143,14 @@ def _test():
         print("Loaded pre-saved HMM.")
 
     except FileNotFoundError:
-        with open("corpus/wsj_train.pos") as f:
+        with open("../corpus/wsj_train.pos") as f:
             tagged_corpus_train = f.readlines()
             print("Got train corpus for HMM.")
 
-        with open("corpus/wsj_test.pos") as f:
+        with open("../corpus/wsj_test.pos") as f:
             tagged_corpus_test = f.readlines()
 
-        _, test_words = viterbi_utils_pos.preprocess(vocab, "corpus/test_words.txt")
+        _, test_words = viterbi_utils_pos.preprocess(vocab, "../corpus/test_words.txt")
         print("Got test corpus for HMM.")
 
         model = hidden_markov_model(tagged_corpus_train, vocab)
@@ -184,7 +184,7 @@ def _test():
             pickle.dump(model, f, protocol=pickle.HIGHEST_PROTOCOL)
             print("Saved HMM in pickle file.")
 
-    with open("corpus/test_words.txt") as f:
+    with open("../corpus/test_words.txt") as f:
         test_words = f.read().split("\n")
 
     tags = viterbi(test_words, model, vocab)
