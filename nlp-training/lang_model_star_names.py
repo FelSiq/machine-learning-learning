@@ -20,15 +20,23 @@ class StarNameGenerator(nn.Module):
         self.dropout = nn.Dropout(dropout)
         self.linear = nn.Linear(d_model, vocab_size)
 
-    def forward(self, X, X_lens):
+    def forward(self, X, X_lens=None, hc_in=None, return_hc: bool = False):
         # Note: add embedding dimension
-        X = X.unsqueeze(-1)
+        out = X.unsqueeze(-1)
 
-        out = nn.utils.rnn.pack_padded_sequence(X, X_lens, enforce_sorted=False)
-        out, _ = self.rnn(out)
-        out, _ = nn.utils.rnn.pad_packed_sequence(out)
+        if X_lens is not None:
+            out = nn.utils.rnn.pack_padded_sequence(out, X_lens, enforce_sorted=False)
+
+        out, out_hc = self.rnn(out, hc_in)
+
+        if X_lens is not None:
+            out, _ = nn.utils.rnn.pad_packed_sequence(out)
+
         out = self.dropout(out)
         out = self.linear(out)
+
+        if return_hc:
+            return out, out_hc
 
         return out
 
@@ -50,6 +58,7 @@ def get_data(max_length: int, train_frac: float = 0.9, verbose: bool = True):
     unique_tokens = ["<pad>", "<unk>", "<eos>", "<bos>"] + unique_tokens
 
     vocab = dict(zip(unique_tokens, range(len(unique_tokens))))
+    vocab_inv = dict(zip(vocab.values(), vocab.keys()))
 
     data = data.applymap(process_word).values.ravel().tolist()
 
@@ -66,7 +75,9 @@ def get_data(max_length: int, train_frac: float = 0.9, verbose: bool = True):
         print("Eval example  :", eval_data[0])
         print()
 
-    return train_data, eval_data, vocab
+    assert len(vocab) == len(vocab_inv)
+
+    return train_data, eval_data, vocab, vocab_inv
 
 
 def train_step(model, criterion, optim, train_dataloader, vocab, device):
@@ -140,15 +151,44 @@ def eval_step(model, criterion, eval_dataloader, vocab, device):
     return eval_loss, eval_acc
 
 
+def generate(model, max_length: int, vocab, vocab_inv, device, start_id: int = None):
+    model.eval()
+    hc = None
+
+    if start_id is None:
+        start_id = np.random.choice(
+            [vocab.get(chr(c), vocab["A"]) for c in range(ord("A"), 1 + ord("Z"))]
+        )
+
+    out = [vocab_inv[start_id]]
+
+    next_token = torch.tensor([start_id], dtype=torch.float)
+    next_token = next_token.unsqueeze(0)
+    next_token = next_token.to(device)
+
+    for i in range(1, 1 + max_length):
+        next_token = next_token.float()
+        probs, hc = model(next_token, hc_in=hc, return_hc=True)
+        probs = probs.squeeze(0)
+        next_token = torch.multinomial(nn.functional.softmax(probs, dim=1), 1)
+
+        if next_token == vocab["<eos>"]:
+            break
+
+        out.append(vocab_inv[int(next_token.item())])
+
+    return "".join(out)
+
+
 def _test():
-    train_epochs = 1000
+    train_epochs = 0
     train_batch_size = 128
     eval_batch_size = 128
     max_length = 48
     device = "cuda"
     checkpoint_path = "lm_star_names.tar"
 
-    train_dataset, eval_dataset, vocab = get_data(max_length)
+    train_dataset, eval_dataset, vocab, vocab_inv = get_data(max_length)
 
     def collate_fn(batch):
         X_lens = list(map(len, batch))
@@ -158,7 +198,7 @@ def _test():
         return X, X_lens
 
     model = StarNameGenerator(
-        vocab_size=len(vocab), d_model=256, num_layers=1, dropout=0.4
+        vocab_size=len(vocab), d_model=80, num_layers=2, dropout=0.5
     )
 
     optim = torch.optim.RMSprop(model.parameters(), 5e-4)
@@ -216,10 +256,11 @@ def _test():
         print("Done.")
 
     # Test model.
-    # print(40 * "=")
-    # for i in range(10):
-    #     print("Test:", i + 1)
-    #     predict()
+    print(40 * "=")
+    for i in range(20):
+        res = generate(model, max_length, vocab, vocab_inv, device)
+        print("Test:", i + 1, res)
+    print(40 * "=")
 
 
 if __name__ == "__main__":
