@@ -11,7 +11,7 @@ class StarNameGenerator(nn.Module):
     def __init__(self, vocab_size: int, d_model: int, num_layers: int, dropout: float):
         super(StarNameGenerator, self).__init__()
 
-        self.rnn = nn.GRU(
+        self.rnn = nn.LSTM(
             1,
             d_model,
             num_layers=num_layers,
@@ -72,7 +72,7 @@ def get_data(max_length: int, train_frac: float = 0.9, verbose: bool = True):
         print("Vocab         :", vocab)
         print()
         print("Train example :", train_data[0])
-        print("Eval example  :", eval_data[0])
+        print("Eval example  :", eval_data[0] if eval_data else None)
         print()
 
     assert len(vocab) == len(vocab_inv)
@@ -121,6 +121,7 @@ def train_step(model, criterion, optim, train_dataloader, vocab, device):
 
 def eval_step(model, criterion, eval_dataloader, vocab, device):
     model.eval()
+
     eval_loss = eval_acc = 0.0
     eval_total_batches = 0
 
@@ -145,8 +146,9 @@ def eval_step(model, criterion, eval_dataloader, vocab, device):
             .item()
         )
 
-    eval_loss /= eval_total_batches
-    eval_acc /= eval_total_batches
+    if eval_total_batches:
+        eval_loss /= eval_total_batches
+        eval_acc /= eval_total_batches
 
     return eval_loss, eval_acc
 
@@ -181,14 +183,14 @@ def generate(model, max_length: int, vocab, vocab_inv, device, start_id: int = N
 
 
 def _test():
-    train_epochs = 0
+    train_epochs = 1000
     train_batch_size = 128
     eval_batch_size = 128
     max_length = 48
     device = "cuda"
     checkpoint_path = "lm_star_names.tar"
 
-    train_dataset, eval_dataset, vocab, vocab_inv = get_data(max_length)
+    train_dataset, eval_dataset, vocab, vocab_inv = get_data(max_length, train_frac=1.0)
 
     def collate_fn(batch):
         X_lens = list(map(len, batch))
@@ -198,12 +200,15 @@ def _test():
         return X, X_lens
 
     model = StarNameGenerator(
-        vocab_size=len(vocab), d_model=80, num_layers=2, dropout=0.5
+        vocab_size=len(vocab), d_model=256, num_layers=3, dropout=0.5
     )
 
-    optim = torch.optim.RMSprop(model.parameters(), 5e-4)
-    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-        optim, patience=20, factor=0.95, verbose=True
+    optim = torch.optim.RMSprop(model.parameters(), 5e-3)
+    scheduler = torch.optim.lr_scheduler.StepLR(
+        optim,
+        step_size=40,
+        gamma=0.95,
+        verbose=True,
     )
 
     try:
@@ -242,7 +247,7 @@ def _test():
             eval_loss, eval_acc = eval_step(
                 model, criterion, eval_dataloader, vocab, device
             )
-            scheduler.step(eval_loss)
+            scheduler.step()
             print(f"train loss: {train_loss:.4f} - train acc: {train_acc:.4f}")
             print(f"eval loss: {eval_loss:.4f} - eval acc: {eval_acc:.4f}")
 
