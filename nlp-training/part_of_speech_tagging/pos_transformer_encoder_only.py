@@ -141,14 +141,14 @@ def eval_step(model, criterion, eval_dataloader, vocab_tags, device):
 
 
 def _test():
-    train_epochs = 1
+    train_epochs = 3
     max_len = 64
     train_batch_size = 32
     eval_batch_size = 32
     device = "cuda"
     lr_gamma = 0.95
     lr_step_size = 1
-    checkpoint_path = "checkpoint.tar"
+    checkpoint_path = "pos_enconly_checkpoint.tar"
 
     (
         train_dataset,
