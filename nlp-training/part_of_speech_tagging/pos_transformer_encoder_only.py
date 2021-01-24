@@ -211,6 +211,8 @@ def _test():
         "scheduler": scheduler.state_dict(),
     }
 
+    torch.save(checkpoint, checkpoint_path)
+
     print("Done.")
 
 
