@@ -202,6 +202,7 @@ def _test():
         eval_loss, eval_acc = eval_step(
             model, criterion, eval_dataloader, vocab_tags, device
         )
+        scheduler.step()
         print(f"train loss: {train_loss:.4f} - train acc: {train_acc:.4f}")
         print(f"eval  loss: {eval_loss:.4f} - eval  acc: {eval_acc:.4f}")
 
