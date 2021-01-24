@@ -141,7 +141,7 @@ def eval_step(model, criterion, eval_dataloader, vocab_tags, device):
 
 
 def _test():
-    train_epochs = 3
+    train_epochs = 6
     max_len = 64
     train_batch_size = 32
     eval_batch_size = 32
@@ -176,7 +176,7 @@ def _test():
     )
 
     criterion = nn.CrossEntropyLoss(ignore_index=vocab_tags["<pad>"])
-    optim = torch.optim.Adam(model.parameters(), 1e-4)
+    optim = torch.optim.Adam(model.parameters(), 3e-4)
     scheduler = torch.optim.lr_scheduler.StepLR(
         optim, step_size=lr_step_size, gamma=lr_gamma
     )
