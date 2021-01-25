@@ -15,11 +15,12 @@ class Model(nn.Module):
         rnn_num_layers: int,
         pretrained_emb: torch.Tensor,
         dropout: float = 0.0,
+        freeze_emb: bool = False,
     ):
         super(Model, self).__init__()
 
         vocab_size, emb_dim = pretrained_emb.shape
-        self.embedding = nn.Embedding.from_pretrained(pretrained_emb)
+        self.embedding = nn.Embedding.from_pretrained(pretrained_emb, freeze=freeze_emb)
         self.rnn = nn.LSTM(
             emb_dim,
             rnn_hidden_dim,
@@ -129,7 +130,7 @@ def get_data(codec, max_length: int, train_frac: float = 0.95, verbose: bool = T
     data = list(
         map(
             lambda item: torch.tensor(
-                codec.encode_ids_with_eos(item), dtype=torch.long
+                codec.encode_ids_with_bos_eos(item.strip()), dtype=torch.long
             ),
             raw_data,
         )
@@ -158,25 +159,38 @@ def logsoftmax_sample(logits, temperature: float):
     return torch.argmax(log_probs + g * temperature, dim=-1)
 
 
-def generate(model, max_length, codec, device, temperature):
-    pass
+def generate(model, max_length, codec, device, temperature: float):
+    next_symbol = torch.tensor([codec.BOS], device=device, dtype=torch.long)
+    next_symbol = next_symbol.unsqueeze(0)
+    hc = None
+    out = []
+
+    for i in range(max_length):
+        logits, hc = model(next_symbol, hc_in=hc, return_hc=True)
+        next_symbol = logsoftmax_sample(logits, temperature)
+
+        if next_symbol == codec.EOS:
+            break
+
+        out.append(next_symbol.item())
+
+    return codec.decode_ids(out)
 
 
 def _test():
-    train_epochs = 2
+    train_epochs = 80
     device = "cuda"
     max_length = 128
-    train_batch_size = 32
-    eval_batch_size = 64
+    train_batch_size = 64
+    eval_batch_size = 128
     vocab_size = 10000
     emb_dim = 100
-    lr_step_size = 20
-    lr_gamma = 0.95
+    lr_gamma = 0.9
     checkpoint_path = "lm_shakespeare_checkpoint.tar"
 
-    rnn_hidden_dim = 128
-    rnn_num_layers = 1
-    dropout = 0.1
+    rnn_hidden_dim = 256
+    rnn_num_layers = 2
+    dropout = 0.4
 
     codec = bpemb.BPEmb(lang="en", vs=vocab_size, dim=emb_dim)
     pretrained_emb = torch.tensor(codec.vectors)
@@ -196,8 +210,10 @@ def _test():
         dropout=dropout,
     )
 
-    optim = torch.optim.Adam(model.parameters(), 1e-4)
-    scheduler = torch.optim.lr_scheduler.StepLR(optim, lr_step_size, gamma=lr_gamma)
+    optim = torch.optim.Adam(model.parameters(), 1e-2)
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+        optim, factor=lr_gamma, patience=5, verbose=True
+    )
 
     try:
         checkpoint = torch.load(checkpoint_path)
@@ -236,7 +252,10 @@ def _test():
             eval_loss, eval_acc = eval_step(
                 model, criterion, eval_dataloader, codec, device
             )
-            scheduler.step()
+            # Note: I'm aware that i'm using the train loss instead of the eval
+            # loss here, but this is what I actually care in this application
+            # specifically.
+            scheduler.step(train_loss)
 
             print(f"train loss: {train_loss:.4f} - train acc: {train_acc:.4f}")
             print(f"eval  loss: {eval_loss:.4f} - eval  acc: {eval_acc:.4f}")
