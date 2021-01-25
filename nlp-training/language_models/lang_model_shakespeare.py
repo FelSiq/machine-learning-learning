@@ -180,7 +180,7 @@ def generate(model, max_length, codec, device, temperature: float):
 def _test():
     train_epochs = 80
     device = "cuda"
-    max_length = 128
+    max_length = 512
     train_batch_size = 64
     eval_batch_size = 128
     vocab_size = 10000
@@ -190,7 +190,7 @@ def _test():
 
     rnn_hidden_dim = 256
     rnn_num_layers = 2
-    dropout = 0.4
+    dropout = 0.3
 
     codec = bpemb.BPEmb(lang="en", vs=vocab_size, dim=emb_dim)
     pretrained_emb = torch.tensor(codec.vectors)
