@@ -50,7 +50,7 @@ class POSTagger(nn.Module):
         )
 
         self.emb_Y = nn.Sequential(
-            nn.Embedding(vocab_size, emb_dim),
+            nn.Embedding(tag_num, emb_dim),
             PositionalEncoding(emb_dim, dropout, max_len),
         )
 
