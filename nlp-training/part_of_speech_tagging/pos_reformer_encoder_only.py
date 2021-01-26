@@ -14,13 +14,12 @@ class POSTagger(nn.Module):
         self,
         vocab_size: int,
         tag_num: int,
+        dim: int,
         max_len: int,
         axial_position_shape: t.Tuple[int, int],
-        emb_dim: int,
         num_layers: int,
         nhead: int,
         bucket_size: int,
-        dim_feedforward: int,
         ff_chunks: int, 
         dropout: float,
     ):
@@ -28,8 +27,7 @@ class POSTagger(nn.Module):
 
         self.encoder = reformer_pytorch.ReformerLM(
             num_tokens=vocab_size,
-            emb_dim=emb_dim,
-            dim=dim_feedforward,
+            dim=dim,
             depth=num_layers,
             heads=nhead,
             lsh_dropout=dropout,
@@ -43,7 +41,7 @@ class POSTagger(nn.Module):
             return_embeddings=True,
         )
 
-        self.linear = nn.Linear(emb_dim, tag_num)
+        self.linear = nn.Linear(dim, tag_num)
 
 
     def forward(self, X):
@@ -130,7 +128,7 @@ def _test():
     device = "cuda"
     lr_gamma = 0.95
     lr_step_size = 1
-    checkpoint_path = "pos_reformer_checkpoint.tar"
+    checkpoint_path = "pos_reformer_encoder_checkpoint.tar"
 
     (
         train_dataset,
@@ -142,13 +140,12 @@ def _test():
     model = POSTagger(
         vocab_size=len(vocab_words),
         tag_num=len(vocab_tags),
+        dim=256,
         max_len=max_len,
-        emb_dim=32,
-        num_layers=8,
+        num_layers=12,
         nhead=8,
         bucket_size=32,
         ff_chunks=10,
-        dim_feedforward=32,
         axial_position_shape=(16, 8),  # Note: must multiply to max_seq_len
         dropout=0.1,
     )
@@ -161,7 +158,7 @@ def _test():
     )
 
     criterion = nn.CrossEntropyLoss(ignore_index=vocab_tags["<pad>"])
-    optim = torch.optim.Adam(model.parameters(), 3e-4)
+    optim = torch.optim.Adam(model.parameters(), 1e-3)
     scheduler = torch.optim.lr_scheduler.StepLR(
         optim, step_size=lr_step_size, gamma=lr_gamma
     )
@@ -197,7 +194,7 @@ def _test():
         "scheduler": scheduler.state_dict(),
     }
 
-    torch.save(checkpoint, checkpoint_path)
+    # torch.save(checkpoint, checkpoint_path)
 
     print("Done.")
 
