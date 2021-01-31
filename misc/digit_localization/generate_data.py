@@ -1,20 +1,36 @@
+import os
+import glob
+import re
+
 import torchvision
 import numpy as np
 import matplotlib.patches
 import matplotlib.pyplot as plt
+import torch
 
 import config
 import utils
 
-OUTPUT_DIR = "./data"
 OUTPUT_LEN = 3
-
 KEEP_ASPECT_RATIO = True
 MIN_INST_DIM = 28
 MAX_INST_DIM = 128
 
 
-def _test():
+def get_file_id() -> int:
+    get_cur_file_ind = re.compile(r"[^_]+_(\d+)")
+
+    cur_id = -1
+
+    for path in glob.glob(config.DATA_DIR + "/*"):
+        res = get_cur_file_ind.search(path)
+        if res is not None:
+            cur_id = max(cur_id, int(res.group(1)))
+
+    return cur_id + 1
+
+
+def _test(plot: bool):
     train_data = torchvision.datasets.MNIST(
         root=".",
         train=True,
@@ -33,14 +49,30 @@ def _test():
 
         new_inst = np.maximum(new_inst, 255.0)
 
+    gen_insts = np.zeros(
+        (OUTPUT_LEN, config.OUTPUT_HEIGHT, config.OUTPUT_WIDTH), dtype=np.float32
+    )
+    gen_targets = np.zeros(
+        (
+            OUTPUT_LEN,
+            config.NUM_CELLS_VERT,
+            config.NUM_CELLS_HORIZ,
+            config.NUM_ANCHOR_BOXES * (5 + config.NUM_CLASSES),
+        ),
+        dtype=np.float32,
+    )
+
     for i in np.arange(OUTPUT_LEN):
-        new_inst = np.zeros((config.OUTPUT_HEIGHT, config.OUTPUT_WIDTH))
-        new_label = np.zeros(
+        new_inst = np.zeros(
+            (config.OUTPUT_HEIGHT, config.OUTPUT_WIDTH), dtype=np.float32
+        )
+        new_target = np.zeros(
             (
                 config.NUM_CELLS_VERT,
                 config.NUM_CELLS_HORIZ,
                 config.NUM_ANCHOR_BOXES * (5 + config.NUM_CLASSES),
-            )
+            ),
+            dtype=np.float32,
         )
         num_digits = np.random.randint(1, 5)
 
@@ -98,20 +130,39 @@ def _test():
             assert in_cell_height_prop > 0.0
             assert in_cell_width_prop > 0.0
 
-            digit_label = config.NUM_CLASSES * [0.0]
-            digit_label[target] = 1.0
-            digit_label = [
+            # TODO: choose the correct anchor box when NUM_ANCHOR_BOXES > 1
+            digit_target = config.NUM_CLASSES * [0.0]
+            digit_target[target] = 1.0
+            digit_target = [
                 1.0,
                 in_cell_y_prop,
                 in_cell_x_prop,
                 in_cell_height_prop,
                 in_cell_width_prop,
-            ] + digit_label
+            ] + digit_target
 
-            new_label[cell_y, cell_x] = digit_label
+            new_target[cell_y, cell_x] = digit_target
 
-        utils.plot_instance(new_inst, new_label)
+        if plot:
+            utils.plot_instance(new_inst, new_target)
+
+        gen_insts[i, ...] = new_inst
+        gen_targets[i, ...] = new_target
+
+    file_id = get_file_id()
+
+    gen_insts = torch.from_numpy(gen_insts)
+    gen_targets = torch.from_numpy(gen_targets)
+
+    torch.save(gen_insts, os.path.join(config.DATA_DIR, f"insts_{file_id}.pt"))
+    torch.save(gen_targets, os.path.join(config.DATA_DIR, f"targets_{file_id}.pt"))
 
 
 if __name__ == "__main__":
-    _test()
+    try:
+        os.mkdir(config.DATA_DIR)
+
+    except FileExistsError:
+        pass
+
+    _test(plot=False)
