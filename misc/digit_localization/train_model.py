@@ -1,4 +1,3 @@
-import os
 import functools
 
 import torch.nn as nn
@@ -46,17 +45,6 @@ class Model(nn.Module):
         dims = out[:, [3, 4], ...]
         class_logits = out[:, 5:, ...]
         return is_object, coords, dims, class_logits
-
-
-def get_data():
-    X_train = torch.load(os.path.join(config.DATA_DIR, "insts_0.pt"))
-    y_train = torch.load(os.path.join(config.DATA_DIR, "targets_0.pt"))
-
-    X_train = X_train.unsqueeze(1)
-
-    train_dataset = torch.utils.data.TensorDataset(X_train, y_train)
-
-    return train_dataset
 
 
 def loss_func(
@@ -128,13 +116,15 @@ def predict(model, X):
 
 
 def _test():
-    train_epochs = 600
+    train_epochs = 100
     epochs_per_checkpoint = 20
     device = "cuda"
     train_batch_size = 32
+    eval_batch_size = 32
     checkpoint_path = "dl_checkpoint.tar"
+    num_eval_inst = 5
 
-    train_dataset = get_data()
+    train_dataset, eval_dataset = utils.get_data(train_frac=0.95)
 
     model = Model()
     optim = torch.optim.Adam(model.parameters(), 4e-4)
@@ -156,7 +146,7 @@ def _test():
     criterion = functools.partial(
         loss_func,
         is_object_weight=3.0,
-        center_coord_weight= 1.5,
+        center_coord_weight=1.5,
         frame_dims_weight=1.1,
         class_prob_weight=1.25,
     )
@@ -165,6 +155,10 @@ def _test():
 
     train_dataloader = torch.utils.data.DataLoader(
         train_dataset, shuffle=True, batch_size=train_batch_size
+    )
+
+    eval_dataloader = torch.utils.data.DataLoader(
+        eval_dataset, batch_size=eval_batch_size
     )
 
     for epoch in range(1, 1 + train_epochs):
@@ -192,9 +186,30 @@ def _test():
                 train_total_batches += 1
                 train_loss += loss.item()
 
+            del X_batch, y_batch
+
+        model.eval()
+        eval_total_batches = 0
+        eval_loss = 0.0
+
+        for X_batch, y_batch in tqdm.auto.tqdm(eval_dataloader):
+            X_batch = X_batch.to(device)
+            y_batch = y_batch.to(device)
+
+            y_preds = model(X_batch)
+            loss = criterion(y_preds, y_batch)
+
+            eval_total_batches += 1
+            eval_loss += loss.item()
+
+            del X_batch, y_batch
+
         train_loss /= train_total_batches
+        eval_loss /= eval_total_batches
+        scheduler.step(eval_loss)
+
         print(f"train loss: {train_loss:.4f}")
-        scheduler.step(train_loss)
+        print(f"eval  loss: {eval_loss:.4f}")
 
         if (
             epochs_per_checkpoint > 0 and epoch % epochs_per_checkpoint == 0
@@ -207,11 +222,11 @@ def _test():
             torch.save(checkpoint, checkpoint_path)
             print("Saved checkpoint.")
 
-    insts_eval = X_batch[:16]
+    X_batch = next(iter(eval_dataloader))[0]
+    insts_eval = X_batch[:num_eval_inst]
     y_preds = predict(model, insts_eval)
 
     for inst, pred in zip(insts_eval, y_preds):
-        print(pred[0, ...].max())
         utils.plot_instance(inst.detach().cpu().squeeze(), pred.detach().cpu())
 
     print("Done.")
