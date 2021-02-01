@@ -6,6 +6,7 @@ import torch
 import tqdm
 
 import config
+import utils
 
 
 class Model(nn.Module):
@@ -43,8 +44,8 @@ class Model(nn.Module):
         is_object = out[:, 0, ...]
         coords = out[:, [1, 2], ...]
         dims = out[:, [3, 4], ...]
-        class_probs = out[:, 5:, ...]
-        return is_object, coords, dims, class_probs
+        class_logits = out[:, 5:, ...]
+        return is_object, coords, dims, class_logits
 
 
 def get_data():
@@ -68,11 +69,8 @@ def loss_func(y_preds, y_true, is_object_weight: float = 1.0):
 
     # Note: no need to shrink 'preds_is_object' because loss function
     # (bce loss w/ logits) already incorporate the sigmoid function.
-    total_loss = (
-        is_object_weight
-        * torch.nn.functional.binary_cross_entropy_with_logits(
-            preds_is_object, true_is_object
-        )
+    total_loss = is_object_weight * nn.functional.binary_cross_entropy_with_logits(
+        preds_is_object, true_is_object
     )
 
     preds_coords = torch.exp(preds_coords)  # Note: ensure > 0
@@ -93,22 +91,35 @@ def loss_func(y_preds, y_true, is_object_weight: float = 1.0):
     true_dims = torch.masked_select(true_dims, is_object_mask)
     true_class_logits = torch.masked_select(true_class_logits, is_object_mask)
 
-    total_loss += torch.nn.functional.mse_loss(preds_coords, true_coords)
-    total_loss += torch.nn.functional.mse_loss(preds_dims, true_dims)
+    total_loss += nn.functional.binary_cross_entropy_with_logits(
+        preds_coords, true_coords
+    )
+    total_loss += nn.functional.mse_loss(preds_dims, true_dims)
 
     preds_class_logits = preds_class_logits.view(-1, config.NUM_CLASSES)
 
     # Note: no need to softmax class logits since the loss functiona
     # (cross entropy) already incorporate the (log-)softmax function.
-    total_loss += torch.nn.functional.cross_entropy(
-        preds_class_logits, true_class_logits
-    )
+    total_loss += nn.functional.cross_entropy(preds_class_logits, true_class_logits)
 
     return total_loss
 
 
+def predict(model, X):
+    model.eval()
+    y_preds = model(X)
+    is_object, coords, dims, class_logits = model.split_output(y_preds)
+
+    y_preds[:, 0, ...] = torch.sigmoid(is_object)
+    y_preds[:, [1, 2], ...] = torch.sigmoid(coords)
+    y_preds[:, [3, 4], ...] = torch.exp(dims)
+    y_preds[:, 5:, ...] = torch.softmax(class_logits, dim=1)
+
+    return y_preds
+
+
 def _test():
-    train_epochs = 50
+    train_epochs = 1000
     device = "cuda"
     train_batch_size = 32
 
@@ -116,7 +127,10 @@ def _test():
 
     model = Model()
     optim = torch.optim.Adam(model.parameters(), 1e-4)
-    criterion = functools.partial(loss_func, is_object_weight=4.0)
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+        optim, factor=0.9, patience=50, verbose=True
+    )
+    criterion = functools.partial(loss_func, is_object_weight=1.0)
 
     model = model.to(device)
 
@@ -148,6 +162,14 @@ def _test():
 
         train_loss /= train_total_batches
         print(f"train loss: {train_loss:.4f}")
+        scheduler.step(train_loss)
+
+    insts_eval = X_batch[:3]
+    y_preds = predict(model, insts_eval)
+
+    for inst, pred in zip(insts_eval, y_preds):
+        print(pred[0, ...])
+        utils.plot_instance(inst.detach().cpu().squeeze(), pred.detach().cpu())
 
     print("Done.")
 
