@@ -119,9 +119,10 @@ def predict(model, X):
 
 
 def _test():
-    train_epochs = 1000
+    train_epochs = 1
     device = "cuda"
     train_batch_size = 32
+    checkpoint_path = "dl_checkpoint.tar"
 
     train_dataset = get_data()
 
@@ -130,15 +131,26 @@ def _test():
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
         optim, factor=0.9, patience=50, verbose=True
     )
-    criterion = functools.partial(loss_func, is_object_weight=1.0)
 
+    try:
+        checkpoint = torch.load(checkpoint_path)
+        model.load_state_dict(checkpoint["model"])
+        model = model.to(device)
+        optim.load_state_dict(checkpoint["optim"])
+        scheduler.load_state_dict(checkpoint["scheduler"])
+        print("Loaded checkpoint.")
+
+    except FileNotFoundError:
+        pass
+
+    criterion = functools.partial(loss_func, is_object_weight=1.0)
     model = model.to(device)
 
     train_dataloader = torch.utils.data.DataLoader(
         train_dataset, shuffle=True, batch_size=train_batch_size
     )
 
-    for epoch in range(train_epochs):
+    for epoch in range(1, 1 + train_epochs):
         print(f"Epoch: {epoch:4d} / {train_epochs}...")
         model.train()
         train_total_batches = 0
@@ -163,6 +175,13 @@ def _test():
         train_loss /= train_total_batches
         print(f"train loss: {train_loss:.4f}")
         scheduler.step(train_loss)
+
+    checkpoint = {
+        "model": model.state_dict(),
+        "optim": optim.state_dict(),
+        "scheduler": scheduler.state_dict(),
+    }
+    torch.save(checkpoint, checkpoint_path)
 
     insts_eval = X_batch[:3]
     y_preds = predict(model, insts_eval)
