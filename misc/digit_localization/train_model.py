@@ -1,4 +1,5 @@
 import os
+import functools
 
 import torch.nn as nn
 import torch
@@ -65,23 +66,40 @@ def loss_func(y_preds, y_true, is_object_weight: float = 1.0):
         y_preds
     )
 
-    preds_coords = torch.exp(preds_coords)  # Note: ensure > 0
-    preds_dims = torch.exp(preds_dims)  # Note: ensure > 0
-
-    true_class_logits = true_class_logits.argmax(dim=1)
-
-    # Note 1: no need to shrink 'preds_is_object' because loss function
+    # Note: no need to shrink 'preds_is_object' because loss function
     # (bce loss w/ logits) already incorporate the sigmoid function.
-    # Note 2: no need to softmax class logits since the loss functiona
-    # (cross entropy) already incorporate the (log-)softmax function.
     total_loss = (
         is_object_weight
         * torch.nn.functional.binary_cross_entropy_with_logits(
             preds_is_object, true_is_object
         )
     )
+
+    preds_coords = torch.exp(preds_coords)  # Note: ensure > 0
+    preds_dims = torch.exp(preds_dims)  # Note: ensure > 0
+
+    true_class_logits = true_class_logits.argmax(dim=1, keepdims=True)
+
+    # Note: when the true label of a cell does not has any object within it, then
+    # the remaining predicted values does not matter as long as the model
+    # detected no object in the first place. Therefore, here we calculate the
+    # remaining losses only for cells that actually has some object (based on
+    # the ground truth).
+    is_object_mask = (true_is_object >= 0.999).unsqueeze(1)
+    preds_coords = torch.masked_select(preds_coords, is_object_mask)
+    preds_dims = torch.masked_select(preds_dims, is_object_mask)
+    preds_class_logits = torch.masked_select(preds_class_logits, is_object_mask)
+    true_coords = torch.masked_select(true_coords, is_object_mask)
+    true_dims = torch.masked_select(true_dims, is_object_mask)
+    true_class_logits = torch.masked_select(true_class_logits, is_object_mask)
+
     total_loss += torch.nn.functional.mse_loss(preds_coords, true_coords)
     total_loss += torch.nn.functional.mse_loss(preds_dims, true_dims)
+
+    preds_class_logits = preds_class_logits.view(-1, config.NUM_CLASSES)
+
+    # Note: no need to softmax class logits since the loss functiona
+    # (cross entropy) already incorporate the (log-)softmax function.
     total_loss += torch.nn.functional.cross_entropy(
         preds_class_logits, true_class_logits
     )
@@ -90,15 +108,15 @@ def loss_func(y_preds, y_true, is_object_weight: float = 1.0):
 
 
 def _test():
-    train_epochs = 10
+    train_epochs = 50
     device = "cuda"
     train_batch_size = 32
 
     train_dataset = get_data()
 
     model = Model()
-    optim = torch.optim.Adam(model.parameters(), 1e-5)
-    criterion = loss_func
+    optim = torch.optim.Adam(model.parameters(), 1e-4)
+    criterion = functools.partial(loss_func, is_object_weight=4.0)
 
     model = model.to(device)
 
