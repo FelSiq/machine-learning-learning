@@ -13,38 +13,37 @@ class Model(nn.Module):
         super(Model, self).__init__()
 
         self.weights = nn.Sequential(
-            nn.Conv2d(1, 64, kernel_size=5, stride=2),
-            nn.ReLU(inplace=True),
-            nn.Dropout2d(dropout),
+            self._create_block(1, 64, 5, 2, dropout),
             nn.MaxPool2d(kernel_size=2, stride=2),
-            nn.Conv2d(64, 128, kernel_size=3, stride=2),
-            nn.ReLU(inplace=True),
-            nn.Dropout2d(dropout),
+            self._create_block(64, 128, 5, 2, dropout),
             nn.MaxPool2d(kernel_size=2, stride=2),
-            nn.Conv2d(128, 128, kernel_size=5, stride=1),
-            nn.ReLU(inplace=True),
-            nn.Dropout2d(dropout),
-            nn.Conv2d(128, 128, kernel_size=5, stride=1),
-            nn.ReLU(inplace=True),
-            nn.Dropout2d(dropout),
-            nn.Conv2d(128, 128, kernel_size=3, stride=1),
-            nn.ReLU(inplace=True),
-            nn.Dropout2d(dropout),
-            nn.Conv2d(128, 64, kernel_size=3, stride=1),
-            nn.ReLU(inplace=True),
-            nn.Dropout2d(dropout),
-            nn.Conv2d(64, 64, kernel_size=3, stride=1),
-            nn.ReLU(inplace=True),
-            nn.Dropout2d(dropout),
-            nn.Conv2d(64, 1024, kernel_size=1, stride=1),
-            nn.ReLU(inplace=True),
-            nn.Dropout2d(dropout),
+            self._create_block(128, 128, 5, 1, dropout),
+            self._create_block(128, 128, 5, 1, dropout),
+            self._create_block(128, 128, 3, 1, dropout),
+            self._create_block(128, 64, 3, 1, dropout),
+            self._create_block(64, 64, 3, 1, dropout),
+            self._create_block(64, 1024, 1, 1, dropout),
             nn.Conv2d(1024, config.TARGET_DEPTH, kernel_size=1, stride=1),
         )
 
     def forward(self, X):
-        # Output shape: (?, 15, 20, 20)
+        # Output shape: (?, 15, 20, 20), using a single anchor box
         return self.weights(X)
+
+    @staticmethod
+    def _create_block(
+        in_dim: int, out_dim: int, kernel_size: int, stride: int, dropout: float
+    ):
+        block = nn.Sequential(
+            nn.Conv2d(
+                in_dim, out_dim, kernel_size=kernel_size, stride=stride, bias=False
+            ),
+            nn.BatchNorm2d(out_dim, momentum=0.01, affine=True),
+            nn.ReLU(inplace=True),
+            nn.Dropout2d(dropout),
+        )
+
+        return block
 
     @staticmethod
     def split_output(out):
@@ -76,9 +75,6 @@ def loss_func(
         preds_is_object, true_is_object
     )
 
-    preds_coords = torch.exp(preds_coords)  # Note: ensure > 0
-    preds_dims = torch.exp(preds_dims)  # Note: ensure > 0
-
     true_class_logits = true_class_logits.argmax(dim=1, keepdims=True)
 
     # Note: when the true label of a cell does not has any object within it, then
@@ -97,6 +93,8 @@ def loss_func(
     total_loss += center_coord_weight * nn.functional.binary_cross_entropy_with_logits(
         preds_coords, true_coords
     )
+
+    preds_dims = torch.exp(preds_dims)  # Note: ensure > 0
     total_loss += frame_dims_weight * nn.functional.mse_loss(preds_dims, true_dims)
 
     preds_class_logits = preds_class_logits.view(-1, config.NUM_CLASSES)
@@ -124,20 +122,21 @@ def predict(model, X):
 
 
 def _test():
-    train_epochs = 0
-    epochs_per_checkpoint = 20
+    train_epochs = 10
+    epochs_per_checkpoint = 5
     device = "cuda"
-    train_batch_size = 32
+    train_batch_size = 16
     eval_batch_size = 16
     checkpoint_path = "dl_checkpoint.tar"
     num_eval_inst = 5
+    dropout = 0.1
 
     train_dataset, eval_dataset = utils.get_data(train_frac=0.95)
 
-    model = Model()
-    optim = torch.optim.Adam(model.parameters(), 5e-4)
+    model = Model(dropout=dropout)
+    optim = torch.optim.Adam(model.parameters(), 1e-3)
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-        optim, factor=0.95, patience=15, verbose=True
+        optim, factor=0.9, patience=10, verbose=True
     )
 
     try:
@@ -156,8 +155,8 @@ def _test():
     if train_epochs > 0:
         criterion = functools.partial(
             loss_func,
-            is_object_weight=5.0,
-            center_coord_weight=1.25,
+            is_object_weight=8.0,
+            center_coord_weight=1.5,
             frame_dims_weight=1.0,
             class_prob_weight=1.1,
         )
