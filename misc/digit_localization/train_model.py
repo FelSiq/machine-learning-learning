@@ -173,7 +173,7 @@ def _test():
             print(f"Epoch: {epoch:4d} / {train_epochs}...")
             model.train()
             train_total_batches = 0
-            train_loss = 0.0
+            train_loss = train_detection_acc = 0.0
 
             for X_batch, y_batch in tqdm.auto.tqdm(train_dataloader):
                 optim.zero_grad()
@@ -193,12 +193,18 @@ def _test():
                 with torch.no_grad():
                     train_total_batches += 1
                     train_loss += loss.item()
+                    train_detection_acc += (
+                        ((y_preds[:, 0] >= 0.6) == (y_batch[:, 0] >= 0.999))
+                        .float()
+                        .mean()
+                        .item()
+                    )
 
                 del X_batch, y_batch
 
             model.eval()
             eval_total_batches = 0
-            eval_loss = 0.0
+            eval_loss = eval_detection_acc = 0.0
 
             for X_batch, y_batch in tqdm.auto.tqdm(eval_dataloader):
                 X_batch = X_batch.to(device)
@@ -209,15 +215,29 @@ def _test():
 
                 eval_total_batches += 1
                 eval_loss += loss.item()
+                eval_detection_acc += (
+                    ((y_preds[:, 0] >= 0.6) == (y_batch[:, 0] >= 0.999))
+                    .float()
+                    .mean()
+                    .item()
+                )
 
                 del X_batch, y_batch
 
             train_loss /= train_total_batches
+            train_detection_acc /= train_total_batches
+
             eval_loss /= eval_total_batches
+            eval_detection_acc /= eval_total_batches
+
             scheduler.step(eval_loss)
 
-            print(f"train loss: {train_loss:.4f}")
-            print(f"eval  loss: {eval_loss:.4f}")
+            print(
+                f"train loss: {train_loss:.4f} - train detection acc: {train_detection_acc:.4f}"
+            )
+            print(
+                f"eval  loss: {eval_loss:.4f} - eval  detection acc: {eval_detection_acc:.4f}"
+            )
 
             if (
                 epochs_per_checkpoint > 0 and epoch % epochs_per_checkpoint == 0
