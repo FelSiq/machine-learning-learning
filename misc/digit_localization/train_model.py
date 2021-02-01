@@ -119,8 +119,8 @@ def predict(model, X):
 
 
 def _test():
-    train_epochs = 200
-    epochs_per_checkpoint = 2
+    train_epochs = 250
+    epochs_per_checkpoint = 20
     device = "cuda"
     train_batch_size = 32
     checkpoint_path = "dl_checkpoint.tar"
@@ -144,7 +144,7 @@ def _test():
     except FileNotFoundError:
         pass
 
-    criterion = functools.partial(loss_func, is_object_weight=2.0)
+    criterion = functools.partial(loss_func, is_object_weight=3.0)
     model = model.to(device)
 
     train_dataloader = torch.utils.data.DataLoader(
