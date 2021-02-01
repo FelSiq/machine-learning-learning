@@ -14,25 +14,25 @@ class Model(nn.Module):
         super(Model, self).__init__()
 
         self.weights = nn.Sequential(
-            nn.Conv2d(1, 32, kernel_size=5, stride=2),
+            nn.Conv2d(1, 64, kernel_size=5, stride=2),
             nn.ReLU(inplace=True),
             nn.MaxPool2d(kernel_size=2, stride=2),
-            nn.Conv2d(32, 64, kernel_size=3, stride=2),
+            nn.Conv2d(64, 128, kernel_size=3, stride=2),
             nn.ReLU(inplace=True),
             nn.MaxPool2d(kernel_size=2, stride=2),
-            nn.Conv2d(64, 64, kernel_size=5, stride=1),
+            nn.Conv2d(128, 128, kernel_size=5, stride=1),
             nn.ReLU(inplace=True),
-            nn.Conv2d(64, 64, kernel_size=5, stride=1),
+            nn.Conv2d(128, 128, kernel_size=5, stride=1),
             nn.ReLU(inplace=True),
-            nn.Conv2d(64, 48, kernel_size=3, stride=1),
+            nn.Conv2d(128, 128, kernel_size=3, stride=1),
             nn.ReLU(inplace=True),
-            nn.Conv2d(48, 48, kernel_size=3, stride=1),
+            nn.Conv2d(128, 64, kernel_size=3, stride=1),
             nn.ReLU(inplace=True),
-            nn.Conv2d(48, 48, kernel_size=3, stride=1),
+            nn.Conv2d(64, 64, kernel_size=3, stride=1),
             nn.ReLU(inplace=True),
-            nn.Conv2d(48, 512, kernel_size=1, stride=1),
+            nn.Conv2d(64, 1024, kernel_size=1, stride=1),
             nn.ReLU(inplace=True),
-            nn.Conv2d(512, config.TARGET_DEPTH, kernel_size=1, stride=1),
+            nn.Conv2d(1024, config.TARGET_DEPTH, kernel_size=1, stride=1),
         )
 
     def forward(self, X):
@@ -119,7 +119,7 @@ def predict(model, X):
 
 
 def _test():
-    train_epochs = 1
+    train_epochs = 800
     device = "cuda"
     train_batch_size = 32
     checkpoint_path = "dl_checkpoint.tar"
@@ -127,9 +127,9 @@ def _test():
     train_dataset = get_data()
 
     model = Model()
-    optim = torch.optim.Adam(model.parameters(), 1e-4)
+    optim = torch.optim.Adam(model.parameters(), 4e-4)
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-        optim, factor=0.9, patience=50, verbose=True
+        optim, factor=0.95, patience=15, verbose=True
     )
 
     try:
@@ -143,7 +143,7 @@ def _test():
     except FileNotFoundError:
         pass
 
-    criterion = functools.partial(loss_func, is_object_weight=1.0)
+    criterion = functools.partial(loss_func, is_object_weight=2.0)
     model = model.to(device)
 
     train_dataloader = torch.utils.data.DataLoader(
@@ -166,6 +166,9 @@ def _test():
             loss = criterion(y_preds, y_batch)
 
             loss.backward()
+
+            nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+
             optim.step()
 
             with torch.no_grad():
@@ -183,11 +186,11 @@ def _test():
     }
     torch.save(checkpoint, checkpoint_path)
 
-    insts_eval = X_batch[:3]
+    insts_eval = X_batch[:16]
     y_preds = predict(model, insts_eval)
 
     for inst, pred in zip(insts_eval, y_preds):
-        print(pred[0, ...])
+        print(pred[0, ...].max())
         utils.plot_instance(inst.detach().cpu().squeeze(), pred.detach().cpu())
 
     print("Done.")
