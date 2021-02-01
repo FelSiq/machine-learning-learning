@@ -59,7 +59,14 @@ def get_data():
     return train_dataset
 
 
-def loss_func(y_preds, y_true, is_object_weight: float = 1.0):
+def loss_func(
+    y_preds,
+    y_true,
+    is_object_weight: float = 1.0,
+    center_coord_weight: float = 1.0,
+    frame_dims_weight: float = 1.0,
+    class_prob_weight: float = 1.0,
+) -> torch.Tensor:
     true_is_object, true_coords, true_dims, true_class_logits = Model.split_output(
         y_true
     )
@@ -91,16 +98,18 @@ def loss_func(y_preds, y_true, is_object_weight: float = 1.0):
     true_dims = torch.masked_select(true_dims, is_object_mask)
     true_class_logits = torch.masked_select(true_class_logits, is_object_mask)
 
-    total_loss += nn.functional.binary_cross_entropy_with_logits(
+    total_loss += center_coord_weight * nn.functional.binary_cross_entropy_with_logits(
         preds_coords, true_coords
     )
-    total_loss += nn.functional.mse_loss(preds_dims, true_dims)
+    total_loss += frame_dims_weight * nn.functional.mse_loss(preds_dims, true_dims)
 
     preds_class_logits = preds_class_logits.view(-1, config.NUM_CLASSES)
 
     # Note: no need to softmax class logits since the loss functiona
     # (cross entropy) already incorporate the (log-)softmax function.
-    total_loss += nn.functional.cross_entropy(preds_class_logits, true_class_logits)
+    total_loss += class_prob_weight * nn.functional.cross_entropy(
+        preds_class_logits, true_class_logits
+    )
 
     return total_loss
 
@@ -119,7 +128,7 @@ def predict(model, X):
 
 
 def _test():
-    train_epochs = 250
+    train_epochs = 600
     epochs_per_checkpoint = 20
     device = "cuda"
     train_batch_size = 32
@@ -144,7 +153,14 @@ def _test():
     except FileNotFoundError:
         pass
 
-    criterion = functools.partial(loss_func, is_object_weight=3.0)
+    criterion = functools.partial(
+        loss_func,
+        is_object_weight=3.0,
+        center_coord_weight= 1.5,
+        frame_dims_weight=1.1,
+        class_prob_weight=1.25,
+    )
+
     model = model.to(device)
 
     train_dataloader = torch.utils.data.DataLoader(
