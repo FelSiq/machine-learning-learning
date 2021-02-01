@@ -22,7 +22,7 @@ def plot_instance(inst, label):
                 rect_width_prop,
             ) = label[:5, y, x]
 
-            if np.isclose(is_object, 1.0):
+            if is_object >= 0.6:
                 true_center_y = (y + center_y_prop) * config.CELL_HEIGHT
                 true_center_x = (x + center_x_prop) * config.CELL_WIDTH
 
