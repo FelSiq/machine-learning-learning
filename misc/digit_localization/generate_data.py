@@ -11,7 +11,7 @@ import torch
 import config
 import utils
 
-OUTPUT_LEN = 3
+OUTPUT_LEN = 256
 KEEP_ASPECT_RATIO = True
 MIN_INST_DIM = 28
 MAX_INST_DIM = 128
@@ -57,7 +57,7 @@ def _test(plot: bool):
             OUTPUT_LEN,
             config.NUM_CELLS_VERT,
             config.NUM_CELLS_HORIZ,
-            config.NUM_ANCHOR_BOXES * (5 + config.NUM_CLASSES),
+            config.TARGET_DEPTH,
         ),
         dtype=np.float32,
     )
@@ -70,7 +70,7 @@ def _test(plot: bool):
             (
                 config.NUM_CELLS_VERT,
                 config.NUM_CELLS_HORIZ,
-                config.NUM_ANCHOR_BOXES * (5 + config.NUM_CLASSES),
+                config.TARGET_DEPTH,
             ),
             dtype=np.float32,
         )
@@ -153,6 +153,9 @@ def _test(plot: bool):
 
     gen_insts = torch.from_numpy(gen_insts)
     gen_targets = torch.from_numpy(gen_targets)
+
+    # Note: change to channels-first (pytorch convention)
+    gen_targets = gen_targets.permute(0, 3, 1, 2)
 
     torch.save(gen_insts, os.path.join(config.DATA_DIR, f"insts_{file_id}.pt"))
     torch.save(gen_targets, os.path.join(config.DATA_DIR, f"targets_{file_id}.pt"))
