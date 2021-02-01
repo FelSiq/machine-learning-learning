@@ -119,7 +119,8 @@ def predict(model, X):
 
 
 def _test():
-    train_epochs = 800
+    train_epochs = 200
+    epochs_per_checkpoint = 2
     device = "cuda"
     train_batch_size = 32
     checkpoint_path = "dl_checkpoint.tar"
@@ -179,12 +180,16 @@ def _test():
         print(f"train loss: {train_loss:.4f}")
         scheduler.step(train_loss)
 
-    checkpoint = {
-        "model": model.state_dict(),
-        "optim": optim.state_dict(),
-        "scheduler": scheduler.state_dict(),
-    }
-    torch.save(checkpoint, checkpoint_path)
+        if (
+            epochs_per_checkpoint > 0 and epoch % epochs_per_checkpoint == 0
+        ) or epoch == train_epochs:
+            checkpoint = {
+                "model": model.state_dict(),
+                "optim": optim.state_dict(),
+                "scheduler": scheduler.state_dict(),
+            }
+            torch.save(checkpoint, checkpoint_path)
+            print("Saved checkpoint.")
 
     insts_eval = X_batch[:16]
     y_preds = predict(model, insts_eval)
