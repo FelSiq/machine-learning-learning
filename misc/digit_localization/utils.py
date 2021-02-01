@@ -20,7 +20,7 @@ def plot_instance(inst, label):
                 center_x_prop,
                 rect_height_prop,
                 rect_width_prop,
-            ) = label[y, x, :5]
+            ) = label[:5, y, x]
 
             if np.isclose(is_object, 1.0):
                 true_center_y = (y + center_y_prop) * config.CELL_HEIGHT

@@ -30,7 +30,7 @@ def get_file_id() -> int:
     return cur_id + 1
 
 
-def _test(plot: bool):
+def _test(plot: int = 0):
     train_data = torchvision.datasets.MNIST(
         root=".",
         train=True,
@@ -55,9 +55,9 @@ def _test(plot: bool):
     gen_targets = np.zeros(
         (
             OUTPUT_LEN,
+            config.TARGET_DEPTH,
             config.NUM_CELLS_VERT,
             config.NUM_CELLS_HORIZ,
-            config.TARGET_DEPTH,
         ),
         dtype=np.float32,
     )
@@ -68,9 +68,9 @@ def _test(plot: bool):
         )
         new_target = np.zeros(
             (
+                config.TARGET_DEPTH,
                 config.NUM_CELLS_VERT,
                 config.NUM_CELLS_HORIZ,
-                config.TARGET_DEPTH,
             ),
             dtype=np.float32,
         )
@@ -141,10 +141,11 @@ def _test(plot: bool):
                 in_cell_width_prop,
             ] + digit_target
 
-            new_target[cell_y, cell_x] = digit_target
+            new_target[..., cell_y, cell_x] = digit_target
 
-        if plot:
+        if plot > 0:
             utils.plot_instance(new_inst, new_target)
+            plot -= 1
 
         gen_insts[i, ...] = new_inst
         gen_targets[i, ...] = new_target
@@ -153,9 +154,6 @@ def _test(plot: bool):
 
     gen_insts = torch.from_numpy(gen_insts)
     gen_targets = torch.from_numpy(gen_targets)
-
-    # Note: change to channels-first (pytorch convention)
-    gen_targets = gen_targets.permute(0, 3, 1, 2)
 
     torch.save(gen_insts, os.path.join(config.DATA_DIR, f"insts_{file_id}.pt"))
     torch.save(gen_targets, os.path.join(config.DATA_DIR, f"targets_{file_id}.pt"))
@@ -168,4 +166,4 @@ if __name__ == "__main__":
     except FileExistsError:
         pass
 
-    _test(plot=False)
+    _test(plot=5)
