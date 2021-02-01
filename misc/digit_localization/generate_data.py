@@ -7,11 +7,12 @@ import numpy as np
 import matplotlib.patches
 import matplotlib.pyplot as plt
 import torch
+import tqdm
 
 import config
 import utils
 
-OUTPUT_LEN = 5
+OUTPUT_LEN = 256
 KEEP_ASPECT_RATIO = True
 MIN_INST_DIM = 28
 MAX_INST_DIM = 128
@@ -62,7 +63,7 @@ def _test(plot: int = 0):
         dtype=np.float32,
     )
 
-    for i in np.arange(OUTPUT_LEN):
+    for i in tqdm.auto.tqdm(np.arange(OUTPUT_LEN)):
         new_inst = np.zeros(
             (config.OUTPUT_HEIGHT, config.OUTPUT_WIDTH), dtype=np.float32
         )
