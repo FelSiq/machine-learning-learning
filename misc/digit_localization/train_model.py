@@ -9,28 +9,36 @@ import utils
 
 
 class Model(nn.Module):
-    def __init__(self):
+    def __init__(self, dropout: float = 0.2):
         super(Model, self).__init__()
 
         self.weights = nn.Sequential(
             nn.Conv2d(1, 64, kernel_size=5, stride=2),
             nn.ReLU(inplace=True),
+            nn.Dropout2d(dropout),
             nn.MaxPool2d(kernel_size=2, stride=2),
             nn.Conv2d(64, 128, kernel_size=3, stride=2),
             nn.ReLU(inplace=True),
+            nn.Dropout2d(dropout),
             nn.MaxPool2d(kernel_size=2, stride=2),
             nn.Conv2d(128, 128, kernel_size=5, stride=1),
             nn.ReLU(inplace=True),
+            nn.Dropout2d(dropout),
             nn.Conv2d(128, 128, kernel_size=5, stride=1),
             nn.ReLU(inplace=True),
+            nn.Dropout2d(dropout),
             nn.Conv2d(128, 128, kernel_size=3, stride=1),
             nn.ReLU(inplace=True),
+            nn.Dropout2d(dropout),
             nn.Conv2d(128, 64, kernel_size=3, stride=1),
             nn.ReLU(inplace=True),
+            nn.Dropout2d(dropout),
             nn.Conv2d(64, 64, kernel_size=3, stride=1),
             nn.ReLU(inplace=True),
+            nn.Dropout2d(dropout),
             nn.Conv2d(64, 1024, kernel_size=1, stride=1),
             nn.ReLU(inplace=True),
+            nn.Dropout2d(dropout),
             nn.Conv2d(1024, config.TARGET_DEPTH, kernel_size=1, stride=1),
         )
 
@@ -116,18 +124,18 @@ def predict(model, X):
 
 
 def _test():
-    train_epochs = 100
+    train_epochs = 0
     epochs_per_checkpoint = 20
     device = "cuda"
     train_batch_size = 32
-    eval_batch_size = 32
+    eval_batch_size = 16
     checkpoint_path = "dl_checkpoint.tar"
     num_eval_inst = 5
 
     train_dataset, eval_dataset = utils.get_data(train_frac=0.95)
 
     model = Model()
-    optim = torch.optim.Adam(model.parameters(), 4e-4)
+    optim = torch.optim.Adam(model.parameters(), 5e-4)
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
         optim, factor=0.95, patience=15, verbose=True
     )
@@ -143,90 +151,92 @@ def _test():
     except FileNotFoundError:
         pass
 
-    criterion = functools.partial(
-        loss_func,
-        is_object_weight=3.0,
-        center_coord_weight=1.5,
-        frame_dims_weight=1.1,
-        class_prob_weight=1.25,
-    )
-
     model = model.to(device)
 
-    train_dataloader = torch.utils.data.DataLoader(
-        train_dataset, shuffle=True, batch_size=train_batch_size
-    )
+    if train_epochs > 0:
+        criterion = functools.partial(
+            loss_func,
+            is_object_weight=5.0,
+            center_coord_weight=1.25,
+            frame_dims_weight=1.0,
+            class_prob_weight=1.1,
+        )
 
-    eval_dataloader = torch.utils.data.DataLoader(
-        eval_dataset, batch_size=eval_batch_size
-    )
+        train_dataloader = torch.utils.data.DataLoader(
+            train_dataset, shuffle=True, batch_size=train_batch_size
+        )
 
-    for epoch in range(1, 1 + train_epochs):
-        print(f"Epoch: {epoch:4d} / {train_epochs}...")
-        model.train()
-        train_total_batches = 0
-        train_loss = 0.0
+        eval_dataloader = torch.utils.data.DataLoader(
+            eval_dataset, batch_size=eval_batch_size
+        )
 
-        for X_batch, y_batch in tqdm.auto.tqdm(train_dataloader):
-            optim.zero_grad()
+        for epoch in range(1, 1 + train_epochs):
+            print(f"Epoch: {epoch:4d} / {train_epochs}...")
+            model.train()
+            train_total_batches = 0
+            train_loss = 0.0
 
-            X_batch = X_batch.to(device)
-            y_batch = y_batch.to(device)
+            for X_batch, y_batch in tqdm.auto.tqdm(train_dataloader):
+                optim.zero_grad()
 
-            y_preds = model(X_batch)
-            loss = criterion(y_preds, y_batch)
+                X_batch = X_batch.to(device)
+                y_batch = y_batch.to(device)
 
-            loss.backward()
+                y_preds = model(X_batch)
+                loss = criterion(y_preds, y_batch)
 
-            nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+                loss.backward()
 
-            optim.step()
+                nn.utils.clip_grad_norm_(model.parameters(), 1.0)
 
-            with torch.no_grad():
-                train_total_batches += 1
-                train_loss += loss.item()
+                optim.step()
 
-            del X_batch, y_batch
+                with torch.no_grad():
+                    train_total_batches += 1
+                    train_loss += loss.item()
 
-        model.eval()
-        eval_total_batches = 0
-        eval_loss = 0.0
+                del X_batch, y_batch
 
-        for X_batch, y_batch in tqdm.auto.tqdm(eval_dataloader):
-            X_batch = X_batch.to(device)
-            y_batch = y_batch.to(device)
+            model.eval()
+            eval_total_batches = 0
+            eval_loss = 0.0
 
-            y_preds = model(X_batch)
-            loss = criterion(y_preds, y_batch)
+            for X_batch, y_batch in tqdm.auto.tqdm(eval_dataloader):
+                X_batch = X_batch.to(device)
+                y_batch = y_batch.to(device)
 
-            eval_total_batches += 1
-            eval_loss += loss.item()
+                y_preds = model(X_batch)
+                loss = criterion(y_preds, y_batch)
 
-            del X_batch, y_batch
+                eval_total_batches += 1
+                eval_loss += loss.item()
 
-        train_loss /= train_total_batches
-        eval_loss /= eval_total_batches
-        scheduler.step(eval_loss)
+                del X_batch, y_batch
 
-        print(f"train loss: {train_loss:.4f}")
-        print(f"eval  loss: {eval_loss:.4f}")
+            train_loss /= train_total_batches
+            eval_loss /= eval_total_batches
+            scheduler.step(eval_loss)
 
-        if (
-            epochs_per_checkpoint > 0 and epoch % epochs_per_checkpoint == 0
-        ) or epoch == train_epochs:
-            checkpoint = {
-                "model": model.state_dict(),
-                "optim": optim.state_dict(),
-                "scheduler": scheduler.state_dict(),
-            }
-            torch.save(checkpoint, checkpoint_path)
-            print("Saved checkpoint.")
+            print(f"train loss: {train_loss:.4f}")
+            print(f"eval  loss: {eval_loss:.4f}")
 
-    X_batch = next(iter(eval_dataloader))[0]
+            if (
+                epochs_per_checkpoint > 0 and epoch % epochs_per_checkpoint == 0
+            ) or epoch == train_epochs:
+                checkpoint = {
+                    "model": model.state_dict(),
+                    "optim": optim.state_dict(),
+                    "scheduler": scheduler.state_dict(),
+                }
+                torch.save(checkpoint, checkpoint_path)
+                print("Saved checkpoint.")
+
+    X_batch = eval_dataset.tensors[0]
     insts_eval = X_batch[:num_eval_inst]
-    y_preds = predict(model, insts_eval)
+    y_preds = predict(model, insts_eval.to(device))
 
     for inst, pred in zip(insts_eval, y_preds):
+        print(pred[0, ...].max().item())
         utils.plot_instance(inst.detach().cpu().squeeze(), pred.detach().cpu())
 
     print("Done.")
