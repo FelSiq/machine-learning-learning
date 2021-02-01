@@ -11,7 +11,7 @@ import torch
 import config
 import utils
 
-OUTPUT_LEN = 256
+OUTPUT_LEN = 5
 KEEP_ASPECT_RATIO = True
 MIN_INST_DIM = 28
 MAX_INST_DIM = 128
@@ -90,8 +90,6 @@ def _test(plot: int = 0):
                     MIN_INST_DIM, MAX_INST_DIM + 1, size=2
                 )
 
-            rotation_angle = np.random.randint(-5, 6)
-            sample = torchvision.transforms.functional.rotate(sample, rotation_angle)
             sample = torchvision.transforms.functional.resize(
                 sample, (inst_height, inst_width)
             )
@@ -166,4 +164,4 @@ if __name__ == "__main__":
     except FileExistsError:
         pass
 
-    _test(plot=5)
+    _test(plot=0)
