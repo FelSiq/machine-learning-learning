@@ -15,19 +15,14 @@ class Model(nn.Module):
         self.weights = nn.Sequential(
             self._create_block(1, 64, 5, 2, dropout),
             nn.MaxPool2d(kernel_size=2, stride=2),
-            self._create_block(64, 128, 5, 2, dropout),
+            self._create_block(64, 256, 5, 2, dropout),
             nn.MaxPool2d(kernel_size=2, stride=2),
-            self._create_block(128, 128, 5, 1, dropout),
-            self._create_block(128, 128, 5, 1, dropout),
-            self._create_block(128, 128, 3, 1, dropout),
-            self._create_block(128, 64, 3, 1, dropout),
-            self._create_block(64, 64, 3, 1, dropout),
-            self._create_block(64, 1024, 1, 1, dropout),
+            self._create_block(256, 128, 5, 2, dropout),
+            self._create_block(128, 1024, 1, 1, dropout),
             nn.Conv2d(1024, config.TARGET_DEPTH, kernel_size=1, stride=1),
         )
 
     def forward(self, X):
-        # Output shape: (?, 15, 20, 20), using a single anchor box
         return self.weights(X)
 
     @staticmethod
@@ -36,9 +31,8 @@ class Model(nn.Module):
     ):
         block = nn.Sequential(
             nn.Conv2d(
-                in_dim, out_dim, kernel_size=kernel_size, stride=stride, bias=False
+                in_dim, out_dim, kernel_size=kernel_size, stride=stride,
             ),
-            nn.BatchNorm2d(out_dim, momentum=0.01, affine=True),
             nn.ReLU(inplace=True),
             nn.Dropout2d(dropout),
         )
@@ -57,6 +51,7 @@ class Model(nn.Module):
 def loss_func(
     y_preds,
     y_true,
+    pos_weight: float = 1.0,
     is_object_weight: float = 1.0,
     center_coord_weight: float = 1.0,
     frame_dims_weight: float = 1.0,
@@ -69,10 +64,13 @@ def loss_func(
         y_preds
     )
 
+    # Note: weight for detecting objects
+    pos_weight = torch.tensor([pos_weight], device=y_preds.device)
+
     # Note: no need to shrink 'preds_is_object' because loss function
     # (bce loss w/ logits) already incorporate the sigmoid function.
     total_loss = is_object_weight * nn.functional.binary_cross_entropy_with_logits(
-        preds_is_object, true_is_object
+        preds_is_object, true_is_object, pos_weight=pos_weight,
     )
 
     true_class_logits = true_class_logits.argmax(dim=1, keepdims=True)
@@ -122,21 +120,21 @@ def predict(model, X):
 
 
 def _test():
-    train_epochs = 10
+    train_epochs = 15
     epochs_per_checkpoint = 5
     device = "cuda"
-    train_batch_size = 16
+    train_batch_size = 48
     eval_batch_size = 16
     checkpoint_path = "dl_checkpoint.tar"
     num_eval_inst = 5
-    dropout = 0.1
+    dropout = 0.4
 
     train_dataset, eval_dataset = utils.get_data(train_frac=0.95)
 
     model = Model(dropout=dropout)
     optim = torch.optim.Adam(model.parameters(), 1e-3)
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-        optim, factor=0.9, patience=10, verbose=True
+        optim, factor=0.9, patience=5, verbose=True
     )
 
     try:
@@ -155,10 +153,11 @@ def _test():
     if train_epochs > 0:
         criterion = functools.partial(
             loss_func,
-            is_object_weight=8.0,
-            center_coord_weight=1.5,
+            pos_weight=5.0,
+            is_object_weight=2.5,
+            center_coord_weight=1.25,
             frame_dims_weight=1.0,
-            class_prob_weight=1.1,
+            class_prob_weight=1.0,
         )
 
         train_dataloader = torch.utils.data.DataLoader(
@@ -194,7 +193,10 @@ def _test():
                     train_total_batches += 1
                     train_loss += loss.item()
                     train_detection_acc += (
-                        ((y_preds[:, 0] >= 0.6) == (y_batch[:, 0] >= 0.999))
+                        (
+                            (torch.sigmoid(y_preds[:, 0]) >= 0.6)
+                            == (y_batch[:, 0] >= 0.999)
+                        )
                         .float()
                         .mean()
                         .item()
@@ -216,7 +218,7 @@ def _test():
                 eval_total_batches += 1
                 eval_loss += loss.item()
                 eval_detection_acc += (
-                    ((y_preds[:, 0] >= 0.6) == (y_batch[:, 0] >= 0.999))
+                    ((torch.sigmoid(y_preds[:, 0]) >= 0.6) == (y_batch[:, 0] >= 0.999))
                     .float()
                     .mean()
                     .item()
