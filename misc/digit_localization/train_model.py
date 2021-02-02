@@ -259,7 +259,7 @@ def train_model(model, optim, criterion, scheduler, device, checkpoint_path):
 
             del train_dataloader, eval_dataloader
             del train_dataset, eval_dataset
-            print("Number of collected garbage objects:", gc.collect())
+            print("Number of garbage objects collected:", gc.collect())
 
         train_loss = total_train_loss / total_chunks
         eval_loss = total_eval_loss / total_chunks
