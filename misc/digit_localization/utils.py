@@ -1,3 +1,4 @@
+import typing as t
 import glob
 import os
 
@@ -11,9 +12,15 @@ import torch
 import config
 
 
-def plot_instance(inst, label, is_object_threshold: float = 0.6, show: bool = True):
+def plot_instance(
+    inst,
+    label,
+    is_object_threshold: float = 0.6,
+    show: bool = True,
+    fig_suptitle: t.Optional[str] = None,
+):
     fig, ax = plt.subplots(1)
-
+    fig.suptitle(fig_suptitle)
     ax.imshow(inst, cmap="gray")
     ax.grid(color="gray", linestyle="--", linewidth=1)
     ax.set_xticks(np.arange(0, config.OUTPUT_WIDTH, config.CELL_WIDTH))
