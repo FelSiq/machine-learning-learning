@@ -45,8 +45,9 @@ class Model(nn.Module):
                 out_dim,
                 kernel_size=kernel_size,
                 stride=stride,
+                bias=False,
             ),
-            nn.BatchNorm2d(out_dim),
+            nn.BatchNorm2d(out_dim, momentum=0.01, affine=True),
             nn.ReLU(inplace=True),
             nn.Dropout2d(dropout),
         )
@@ -224,7 +225,7 @@ def eval_step(model, criterion, eval_dataloader, device):
 
 
 def train_model(model, optim, criterion, scheduler, device, checkpoint_path):
-    train_epochs = 0
+    train_epochs = 30
     epochs_per_checkpoint = 1
     train_batch_size = 128
     eval_batch_size = 8
@@ -295,7 +296,7 @@ def _test():
     test_num_inst_train = 5
     test_num_inst_eval = 5
 
-    model = Model(dropout=0.225)
+    model = Model(dropout=0.25)
     optim = torch.optim.Adam(model.parameters(), 1e-3)
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
         optim, factor=0.9, patience=5, verbose=True
