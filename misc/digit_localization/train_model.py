@@ -180,8 +180,8 @@ def train_step(model, optim, criterion, train_dataloader, device):
 
         del X_batch, y_batch, y_preds
 
-        train_loss /= train_total_batches
-        train_detection_acc /= train_total_batches
+    train_loss /= train_total_batches
+    train_detection_acc /= train_total_batches
 
     return train_loss, train_detection_acc
 
@@ -242,20 +242,21 @@ def train_model(model, optim, criterion, scheduler, device, checkpoint_path):
             eval_loss, eval_detection_acc = eval_step(
                 model, criterion, eval_dataloader, device
             )
-            scheduler.step(eval_loss)
-
-            total_train_loss += 1
-            total_train_acc += 1
-            total_eval_loss += 1
-            total_eval_acc += 1
+            total_train_loss += train_loss
+            total_eval_loss += eval_loss
+            total_train_acc += train_detection_acc
+            total_eval_acc += eval_detection_acc
             total_chunks += 1
 
             del train_dataloader, eval_dataloader
 
         train_loss = total_train_loss / total_chunks
-        train_acc = total_train_acc / total_chunks
         eval_loss = total_eval_loss / total_chunks
-        eval_acc = total_eval_acc / total_chunks
+
+        train_detection_acc = total_train_acc / total_chunks
+        eval_detection_acc = total_eval_acc / total_chunks
+
+        scheduler.step(eval_loss)
 
         print(
             f"train loss: {train_loss:.4f} - train detection acc: {train_detection_acc:.4f}"
@@ -313,20 +314,21 @@ def _test():
 
     train_model(model, optim, criterion, scheduler, device, checkpoint_path)
 
-    X_batch_train = train_dataset.tensors[0]
-    X_batch_eval = eval_dataset.tensors[0]
+    # TODO: reformat this section
+    # X_batch_train = train_dataset.tensors[0]
+    # X_batch_eval = eval_dataset.tensors[0]
 
-    insts_eval = torch.cat(
-        (X_batch_train[:num_eval_inst], X_batch_eval[:num_eval_inst])
-    )
+    # insts_eval = torch.cat(
+    #    (X_batch_train[:num_eval_inst], X_batch_eval[:num_eval_inst])
+    # )
 
-    y_preds = predict(model, insts_eval.to(device))
+    # y_preds = predict(model, insts_eval.to(device))
 
-    for inst, pred in zip(insts_eval, y_preds):
-        print(pred[0, ...].max().item())
-        utils.plot_instance(inst.detach().cpu().squeeze(), pred.detach().cpu())
+    # for inst, pred in zip(insts_eval, y_preds):
+    #    print(pred[0, ...].max().item())
+    #    utils.plot_instance(inst.detach().cpu().squeeze(), pred.detach().cpu())
 
-    print("Done.")
+    # print("Done.")
 
 
 if __name__ == "__main__":
