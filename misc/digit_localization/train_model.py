@@ -1,6 +1,7 @@
 """
 TODO:
     1. Use more anchor boxes
+    2. Generate data with random noise
 """
 import functools
 import gc
@@ -219,8 +220,8 @@ def eval_step(model, criterion, eval_dataloader, device):
 def train_model(model, optim, criterion, scheduler, device, checkpoint_path):
     train_epochs = 10
     epochs_per_checkpoint = 1
-    train_batch_size = 64
-    eval_batch_size = 16
+    train_batch_size = 128
+    eval_batch_size = 8
 
     for epoch in range(1, 1 + train_epochs):
         print(f"Epoch: {epoch:4d} / {train_epochs}...")
@@ -284,10 +285,11 @@ def train_model(model, optim, criterion, scheduler, device, checkpoint_path):
 
 def _test():
     checkpoint_path = "dl_checkpoint.tar"
-    num_eval_inst = 10
     device = "cuda"
+    test_num_inst_train = 5
+    test_num_inst_eval = 5
 
-    model = Model(dropout=0.20)
+    model = Model(dropout=0.225)
     optim = torch.optim.Adam(model.parameters(), 1e-3)
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
         optim, factor=0.9, patience=5, verbose=True
@@ -317,21 +319,26 @@ def _test():
 
     train_model(model, optim, criterion, scheduler, device, checkpoint_path)
 
-    # TODO: reformat this section
-    # X_batch_train = train_dataset.tensors[0]
-    # X_batch_eval = eval_dataset.tensors[0]
+    gc.collect()
 
-    # insts_eval = torch.cat(
-    #    (X_batch_train[:num_eval_inst], X_batch_eval[:num_eval_inst])
-    # )
+    train_dataset, eval_dataset = next(utils.get_data(train_frac=0.95))
+    X_batch_train = train_dataset.tensors[0]
+    X_batch_eval = eval_dataset.tensors[0]
 
-    # y_preds = predict(model, insts_eval.to(device))
+    insts_eval = torch.cat(
+        (X_batch_train[:test_num_inst_train], X_batch_eval[:test_num_inst_eval])
+    )
 
-    # for inst, pred in zip(insts_eval, y_preds):
-    #    print(pred[0, ...].max().item())
-    #    utils.plot_instance(inst.detach().cpu().squeeze(), pred.detach().cpu())
+    y_preds = predict(model, insts_eval.to(device))
 
-    # print("Done.")
+    for i, (inst, pred) in enumerate(zip(insts_eval, y_preds)):
+        print(pred[0, ...].max().item())
+        suptitle = ("Train" if i < test_num_inst_train else "Evaluation") + "instance"
+        utils.plot_instance(
+            inst.detach().cpu().squeeze(), pred.detach().cpu(), fig_suptitle=suptitle
+        )
+
+    print("Done.")
 
 
 if __name__ == "__main__":
