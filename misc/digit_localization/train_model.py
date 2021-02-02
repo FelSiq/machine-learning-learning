@@ -1,10 +1,10 @@
 """
 TODO:
-    1. Apply IOU filtering in results
-    2. Use more anchor boxes
+    1. Use more anchor boxes
 """
 import functools
 
+import torchvision
 import torch.nn as nn
 import torch
 import tqdm
@@ -39,7 +39,10 @@ class Model(nn.Module):
     ):
         block = nn.Sequential(
             nn.Conv2d(
-                in_dim, out_dim, kernel_size=kernel_size, stride=stride,
+                in_dim,
+                out_dim,
+                kernel_size=kernel_size,
+                stride=stride,
             ),
             nn.BatchNorm2d(out_dim),
             nn.ReLU(inplace=True),
@@ -79,7 +82,9 @@ def loss_func(
     # Note: no need to shrink 'preds_is_object' because loss function
     # (bce loss w/ logits) already incorporate the sigmoid function.
     total_loss = is_object_weight * nn.functional.binary_cross_entropy_with_logits(
-        preds_is_object, true_is_object, pos_weight=pos_weight,
+        preds_is_object,
+        true_is_object,
+        pos_weight=pos_weight,
     )
 
     true_class_logits = true_class_logits.argmax(dim=1, keepdims=True)
@@ -125,22 +130,160 @@ def predict(model, X):
     y_preds[:, [3, 4], ...] = torch.exp(dims)
     y_preds[:, 5:, ...] = torch.softmax(class_logits, dim=1)
 
+    is_object = is_object.reshape(-1)
+    idxs = class_logits.argmax(dim=1).view(-1)
+
+    coords = coords.view(-1, 2)
+    dims = dims.view(-1, 2)
+    half_dims = 0.5 * dims
+    boxes = torch.cat((coords - half_dims, coords + half_dims), dim=1)
+    keep_inds = torchvision.ops.batched_nms(
+        boxes=boxes, scores=is_object, idxs=idxs, iou_threshold=0.6
+    )
+
+    num_inst, _, height, width = y.shape
+    keep_inds = keeps_inds.view(num_inst, height, width)
+    print(keep_inds.shape, y.shape)
+
     return y_preds
 
 
-def _test():
-    train_epochs = 80
+def train_step(model, optim, criterion, train_dataloader, device):
+    model.train()
+    train_total_batches = 0
+    train_loss = train_detection_acc = 0.0
+
+    for X_batch, y_batch in tqdm.auto.tqdm(train_dataloader):
+        optim.zero_grad()
+
+        X_batch = X_batch.to(device)
+        y_batch = y_batch.to(device)
+
+        y_preds = model(X_batch)
+        loss = criterion(y_preds, y_batch)
+
+        loss.backward()
+
+        nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+
+        optim.step()
+
+        with torch.no_grad():
+            train_total_batches += 1
+            train_loss += loss.item()
+            train_detection_acc += (
+                ((torch.sigmoid(y_preds[:, 0]) >= 0.6) == (y_batch[:, 0] >= 0.999))
+                .float()
+                .mean()
+                .item()
+            )
+
+        del X_batch, y_batch, y_preds
+
+        train_loss /= train_total_batches
+        train_detection_acc /= train_total_batches
+
+    return train_loss, train_detection_acc
+
+
+def eval_step(model, criterion, eval_dataloader, device):
+    model.eval()
+    eval_total_batches = 0
+    eval_loss = eval_detection_acc = 0.0
+
+    for X_batch, y_batch in tqdm.auto.tqdm(eval_dataloader):
+        X_batch = X_batch.to(device)
+        y_batch = y_batch.to(device)
+
+        y_preds = model(X_batch)
+        loss = criterion(y_preds, y_batch)
+
+        eval_total_batches += 1
+        eval_loss += loss.item()
+        eval_detection_acc += (
+            ((torch.sigmoid(y_preds[:, 0]) >= 0.6) == (y_batch[:, 0] >= 0.999))
+            .float()
+            .mean()
+            .item()
+        )
+
+        del X_batch, y_batch
+
+    eval_loss /= eval_total_batches
+    eval_detection_acc /= eval_total_batches
+
+    return eval_loss, eval_detection_acc
+
+
+def train_model(model, optim, criterion, scheduler, device, checkpoint_path):
+    train_epochs = 1
     epochs_per_checkpoint = 10
-    device = "cuda"
     train_batch_size = 64
     eval_batch_size = 16
+
+    for epoch in range(1, 1 + train_epochs):
+        print(f"Epoch: {epoch:4d} / {train_epochs}...")
+        total_train_loss = total_train_acc = 0.0
+        total_eval_loss = total_eval_acc = 0.0
+        total_chunks = 0
+
+        for train_dataset, eval_dataset in utils.get_data(train_frac=0.95):
+            train_dataloader = torch.utils.data.DataLoader(
+                train_dataset, shuffle=True, batch_size=train_batch_size
+            )
+
+            eval_dataloader = torch.utils.data.DataLoader(
+                eval_dataset, batch_size=eval_batch_size
+            )
+
+            train_loss, train_detection_acc = train_step(
+                model, optim, criterion, train_dataloader, device
+            )
+            eval_loss, eval_detection_acc = eval_step(
+                model, criterion, eval_dataloader, device
+            )
+            scheduler.step(eval_loss)
+
+            total_train_loss += 1
+            total_train_acc += 1
+            total_eval_loss += 1
+            total_eval_acc += 1
+            total_chunks += 1
+
+            del train_dataloader, eval_dataloader
+
+        train_loss = total_train_loss / total_chunks
+        train_acc = total_train_acc / total_chunks
+        eval_loss = total_eval_loss / total_chunks
+        eval_acc = total_eval_acc / total_chunks
+
+        print(
+            f"train loss: {train_loss:.4f} - train detection acc: {train_detection_acc:.4f}"
+        )
+        print(
+            f"eval  loss: {eval_loss:.4f} - eval  detection acc: {eval_detection_acc:.4f}"
+        )
+
+        if (
+            epochs_per_checkpoint > 0 and epoch % epochs_per_checkpoint == 0
+        ) or epoch == train_epochs:
+            checkpoint = {
+                "model": model.state_dict(),
+                "optim": optim.state_dict(),
+                "scheduler": scheduler.state_dict(),
+            }
+            torch.save(checkpoint, checkpoint_path)
+            print("Saved checkpoint.")
+
+    print("Done training.")
+
+
+def _test():
     checkpoint_path = "dl_checkpoint.tar"
     num_eval_inst = 10
-    dropout = 0.175
+    device = "cuda"
 
-    train_dataset, eval_dataset = utils.get_data(train_frac=0.95)
-
-    model = Model(dropout=dropout)
+    model = Model(dropout=0.20)
     optim = torch.optim.Adam(model.parameters(), 1e-3)
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
         optim, factor=0.9, patience=5, verbose=True
@@ -159,112 +302,23 @@ def _test():
 
     model = model.to(device)
 
-    if train_epochs > 0:
-        criterion = functools.partial(
-            loss_func,
-            pos_weight=2.0,
-            is_object_weight=10.0,
-            center_coord_weight=6.0,
-            frame_dims_weight=1.0,
-            class_prob_weight=1.0,
-        )
+    criterion = functools.partial(
+        loss_func,
+        pos_weight=2.0,
+        is_object_weight=10.0,
+        center_coord_weight=6.0,
+        frame_dims_weight=1.0,
+        class_prob_weight=1.0,
+    )
 
-        train_dataloader = torch.utils.data.DataLoader(
-            train_dataset, shuffle=True, batch_size=train_batch_size
-        )
-
-        eval_dataloader = torch.utils.data.DataLoader(
-            eval_dataset, batch_size=eval_batch_size
-        )
-
-        for epoch in range(1, 1 + train_epochs):
-            print(f"Epoch: {epoch:4d} / {train_epochs}...")
-            model.train()
-            train_total_batches = 0
-            train_loss = train_detection_acc = 0.0
-
-            for X_batch, y_batch in tqdm.auto.tqdm(train_dataloader):
-                optim.zero_grad()
-
-                X_batch = X_batch.to(device)
-                y_batch = y_batch.to(device)
-
-                y_preds = model(X_batch)
-                loss = criterion(y_preds, y_batch)
-
-                loss.backward()
-
-                nn.utils.clip_grad_norm_(model.parameters(), 1.0)
-
-                optim.step()
-
-                with torch.no_grad():
-                    train_total_batches += 1
-                    train_loss += loss.item()
-                    train_detection_acc += (
-                        (
-                            (torch.sigmoid(y_preds[:, 0]) >= 0.6)
-                            == (y_batch[:, 0] >= 0.999)
-                        )
-                        .float()
-                        .mean()
-                        .item()
-                    )
-
-                del X_batch, y_batch
-
-            model.eval()
-            eval_total_batches = 0
-            eval_loss = eval_detection_acc = 0.0
-
-            for X_batch, y_batch in tqdm.auto.tqdm(eval_dataloader):
-                X_batch = X_batch.to(device)
-                y_batch = y_batch.to(device)
-
-                y_preds = model(X_batch)
-                loss = criterion(y_preds, y_batch)
-
-                eval_total_batches += 1
-                eval_loss += loss.item()
-                eval_detection_acc += (
-                    ((torch.sigmoid(y_preds[:, 0]) >= 0.6) == (y_batch[:, 0] >= 0.999))
-                    .float()
-                    .mean()
-                    .item()
-                )
-
-                del X_batch, y_batch
-
-            train_loss /= train_total_batches
-            train_detection_acc /= train_total_batches
-
-            eval_loss /= eval_total_batches
-            eval_detection_acc /= eval_total_batches
-
-            scheduler.step(eval_loss)
-
-            print(
-                f"train loss: {train_loss:.4f} - train detection acc: {train_detection_acc:.4f}"
-            )
-            print(
-                f"eval  loss: {eval_loss:.4f} - eval  detection acc: {eval_detection_acc:.4f}"
-            )
-
-            if (
-                epochs_per_checkpoint > 0 and epoch % epochs_per_checkpoint == 0
-            ) or epoch == train_epochs:
-                checkpoint = {
-                    "model": model.state_dict(),
-                    "optim": optim.state_dict(),
-                    "scheduler": scheduler.state_dict(),
-                }
-                torch.save(checkpoint, checkpoint_path)
-                print("Saved checkpoint.")
+    train_model(model, optim, criterion, scheduler, device, checkpoint_path)
 
     X_batch_train = train_dataset.tensors[0]
     X_batch_eval = eval_dataset.tensors[0]
 
-    insts_eval = torch.cat((X_batch_train[:num_eval_inst], X_batch_eval[:num_eval_inst]))
+    insts_eval = torch.cat(
+        (X_batch_train[:num_eval_inst], X_batch_eval[:num_eval_inst])
+    )
 
     y_preds = predict(model, insts_eval.to(device))
 
