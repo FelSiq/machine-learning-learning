@@ -81,6 +81,7 @@ def get_data(train_frac: float, verbose: bool = True):
         assert len(X_eval) == len(y_eval)
 
         if verbose:
+            print("Chunk filepath:", insts_chunk_path, target_chunk_path)
             print("Number of train instances :", len(y_train))
             print("Number of eval instances  :", len(y_eval))
             print("Shape of train instances  :", X_train.shape)
