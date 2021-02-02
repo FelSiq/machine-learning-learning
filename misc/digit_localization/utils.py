@@ -91,3 +91,7 @@ def get_data(train_frac: float, verbose: bool = True):
         eval_dataset = torch.utils.data.TensorDataset(X_eval, y_eval)
 
         yield train_dataset, eval_dataset
+
+        del train_dataset, eval_dataset
+        del X_train, y_train, X_eval, y_eval
+        del X, y

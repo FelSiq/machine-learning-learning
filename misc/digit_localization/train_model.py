@@ -3,6 +3,7 @@ TODO:
     1. Use more anchor boxes
 """
 import functools
+import gc
 
 import torchvision
 import torch.nn as nn
@@ -207,7 +208,7 @@ def eval_step(model, criterion, eval_dataloader, device):
             .item()
         )
 
-        del X_batch, y_batch
+        del X_batch, y_batch, y_preds
 
     eval_loss /= eval_total_batches
     eval_detection_acc /= eval_total_batches
@@ -216,8 +217,8 @@ def eval_step(model, criterion, eval_dataloader, device):
 
 
 def train_model(model, optim, criterion, scheduler, device, checkpoint_path):
-    train_epochs = 1
-    epochs_per_checkpoint = 10
+    train_epochs = 10
+    epochs_per_checkpoint = 1
     train_batch_size = 64
     eval_batch_size = 16
 
@@ -249,6 +250,8 @@ def train_model(model, optim, criterion, scheduler, device, checkpoint_path):
             total_chunks += 1
 
             del train_dataloader, eval_dataloader
+            del train_dataset, eval_dataset
+            print("Number of collected garbage objects:", gc.collect())
 
         train_loss = total_train_loss / total_chunks
         eval_loss = total_eval_loss / total_chunks
