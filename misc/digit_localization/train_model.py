@@ -139,13 +139,19 @@ def predict(model, X):
     dims = dims.view(-1, 2)
     half_dims = 0.5 * dims
     boxes = torch.cat((coords - half_dims, coords + half_dims), dim=1)
-    keep_inds = torchvision.ops.batched_nms(
-        boxes=boxes, scores=is_object, idxs=idxs, iou_threshold=0.6
+    keep_inds = set(
+        torchvision.ops.batched_nms(
+            boxes=boxes, scores=is_object, idxs=idxs, iou_threshold=0.6
+        ).tolist()
     )
 
-    num_inst, _, height, width = y.shape
-    keep_inds = keeps_inds.view(num_inst, height, width)
-    print(keep_inds.shape, y.shape)
+    erase_inds = torch.tensor([i for i in range(len(is_object)) if i not in keep_inds])
+
+    y_preds_shape = y_preds.shape
+    output_depth = y_preds_shape[1]
+    y_preds = y_preds.view(-1, output_depth)
+    y_preds[erase_inds, 0] = 0.0
+    y_preds = y_preds.view(*y_preds_shape)
 
     return y_preds
 
@@ -218,7 +224,7 @@ def eval_step(model, criterion, eval_dataloader, device):
 
 
 def train_model(model, optim, criterion, scheduler, device, checkpoint_path):
-    train_epochs = 10
+    train_epochs = 0
     epochs_per_checkpoint = 1
     train_batch_size = 128
     eval_batch_size = 8
