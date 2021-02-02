@@ -58,47 +58,35 @@ def plot_instance(inst, label):
     plt.show()
 
 
-def _load_data_in_chunks(filename_glob: str, verbose: bool):
-    data = None
+def get_data(train_frac: float, verbose: bool = True):
+    insts_path = sorted(glob.glob(os.path.join(config.DATA_DIR, "insts_*.pt")))
+    target_path = sorted(glob.glob(os.path.join(config.DATA_DIR, "targets_*.pt")))
 
-    for filepath in sorted(glob.glob(os.path.join(config.DATA_DIR, filename_glob))):
-        new_chunk = torch.load(filepath)
-        if data is not None:
-            data = torch.cat((data, new_chunk))
-        else:
-            data = new_chunk
+    for insts_chunk_path, target_chunk_path in zip(insts_path, target_path):
+        X = torch.load(insts_chunk_path)
+        y = torch.load(target_chunk_path)
+
+        if X.ndim == 3:
+            # Note: add channel dimension (following channel-first convention)
+            X = X.unsqueeze(1)
+
+        train_size = int(train_frac * len(y))
+
+        X_train = X[:train_size, ...]
+        y_train = y[:train_size, ...]
+        X_eval = X[train_size:, ...]
+        y_eval = y[train_size:, ...]
+
+        assert len(X_train) == len(y_train)
+        assert len(X_eval) == len(y_eval)
 
         if verbose:
-            print("Loaded data chunk:", filepath, f"(current size: {len(data)}).")
+            print("Number of train instances :", len(y_train))
+            print("Number of eval instances  :", len(y_eval))
+            print("Shape of train instances  :", X_train.shape)
+            print("Shape of eval instances   :", X_eval.shape)
 
-    return data
+        train_dataset = torch.utils.data.TensorDataset(X_train, y_train)
+        eval_dataset = torch.utils.data.TensorDataset(X_eval, y_eval)
 
-
-def get_data(train_frac: float, verbose: bool = True):
-    X = _load_data_in_chunks("insts_*.pt", verbose=verbose)
-    y = _load_data_in_chunks("targets_*.pt", verbose=verbose)
-
-    if X.ndim == 3:
-        # Note: add channel dimension (following channel-first convention)
-        X = X.unsqueeze(1)
-
-    train_size = int(train_frac * len(y))
-
-    X_train = X[:train_size, ...]
-    y_train = y[:train_size, ...]
-    X_eval = X[train_size:, ...]
-    y_eval = y[train_size:, ...]
-
-    assert len(X_train) == len(y_train)
-    assert len(X_eval) == len(y_eval)
-
-    if verbose:
-        print("Number of train instances :", len(y_train))
-        print("Number of eval instances  :", len(y_eval))
-        print("Shape of train instances  :", X_train.shape)
-        print("Shape of eval instances   :", X_eval.shape)
-
-    train_dataset = torch.utils.data.TensorDataset(X_train, y_train)
-    eval_dataset = torch.utils.data.TensorDataset(X_eval, y_eval)
-
-    return train_dataset, eval_dataset
+        yield train_dataset, eval_dataset
