@@ -12,7 +12,7 @@ import tqdm
 import config
 import utils
 
-OUTPUT_LEN = 1024
+OUTPUT_LEN = 2048
 KEEP_ASPECT_RATIO = True
 MIN_INST_DIM = 28
 MAX_INST_DIM = 128
@@ -165,4 +165,4 @@ if __name__ == "__main__":
     except FileExistsError:
         pass
 
-    _test(plot=0)
+    _test(plot=1)
