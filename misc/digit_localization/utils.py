@@ -15,6 +15,9 @@ def plot_instance(inst, label):
     fig, ax = plt.subplots(1)
 
     ax.imshow(inst, cmap="gray")
+    ax.grid(color="gray", linestyle="--", linewidth=1)
+    ax.set_xticks(np.arange(0, config.OUTPUT_WIDTH, config.CELL_WIDTH))
+    ax.set_yticks(np.arange(0, config.OUTPUT_HEIGHT, config.CELL_HEIGHT))
 
     for y in range(config.NUM_CELLS_VERT):
         for x in range(config.NUM_CELLS_HORIZ):
