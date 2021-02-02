@@ -11,7 +11,7 @@ import torch
 import config
 
 
-def plot_instance(inst, label):
+def plot_instance(inst, label, is_object_threshold: float = 0.6, show: bool = True):
     fig, ax = plt.subplots(1)
 
     ax.imshow(inst, cmap="gray")
@@ -29,15 +29,15 @@ def plot_instance(inst, label):
                 rect_width_prop,
             ) = label[:5, y, x]
 
-            if is_object >= 0.6:
+            if is_object >= is_object_threshold:
                 true_center_y = (y + center_y_prop) * config.CELL_HEIGHT
                 true_center_x = (x + center_x_prop) * config.CELL_WIDTH
 
-                rect_anchor_y = (
-                    true_center_y - (rect_height_prop * config.CELL_HEIGHT) / 2
+                rect_anchor_y = true_center_y - 0.5 * (
+                    rect_height_prop * config.CELL_HEIGHT
                 )
-                rect_anchor_x = (
-                    true_center_x - (rect_width_prop * config.CELL_WIDTH) / 2
+                rect_anchor_x = true_center_x - 0.5 * (
+                    rect_width_prop * config.CELL_WIDTH
                 )
 
                 rect_width = rect_height_prop * config.CELL_HEIGHT
@@ -55,7 +55,10 @@ def plot_instance(inst, label):
 
                 ax.scatter(true_center_x, true_center_y, color="red", lw=0.5)
 
-    plt.show()
+    if show:
+        plt.show()
+
+    return fig, ax
 
 
 def get_data(train_frac: float, verbose: bool = True):
