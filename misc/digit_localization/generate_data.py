@@ -12,7 +12,7 @@ import tqdm
 import config
 import utils
 
-OUTPUT_LEN = 256
+OUTPUT_LEN = 1024
 KEEP_ASPECT_RATIO = True
 MIN_INST_DIM = 28
 MAX_INST_DIM = 128
