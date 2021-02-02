@@ -1,3 +1,8 @@
+"""
+TODO:
+    1. Apply IOU filtering in results
+    2. Use more anchor boxes
+"""
 import functools
 
 import torch.nn as nn
@@ -13,11 +18,14 @@ class Model(nn.Module):
         super(Model, self).__init__()
 
         self.weights = nn.Sequential(
-            self._create_block(1, 64, 5, 2, dropout),
-            nn.MaxPool2d(kernel_size=2, stride=2),
-            self._create_block(64, 256, 5, 2, dropout),
-            nn.MaxPool2d(kernel_size=2, stride=2),
-            self._create_block(256, 128, 5, 2, dropout),
+            self._create_block(1, 64, 7, 3, dropout),
+            self._create_block(64, 64, 5, 2, dropout),
+            self._create_block(64, 128, 5, 2, dropout),
+            self._create_block(128, 128, 5, 2, dropout),
+            self._create_block(128, 128, 3, 1, dropout),
+            self._create_block(128, 128, 3, 1, dropout),
+            self._create_block(128, 128, 3, 1, dropout),
+            self._create_block(128, 128, 3, 1, dropout),
             self._create_block(128, 1024, 1, 1, dropout),
             nn.Conv2d(1024, config.TARGET_DEPTH, kernel_size=1, stride=1),
         )
@@ -33,6 +41,7 @@ class Model(nn.Module):
             nn.Conv2d(
                 in_dim, out_dim, kernel_size=kernel_size, stride=stride,
             ),
+            nn.BatchNorm2d(out_dim),
             nn.ReLU(inplace=True),
             nn.Dropout2d(dropout),
         )
@@ -120,14 +129,14 @@ def predict(model, X):
 
 
 def _test():
-    train_epochs = 15
-    epochs_per_checkpoint = 5
+    train_epochs = 80
+    epochs_per_checkpoint = 10
     device = "cuda"
-    train_batch_size = 48
+    train_batch_size = 64
     eval_batch_size = 16
     checkpoint_path = "dl_checkpoint.tar"
-    num_eval_inst = 5
-    dropout = 0.4
+    num_eval_inst = 10
+    dropout = 0.175
 
     train_dataset, eval_dataset = utils.get_data(train_frac=0.95)
 
@@ -153,9 +162,9 @@ def _test():
     if train_epochs > 0:
         criterion = functools.partial(
             loss_func,
-            pos_weight=5.0,
-            is_object_weight=2.5,
-            center_coord_weight=1.25,
+            pos_weight=2.0,
+            is_object_weight=10.0,
+            center_coord_weight=6.0,
             frame_dims_weight=1.0,
             class_prob_weight=1.0,
         )
@@ -252,8 +261,11 @@ def _test():
                 torch.save(checkpoint, checkpoint_path)
                 print("Saved checkpoint.")
 
-    X_batch = eval_dataset.tensors[0]
-    insts_eval = X_batch[:num_eval_inst]
+    X_batch_train = train_dataset.tensors[0]
+    X_batch_eval = eval_dataset.tensors[0]
+
+    insts_eval = torch.cat((X_batch_train[:num_eval_inst], X_batch_eval[:num_eval_inst]))
+
     y_preds = predict(model, insts_eval.to(device))
 
     for inst, pred in zip(insts_eval, y_preds):
