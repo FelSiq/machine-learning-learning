@@ -72,6 +72,11 @@ def get_data(train_frac: float, verbose: bool = True, debug: bool = False):
     insts_path = sorted(glob.glob(os.path.join(config.DATA_DIR, "insts_*.pt")))
     target_path = sorted(glob.glob(os.path.join(config.DATA_DIR, "targets_*.pt")))
 
+    if debug:
+        print("Will use only 2 data chunks due to activated debug mode.")
+        insts_path = insts_path[:2]
+        target_path = target_path[:2]
+
     for insts_chunk_path, target_chunk_path in zip(insts_path, target_path):
         X = torch.load(insts_chunk_path)
         y = torch.load(target_chunk_path)
