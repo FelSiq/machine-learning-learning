@@ -10,6 +10,8 @@ import torchvision
 import torch.nn as nn
 import torch
 import tqdm
+import numpy as np
+import matplotlib.pyplot as plt
 
 import config
 import utils
@@ -224,11 +226,22 @@ def eval_step(model, criterion, eval_dataloader, device):
     return eval_loss, eval_detection_acc
 
 
-def train_model(model, optim, criterion, scheduler, device, checkpoint_path):
-    train_epochs = 30
-    epochs_per_checkpoint = 1
+def train_model(
+    model,
+    optim,
+    criterion,
+    scheduler,
+    train_epochs,
+    epochs_per_checkpoint,
+    device,
+    checkpoint_path,
+    debug: bool = False,
+):
     train_batch_size = 128
     eval_batch_size = 8
+
+    train_losses = np.zeros(train_epochs, dtype=np.float32)
+    eval_losses = np.zeros(train_epochs, dtype=np.float32)
 
     for epoch in range(1, 1 + train_epochs):
         print(f"Epoch: {epoch:4d} / {train_epochs}...")
@@ -236,7 +249,7 @@ def train_model(model, optim, criterion, scheduler, device, checkpoint_path):
         total_eval_loss = total_eval_acc = 0.0
         total_chunks = 0
 
-        for train_dataset, eval_dataset in utils.get_data(train_frac=0.95):
+        for train_dataset, eval_dataset in utils.get_data(train_frac=0.95, debug=debug):
             train_dataloader = torch.utils.data.DataLoader(
                 train_dataset, shuffle=True, batch_size=train_batch_size
             )
@@ -264,10 +277,14 @@ def train_model(model, optim, criterion, scheduler, device, checkpoint_path):
         train_loss = total_train_loss / total_chunks
         eval_loss = total_eval_loss / total_chunks
 
+        train_losses[epoch - 1] = train_loss
+        eval_losses[epoch - 1] = eval_loss
+
         train_detection_acc = total_train_acc / total_chunks
         eval_detection_acc = total_eval_acc / total_chunks
 
-        scheduler.step(eval_loss)
+        # TODO: change train_loss -> eval_loss later.
+        scheduler.step(train_loss)
 
         print(
             f"train loss: {train_loss:.4f} - train detection acc: {train_detection_acc:.4f}"
@@ -276,9 +293,9 @@ def train_model(model, optim, criterion, scheduler, device, checkpoint_path):
             f"eval  loss: {eval_loss:.4f} - eval  detection acc: {eval_detection_acc:.4f}"
         )
 
-        if (
-            epochs_per_checkpoint > 0 and epoch % epochs_per_checkpoint == 0
-        ) or epoch == train_epochs:
+        if epochs_per_checkpoint > 0 and (
+            epoch % epochs_per_checkpoint == 0 or epoch == train_epochs
+        ):
             checkpoint = {
                 "model": model.state_dict(),
                 "optim": optim.state_dict(),
@@ -289,44 +306,102 @@ def train_model(model, optim, criterion, scheduler, device, checkpoint_path):
 
     print("Done training.")
 
+    return train_losses, eval_losses
+
 
 def _test():
     checkpoint_path = "dl_checkpoint.tar"
     device = "cuda"
-    test_num_inst_train = 5
-    test_num_inst_eval = 5
+    test_num_inst_train = 0
+    test_num_inst_eval = 0
+    train_epochs = 1
+    epochs_per_checkpoint = 5
+    plot_lr_losses = True
+    debug = False
+    lrs = [1e-4, 1e-3, 2e-3, 3e-3, 5e-3, 1e-2, 5e-2, 1e-1]
+    dropout = 0.30
 
-    model = Model(dropout=0.25)
-    optim = torch.optim.Adam(model.parameters(), 1e-3)
-    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-        optim, factor=0.9, patience=5, verbose=True
-    )
+    model = Model(dropout=dropout)
 
-    try:
-        checkpoint = torch.load(checkpoint_path)
-        model.load_state_dict(checkpoint["model"])
+    lr_train_losses = np.zeros((train_epochs, len(lrs)), dtype=np.float32)
+    lr_eval_losses = np.zeros((train_epochs, len(lrs)), dtype=np.float32)
+
+    print("Will run for {len(lrs)} different learning rates.")
+
+    if len(lrs) > 1:
+        epochs_per_checkpoint = 0
+        print(
+            "Disabled checkpoints since we're running on more than one learning rate."
+        )
+
+    if debug and epochs_per_checkpoint > 0:
+        epochs_per_checkpoint = 0
+        print("Disabled checkpoints due to debug mode activated.")
+
+    for i, lr in enumerate(lrs, 1):
+        print(f"Chosen learning rate: {lr:.4f} ({i} of {len(lrs)}).")
+
+        optim = torch.optim.Adam(model.parameters(), lr)
+        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+            optim, factor=0.9, patience=5, verbose=True
+        )
+
+        try:
+            checkpoint = torch.load(checkpoint_path)
+            model.load_state_dict(checkpoint["model"])
+            model = model.to(device)
+            # optim.load_state_dict(checkpoint["optim"])
+            # scheduler.load_state_dict(checkpoint["scheduler"])
+            print("Loaded checkpoint.")
+
+        except FileNotFoundError:
+            pass
+
         model = model.to(device)
-        optim.load_state_dict(checkpoint["optim"])
-        scheduler.load_state_dict(checkpoint["scheduler"])
-        print("Loaded checkpoint.")
 
-    except FileNotFoundError:
-        pass
+        criterion = functools.partial(
+            loss_func,
+            pos_weight=2.0,
+            is_object_weight=10.0,
+            center_coord_weight=6.0,
+            frame_dims_weight=1.0,
+            class_prob_weight=1.0,
+        )
 
-    model = model.to(device)
+        train_losses, eval_losses = train_model(
+            model,
+            optim,
+            criterion,
+            scheduler,
+            train_epochs,
+            epochs_per_checkpoint,
+            device,
+            checkpoint_path,
+            debug=debug,
+        )
 
-    criterion = functools.partial(
-        loss_func,
-        pos_weight=2.0,
-        is_object_weight=10.0,
-        center_coord_weight=6.0,
-        frame_dims_weight=1.0,
-        class_prob_weight=1.0,
-    )
-
-    train_model(model, optim, criterion, scheduler, device, checkpoint_path)
+        lr_train_losses[:, i - 1] = train_losses
+        lr_eval_losses[:, i - 1] = eval_losses
 
     gc.collect()
+
+    if plot_lr_losses:
+        fig, (ax_train, ax_eval) = plt.subplots(2)
+        fig.suptitle("Train/eval Losses over training epochs")
+
+        ax_train.set_title("Train")
+        _p = ax_train.plot(lr_train_losses, "-o")
+        plt.legend(_p, lrs)
+
+        ax_eval.set_title("Eval")
+        _p = ax_eval.plot(lr_eval_losses, "-o")
+        plt.legend(_p, lrs)
+
+        plt.show()
+
+    if test_num_inst_train <= 0 and test_num_inst_eval <= 0:
+        print("Done.")
+        exit(0)
 
     train_dataset, eval_dataset = next(utils.get_data(train_frac=0.95))
     X_batch_train = train_dataset.tensors[0]
@@ -340,7 +415,7 @@ def _test():
 
     for i, (inst, pred) in enumerate(zip(insts_eval, y_preds)):
         print(pred[0, ...].max().item())
-        suptitle = ("Train" if i < test_num_inst_train else "Evaluation") + "instance"
+        suptitle = ("Train" if i < test_num_inst_train else "Evaluation") + " instance"
         utils.plot_instance(
             inst.detach().cpu().squeeze(), pred.detach().cpu(), fig_suptitle=suptitle
         )
