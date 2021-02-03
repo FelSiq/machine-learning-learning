@@ -13,10 +13,13 @@ import config
 import utils
 
 OUTPUT_LEN = 4096
-REPEATS = 1
+REPEATS = 15
+NUM_PLOTS_AFTER_GENERATION = 0
 KEEP_ASPECT_RATIO = True
-MIN_INST_DIM = 28
-MAX_INST_DIM = 128
+MIN_INST_DIM = 20
+MAX_INST_DIM = 90
+MAX_DIGITS_PER_IMAGE = 4
+NOISE_RATIO = 0.2
 
 
 def get_file_id() -> int:
@@ -65,9 +68,7 @@ def _test(plot: int = 0):
     )
 
     for i in tqdm.auto.tqdm(np.arange(OUTPUT_LEN)):
-        new_inst = np.zeros(
-            (config.OUTPUT_HEIGHT, config.OUTPUT_WIDTH), dtype=np.float32
-        )
+        new_inst = 255. * NOISE_RATIO * np.random.rand(config.OUTPUT_HEIGHT, config.OUTPUT_WIDTH)
         new_target = np.zeros(
             (
                 config.TARGET_DEPTH,
@@ -76,7 +77,7 @@ def _test(plot: int = 0):
             ),
             dtype=np.float32,
         )
-        num_digits = np.random.randint(1, 5)
+        num_digits = np.random.randint(1, 1 + MAX_DIGITS_PER_IMAGE)
 
         for j in np.arange(num_digits):
             sample_ind = np.random.randint(y.size())
@@ -167,4 +168,4 @@ if __name__ == "__main__":
         pass
 
     for i in range(REPEATS):
-        _test(plot=0)
+        _test(plot=NUM_PLOTS_AFTER_GENERATION)
