@@ -312,13 +312,13 @@ def train_model(
 def _test():
     checkpoint_path = "dl_checkpoint.tar"
     device = "cuda"
-    test_num_inst_train = 0
-    test_num_inst_eval = 0
-    train_epochs = 1
+    test_num_inst_train = 3
+    test_num_inst_eval = 3
+    train_epochs = 25
     epochs_per_checkpoint = 5
-    plot_lr_losses = True
+    plot_lr_losses = False
     debug = False
-    lrs = [1e-4, 1e-3, 2e-3, 3e-3, 5e-3, 1e-2, 5e-2, 1e-1]
+    lrs = [9e-3]
     dropout = 0.30
 
     model = Model(dropout=dropout)
@@ -343,15 +343,15 @@ def _test():
 
         optim = torch.optim.Adam(model.parameters(), lr)
         scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-            optim, factor=0.9, patience=5, verbose=True
+            optim, factor=0.95, patience=5, verbose=True
         )
 
         try:
             checkpoint = torch.load(checkpoint_path)
             model.load_state_dict(checkpoint["model"])
             model = model.to(device)
-            # optim.load_state_dict(checkpoint["optim"])
-            # scheduler.load_state_dict(checkpoint["scheduler"])
+            optim.load_state_dict(checkpoint["optim"])
+            scheduler.load_state_dict(checkpoint["scheduler"])
             print("Loaded checkpoint.")
 
         except FileNotFoundError:
