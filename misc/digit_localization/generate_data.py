@@ -44,12 +44,12 @@ def _test(plot: int = 0):
     def insert_inplace(
         new_inst, top_left_coord_y, top_left_coord_x, inst_height, inst_width, sample
     ):
-        new_inst[
+        image_slice = new_inst[
             top_left_coord_y : top_left_coord_y + inst_height,
             top_left_coord_x : top_left_coord_x + inst_width,
-        ] += sample
+        ]
 
-        new_inst = np.maximum(new_inst, 255.0)
+        np.maximum(image_slice, sample, out=image_slice)
 
     gen_insts = np.zeros(
         (OUTPUT_LEN, config.OUTPUT_HEIGHT, config.OUTPUT_WIDTH), dtype=np.float32
