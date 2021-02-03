@@ -68,13 +68,17 @@ def plot_instance(
     return fig, ax
 
 
-def get_data(train_frac: float, verbose: bool = True):
+def get_data(train_frac: float, verbose: bool = True, debug: bool = False):
     insts_path = sorted(glob.glob(os.path.join(config.DATA_DIR, "insts_*.pt")))
     target_path = sorted(glob.glob(os.path.join(config.DATA_DIR, "targets_*.pt")))
 
     for insts_chunk_path, target_chunk_path in zip(insts_path, target_path):
         X = torch.load(insts_chunk_path)
         y = torch.load(target_chunk_path)
+
+        if debug:
+            X = X[:20, ...]
+            y = y[:20, ...]
 
         if X.ndim == 3:
             # Note: add channel dimension (following channel-first convention)
@@ -91,6 +95,9 @@ def get_data(train_frac: float, verbose: bool = True):
         assert len(X_eval) == len(y_eval)
 
         if verbose:
+            if debug:
+                print("Debug mode activated, will use only 20 instances per chunk.")
+
             print("Chunk filepath:", insts_chunk_path, target_chunk_path)
             print("Number of train instances :", len(y_train))
             print("Number of eval instances  :", len(y_eval))
