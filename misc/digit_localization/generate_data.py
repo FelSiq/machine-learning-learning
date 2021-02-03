@@ -2,6 +2,7 @@ import os
 import glob
 import re
 
+import PIL
 import torchvision
 import numpy as np
 import matplotlib.patches
@@ -12,14 +13,15 @@ import tqdm
 import config
 import utils
 
-OUTPUT_LEN = 4096
-REPEATS = 15
+OUTPUT_LEN = 8192
+REPEATS = 10
 NUM_PLOTS_AFTER_GENERATION = 0
 KEEP_ASPECT_RATIO = True
-MIN_INST_DIM = 20
-MAX_INST_DIM = 90
+MIN_INST_DIM = 14
+MAX_INST_DIM = 60
 MAX_DIGITS_PER_IMAGE = 4
-NOISE_RATIO = 0.2
+NOISE_RATIO = 0.25
+SAVE_GENERATED = True
 
 
 def get_file_id() -> int:
@@ -68,7 +70,11 @@ def _test(plot: int = 0):
     )
 
     for i in tqdm.auto.tqdm(np.arange(OUTPUT_LEN)):
-        new_inst = 255. * NOISE_RATIO * np.random.rand(config.OUTPUT_HEIGHT, config.OUTPUT_WIDTH)
+        new_inst = (
+            255.0
+            * NOISE_RATIO
+            * np.random.rand(config.OUTPUT_HEIGHT, config.OUTPUT_WIDTH)
+        )
         new_target = np.zeros(
             (
                 config.TARGET_DEPTH,
@@ -94,7 +100,9 @@ def _test(plot: int = 0):
                 )
 
             sample = torchvision.transforms.functional.resize(
-                sample, (inst_height, inst_width)
+                sample,
+                (inst_height, inst_width),
+                interpolation=PIL.Image.NEAREST,
             )
             sample = sample.squeeze().numpy()
 
@@ -151,13 +159,14 @@ def _test(plot: int = 0):
         gen_insts[i, ...] = new_inst
         gen_targets[i, ...] = new_target
 
-    file_id = get_file_id()
+    if SAVE_GENERATED:
+        file_id = get_file_id()
 
-    gen_insts = torch.from_numpy(gen_insts)
-    gen_targets = torch.from_numpy(gen_targets)
+        gen_insts = torch.from_numpy(gen_insts)
+        gen_targets = torch.from_numpy(gen_targets)
 
-    torch.save(gen_insts, os.path.join(config.DATA_DIR, f"insts_{file_id}.pt"))
-    torch.save(gen_targets, os.path.join(config.DATA_DIR, f"targets_{file_id}.pt"))
+        torch.save(gen_insts, os.path.join(config.DATA_DIR, f"insts_{file_id}.pt"))
+        torch.save(gen_targets, os.path.join(config.DATA_DIR, f"targets_{file_id}.pt"))
 
 
 if __name__ == "__main__":

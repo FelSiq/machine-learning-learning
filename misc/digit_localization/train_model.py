@@ -22,13 +22,11 @@ class Model(nn.Module):
 
         self.weights = nn.Sequential(
             self._create_block(1, 64, 7, 3, dropout),
-            self._create_block(64, 64, 5, 2, dropout),
             self._create_block(64, 128, 5, 2, dropout),
+            self._create_block(128, 128, 5, 2, dropout),
             self._create_block(128, 128, 3, 1, dropout),
-            self._create_block(128, 128, 3, 1, dropout),
-            self._create_block(128, 128, 3, 1, dropout),
-            self._create_block(128, 128, 3, 1, dropout),
-            self._create_block(128, 1024, 1, 1, dropout),
+            self._create_block(128, 512, 1, 1, dropout),
+            self._create_block(512, 1024, 1, 1, dropout),
             nn.Conv2d(1024, config.TARGET_DEPTH, kernel_size=1, stride=1),
         )
 
@@ -281,8 +279,7 @@ def train_model(
         train_detection_acc = total_train_acc / total_chunks
         eval_detection_acc = total_eval_acc / total_chunks
 
-        # TODO: change train_loss -> eval_loss later.
-        scheduler.step(train_loss)
+        scheduler.step(eval_loss)
 
         print(
             f"train loss: {train_loss:.4f} - train detection acc: {train_detection_acc:.4f}"
@@ -308,7 +305,7 @@ def train_model(
 
 
 def _test():
-    checkpoint_path = "dl_checkpoint.tar"
+    checkpoint_path = f"{config.OUTPUT_HEIGHT}_{config.OUTPUT_WIDTH}_dl_checkpoint.tar"
     device = "cuda"
     test_num_inst_train = 3
     test_num_inst_eval = 3
