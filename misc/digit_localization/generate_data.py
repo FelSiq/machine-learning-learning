@@ -13,6 +13,7 @@ import config
 import utils
 
 OUTPUT_LEN = 4096
+REPEATS = 1
 KEEP_ASPECT_RATIO = True
 MIN_INST_DIM = 28
 MAX_INST_DIM = 128
@@ -165,4 +166,5 @@ if __name__ == "__main__":
     except FileExistsError:
         pass
 
-    _test(plot=1)
+    for i in range(REPEATS):
+        _test(plot=0)
