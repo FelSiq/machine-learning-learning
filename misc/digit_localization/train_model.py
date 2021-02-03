@@ -1,7 +1,6 @@
 """
 TODO:
     1. Use more anchor boxes
-    2. Generate data with random noise
 """
 import functools
 import gc
@@ -25,7 +24,6 @@ class Model(nn.Module):
             self._create_block(1, 64, 7, 3, dropout),
             self._create_block(64, 64, 5, 2, dropout),
             self._create_block(64, 128, 5, 2, dropout),
-            self._create_block(128, 128, 5, 2, dropout),
             self._create_block(128, 128, 3, 1, dropout),
             self._create_block(128, 128, 3, 1, dropout),
             self._create_block(128, 128, 3, 1, dropout),
@@ -49,7 +47,7 @@ class Model(nn.Module):
                 stride=stride,
                 bias=False,
             ),
-            nn.BatchNorm2d(out_dim, momentum=0.01, affine=True),
+            nn.BatchNorm2d(out_dim, momentum=0.1, affine=True),
             nn.ReLU(inplace=True),
             nn.Dropout2d(dropout),
         )
@@ -237,8 +235,8 @@ def train_model(
     checkpoint_path,
     debug: bool = False,
 ):
-    train_batch_size = 128
-    eval_batch_size = 8
+    train_batch_size = 256
+    eval_batch_size = 16
 
     train_losses = np.zeros(train_epochs, dtype=np.float32)
     eval_losses = np.zeros(train_epochs, dtype=np.float32)
@@ -314,19 +312,19 @@ def _test():
     device = "cuda"
     test_num_inst_train = 3
     test_num_inst_eval = 3
-    train_epochs = 25
+    train_epochs = 20
     epochs_per_checkpoint = 5
-    plot_lr_losses = False
+    plot_lr_losses = True
     debug = False
-    lrs = [9e-3]
-    dropout = 0.30
+    lrs = [1e-3]
+    dropout = 0.25
 
     model = Model(dropout=dropout)
 
     lr_train_losses = np.zeros((train_epochs, len(lrs)), dtype=np.float32)
     lr_eval_losses = np.zeros((train_epochs, len(lrs)), dtype=np.float32)
 
-    print("Will run for {len(lrs)} different learning rates.")
+    print(f"Will run for {len(lrs)} different learning rates.")
 
     if len(lrs) > 1:
         epochs_per_checkpoint = 0
@@ -343,7 +341,7 @@ def _test():
 
         optim = torch.optim.Adam(model.parameters(), lr)
         scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-            optim, factor=0.95, patience=5, verbose=True
+            optim, factor=0.99, patience=5, verbose=True
         )
 
         try:
