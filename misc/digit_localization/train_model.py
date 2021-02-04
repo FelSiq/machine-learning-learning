@@ -305,12 +305,16 @@ def train_model(
 
 
 def _test():
-    checkpoint_path = f"{config.OUTPUT_HEIGHT}_{config.OUTPUT_WIDTH}_dl_checkpoint.tar"
+    checkpoint_path = (
+        f"{config.OUTPUT_HEIGHT}_{config.OUTPUT_WIDTH}_"
+        f"{config.NUM_CELLS_HORIZ}_{config.NUM_CELLS_VERT}_"
+        "dl_checkpoint.tar"
+    )
     device = "cuda"
     test_num_inst_train = 3
     test_num_inst_eval = 3
     train_epochs = 20
-    epochs_per_checkpoint = 5
+    epochs_per_checkpoint = 2
     plot_lr_losses = True
     debug = False
     lrs = [1e-3]
@@ -356,7 +360,7 @@ def _test():
 
         criterion = functools.partial(
             loss_func,
-            pos_weight=2.0,
+            pos_weight=2.5,
             is_object_weight=10.0,
             center_coord_weight=6.0,
             frame_dims_weight=1.0,
