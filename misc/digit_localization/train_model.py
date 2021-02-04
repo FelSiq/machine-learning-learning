@@ -371,10 +371,11 @@ def _test():
         criterion = functools.partial(
             loss_func,
             pos_weight=8.0,
-            is_object_weight=7.0,
+            is_object_weight=5.0,
             center_coord_weight=30.0,
-            frame_dims_weight=15.0,
+            frame_dims_weight=20.0,
             class_prob_weight=1.0,
+            verbose=False,
         )
 
         train_losses, eval_losses = train_model(
