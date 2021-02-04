@@ -1,6 +1,8 @@
 import typing as t
 import glob
 import os
+import re
+import random
 
 import matplotlib.pyplot as plt
 import matplotlib.patches
@@ -68,16 +70,26 @@ def plot_instance(
     return fig, ax
 
 
-def get_data(train_frac: float, verbose: bool = True, debug: bool = False):
-    insts_path = sorted(glob.glob(os.path.join(config.DATA_DIR, "insts_*.pt")))
-    target_path = sorted(glob.glob(os.path.join(config.DATA_DIR, "targets_*.pt")))
+def get_data(
+    train_frac: float,
+    shuffle_paths: bool = True,
+    verbose: bool = True,
+    debug: bool = False,
+):
+    insts_path = glob.glob(os.path.join(config.DATA_DIR, "insts_*.pt"))
+    get_target_id_re = re.compile(r"(?<=insts_)([0-9]+)\.pt$")
+
+    if shuffle_paths:
+        random.shuffle(insts_path)
 
     if debug:
         print("Will use only 2 data chunks due to activated debug mode.")
         insts_path = insts_path[:2]
-        target_path = target_path[:2]
 
-    for insts_chunk_path, target_chunk_path in zip(insts_path, target_path):
+    for insts_chunk_path in insts_path:
+        chunk_id = get_target_id_re.search(insts_chunk_path).group(1)
+        target_chunk_path = os.path.join(config.DATA_DIR, f"targets_{chunk_id}.pt")
+
         X = torch.load(insts_chunk_path)
         y = torch.load(target_chunk_path)
 
@@ -117,3 +129,12 @@ def get_data(train_frac: float, verbose: bool = True, debug: bool = False):
         del train_dataset, eval_dataset
         del X_train, y_train, X_eval, y_eval
         del X, y
+
+
+def _test():
+    for X, y in get_data(train_frac=0.9, debug=True):
+        pass
+
+
+if __name__ == "__main__":
+    _test()
