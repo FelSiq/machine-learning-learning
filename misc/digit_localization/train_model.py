@@ -103,7 +103,8 @@ def loss_func(
     true_dims = torch.masked_select(true_dims, is_object_mask)
     true_class_logits = torch.masked_select(true_class_logits, is_object_mask)
 
-    total_loss += center_coord_weight * nn.functional.binary_cross_entropy_with_logits(
+    preds_coords = torch.sigmoid(preds_coords)  # Note: ensure in [0, 1]
+    total_loss += center_coord_weight * nn.functional.mse_loss(
         preds_coords, true_coords
     )
 
@@ -311,14 +312,14 @@ def _test():
         "dl_checkpoint.tar"
     )
     device = "cuda"
-    test_num_inst_train = 3
-    test_num_inst_eval = 3
-    train_epochs = 20
-    epochs_per_checkpoint = 2
+    test_num_inst_train = 2
+    test_num_inst_eval = 2
+    train_epochs = 0
+    epochs_per_checkpoint = 5
     plot_lr_losses = True
     debug = False
     lrs = [1e-3]
-    dropout = 0.25
+    dropout = 0.30
 
     model = Model(dropout=dropout)
 
@@ -360,7 +361,7 @@ def _test():
 
         criterion = functools.partial(
             loss_func,
-            pos_weight=2.5,
+            pos_weight=8.0,
             is_object_weight=10.0,
             center_coord_weight=6.0,
             frame_dims_weight=1.0,
