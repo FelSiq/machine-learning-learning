@@ -69,6 +69,7 @@ def loss_func(
     center_coord_weight: float = 1.0,
     frame_dims_weight: float = 1.0,
     class_prob_weight: float = 1.0,
+    verbose: bool = False,
 ) -> torch.Tensor:
     true_is_object, true_coords, true_dims, true_class_logits = Model.split_output(
         y_true
@@ -82,7 +83,7 @@ def loss_func(
 
     # Note: no need to shrink 'preds_is_object' because loss function
     # (bce loss w/ logits) already incorporate the sigmoid function.
-    total_loss = is_object_weight * nn.functional.binary_cross_entropy_with_logits(
+    loss_is_object = is_object_weight * nn.functional.binary_cross_entropy_with_logits(
         preds_is_object,
         true_is_object,
         pos_weight=pos_weight,
@@ -104,20 +105,28 @@ def loss_func(
     true_class_logits = torch.masked_select(true_class_logits, is_object_mask)
 
     preds_coords = torch.sigmoid(preds_coords)  # Note: ensure in [0, 1]
-    total_loss += center_coord_weight * nn.functional.mse_loss(
+    loss_coords = center_coord_weight * nn.functional.mse_loss(
         preds_coords, true_coords
     )
 
     preds_dims = torch.exp(preds_dims)  # Note: ensure > 0
-    total_loss += frame_dims_weight * nn.functional.mse_loss(preds_dims, true_dims)
+    loss_dims = frame_dims_weight * nn.functional.mse_loss(preds_dims, true_dims)
 
     preds_class_logits = preds_class_logits.view(-1, config.NUM_CLASSES)
 
     # Note: no need to softmax class logits since the loss functiona
     # (cross entropy) already incorporate the (log-)softmax function.
-    total_loss += class_prob_weight * nn.functional.cross_entropy(
+    loss_class = class_prob_weight * nn.functional.cross_entropy(
         preds_class_logits, true_class_logits
     )
+
+    if verbose:
+        print("loss is_object :", loss_is_object)
+        print("loss coords    :", loss_coords)
+        print("loss dims      :", loss_dims)
+        print("loss class     :", loss_class)
+
+    total_loss = loss_is_object + loss_coords + loss_dims + loss_class
 
     return total_loss
 
@@ -314,8 +323,8 @@ def _test():
     device = "cuda"
     test_num_inst_train = 2
     test_num_inst_eval = 2
-    train_epochs = 0
-    epochs_per_checkpoint = 5
+    train_epochs = 5
+    epochs_per_checkpoint = 2
     plot_lr_losses = True
     debug = False
     lrs = [1e-3]
@@ -362,9 +371,9 @@ def _test():
         criterion = functools.partial(
             loss_func,
             pos_weight=8.0,
-            is_object_weight=10.0,
-            center_coord_weight=6.0,
-            frame_dims_weight=1.0,
+            is_object_weight=7.0,
+            center_coord_weight=30.0,
+            frame_dims_weight=15.0,
             class_prob_weight=1.0,
         )
 
