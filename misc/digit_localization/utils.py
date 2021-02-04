@@ -86,7 +86,7 @@ def get_data(
         print("Will use only 2 data chunks due to activated debug mode.")
         insts_path = insts_path[:2]
 
-    for insts_chunk_path in insts_path:
+    for i, insts_chunk_path in enumerate(insts_path, 1):
         chunk_id = get_target_id_re.search(insts_chunk_path).group(1)
         target_chunk_path = os.path.join(config.DATA_DIR, f"targets_{chunk_id}.pt")
 
@@ -115,7 +115,12 @@ def get_data(
             if debug:
                 print("Debug mode activated, will use only 20 instances per chunk.")
 
-            print("Chunk filepath:", insts_chunk_path, target_chunk_path)
+            print(
+                "Chunk filepath:",
+                insts_chunk_path,
+                target_chunk_path,
+                f"(chunk {i} of {len(insts_path)})",
+            )
             print("Number of train instances :", len(y_train))
             print("Number of eval instances  :", len(y_eval))
             print("Shape of train instances  :", X_train.shape)
