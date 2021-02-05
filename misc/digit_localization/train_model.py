@@ -21,13 +21,13 @@ class Model(nn.Module):
         super(Model, self).__init__()
 
         self.weights = nn.Sequential(
-            self._create_block(1, 64, 7, 3, dropout),
-            self._create_block(64, 128, 5, 2, dropout),
-            self._create_block(128, 128, 5, 2, dropout),
-            self._create_block(128, 128, 3, 1, dropout),
-            self._create_block(128, 256, 3, 1, dropout),
-            self._create_block(256, 512, 1, 1, dropout),
-            self._create_block(512, 1024, 1, 1, dropout),
+            self._create_block(1, 64, 5, 2, 2, dropout),
+            self._create_block(64, 128, 5, 2, 2, dropout),
+            self._create_block(128, 128, 5, 2, 2, dropout),
+            self._create_block(128, 128, 5, 2, 2, dropout),
+            self._create_block(128, 256, 3, 1, 0, dropout),
+            self._create_block(256, 512, 3, 1, 0, dropout),
+            self._create_block(512, 1024, 1, 1, 0, dropout),
             nn.Conv2d(1024, config.TARGET_DEPTH, kernel_size=1, stride=1),
         )
 
@@ -43,7 +43,12 @@ class Model(nn.Module):
 
     @staticmethod
     def _create_block(
-        in_dim: int, out_dim: int, kernel_size: int, stride: int, dropout: float
+        in_dim: int,
+        out_dim: int,
+        kernel_size: int,
+        stride: int,
+        padding: int,
+        dropout: float,
     ):
         block = nn.Sequential(
             nn.Conv2d(
@@ -51,10 +56,12 @@ class Model(nn.Module):
                 out_dim,
                 kernel_size=kernel_size,
                 stride=stride,
+                padding=padding,
+                padding_mode="replicate",
                 bias=False,
             ),
             nn.BatchNorm2d(out_dim, momentum=0.1, affine=True),
-            nn.LeakyReLU(negative_slope=0.2, inplace=True),
+            nn.ReLU(inplace=True),
             nn.Dropout2d(dropout),
         )
 
@@ -326,14 +333,14 @@ def _test():
         "dl_checkpoint.tar"
     )
     device = "cuda"
-    test_num_inst_train = 2
-    test_num_inst_eval = 2
+    test_num_inst_train = 1
+    test_num_inst_eval = 1
     train_epochs = 10
     epochs_per_checkpoint = 2
     plot_lr_losses = True
     debug = False
-    lrs = [8e-4]
-    dropout = 0.30
+    lrs = [1e-3]
+    dropout = 0.20
 
     model = Model(dropout=dropout)
 
@@ -377,10 +384,10 @@ def _test():
             loss_func,
             pos_weight=10.0,
             is_object_weight=5.0,
-            center_coord_weight=64.0,
-            frame_dims_weight=45.0,
+            center_coord_weight=60.0,
+            frame_dims_weight=40.0,
             class_prob_weight=3.00,
-            verbose=False,
+            verbose=True,
         )
 
         train_losses, eval_losses = train_model(
