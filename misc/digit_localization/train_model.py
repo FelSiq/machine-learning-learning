@@ -31,13 +31,6 @@ class Model(nn.Module):
             nn.Conv2d(1024, config.TARGET_DEPTH, kernel_size=1, stride=1),
         )
 
-        self.apply(self.weights_init)
-
-    @staticmethod
-    def weights_init(m):
-        if isinstance(m, nn.Conv2d):
-            nn.init.xavier_normal_(m.weight, gain=0.01)
-
     def forward(self, X):
         return self.weights(X)
 
@@ -50,6 +43,7 @@ class Model(nn.Module):
         padding: int,
         dropout: float,
     ):
+        # Note: the padding is EXTREMELY important!
         block = nn.Sequential(
             nn.Conv2d(
                 in_dim,
@@ -333,10 +327,10 @@ def _test():
         "dl_checkpoint.tar"
     )
     device = "cuda"
-    test_num_inst_train = 1
-    test_num_inst_eval = 1
-    train_epochs = 10
-    epochs_per_checkpoint = 2
+    test_num_inst_train = 5
+    test_num_inst_eval = 5
+    train_epochs = 20
+    epochs_per_checkpoint = 1
     plot_lr_losses = True
     debug = False
     lrs = [1e-3]
@@ -383,10 +377,10 @@ def _test():
         criterion = functools.partial(
             loss_func,
             pos_weight=10.0,
-            is_object_weight=5.0,
-            center_coord_weight=60.0,
-            frame_dims_weight=40.0,
-            class_prob_weight=3.00,
+            is_object_weight=1.0,
+            center_coord_weight=12.0,
+            frame_dims_weight=12.0,
+            class_prob_weight=1.5,
             verbose=True,
         )
 
