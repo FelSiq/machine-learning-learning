@@ -25,10 +25,18 @@ class Model(nn.Module):
             self._create_block(64, 128, 5, 2, dropout),
             self._create_block(128, 128, 5, 2, dropout),
             self._create_block(128, 128, 3, 1, dropout),
-            self._create_block(128, 512, 1, 1, dropout),
+            self._create_block(128, 256, 3, 1, dropout),
+            self._create_block(256, 512, 1, 1, dropout),
             self._create_block(512, 1024, 1, 1, dropout),
             nn.Conv2d(1024, config.TARGET_DEPTH, kernel_size=1, stride=1),
         )
+
+        self.apply(self.weights_init)
+
+    @staticmethod
+    def weights_init(m):
+        if isinstance(m, nn.Conv2d):
+            nn.init.xavier_normal_(m.weight, gain=0.01)
 
     def forward(self, X):
         return self.weights(X)
@@ -46,7 +54,7 @@ class Model(nn.Module):
                 bias=False,
             ),
             nn.BatchNorm2d(out_dim, momentum=0.1, affine=True),
-            nn.ReLU(inplace=True),
+            nn.LeakyReLU(negative_slope=0.2, inplace=True),
             nn.Dropout2d(dropout),
         )
 
@@ -59,6 +67,18 @@ class Model(nn.Module):
         dims = out[:, [3, 4], ...]
         class_logits = out[:, 5:, ...]
         return is_object, coords, dims, class_logits
+
+
+def perm_resh_slice(target, mask, size_per_inst, flatten=True):
+    """Permute, Reshape and Slice."""
+    target = target.permute(0, 2, 3, 1)
+    target = target.reshape(-1, size_per_inst)
+    target = target[mask, ...]
+
+    if flatten:
+        target = target.reshape(-1)
+
+    return target
 
 
 def loss_func(
@@ -89,35 +109,38 @@ def loss_func(
         pos_weight=pos_weight,
     )
 
-    true_class_logits = true_class_logits.argmax(dim=1, keepdims=True)
-
     # Note: when the true label of a cell does not has any object within it, then
     # the remaining predicted values does not matter as long as the model
     # detected no object in the first place. Therefore, here we calculate the
     # remaining losses only for cells that actually has some object (based on
     # the ground truth).
-    is_object_mask = (true_is_object >= 0.999).unsqueeze(1)
-    preds_coords = torch.masked_select(preds_coords, is_object_mask)
-    preds_dims = torch.masked_select(preds_dims, is_object_mask)
-    preds_class_logits = torch.masked_select(preds_class_logits, is_object_mask)
-    true_coords = torch.masked_select(true_coords, is_object_mask)
-    true_dims = torch.masked_select(true_dims, is_object_mask)
-    true_class_logits = torch.masked_select(true_class_logits, is_object_mask)
+    is_object_mask = (true_is_object >= 0.999).view(-1)
+
+    preds_coords = perm_resh_slice(preds_coords, is_object_mask, 2)
+    true_coords = perm_resh_slice(true_coords, is_object_mask, 2)
 
     preds_coords = torch.sigmoid(preds_coords)  # Note: ensure in [0, 1]
     loss_coords = center_coord_weight * nn.functional.mse_loss(
         preds_coords, true_coords
     )
 
+    preds_dims = perm_resh_slice(preds_dims, is_object_mask, 2)
+    true_dims = perm_resh_slice(true_dims, is_object_mask, 2)
+
     preds_dims = torch.exp(preds_dims)  # Note: ensure > 0
     loss_dims = frame_dims_weight * nn.functional.mse_loss(preds_dims, true_dims)
 
-    preds_class_logits = preds_class_logits.view(-1, config.NUM_CLASSES)
+    num_classes = true_class_logits.shape[1]
+    preds_class_logits = perm_resh_slice(
+        preds_class_logits, is_object_mask, num_classes, flatten=False
+    )
+    true_class_inds = true_class_logits.argmax(dim=1)
+    true_class_inds = true_class_inds.view(-1)[is_object_mask, ...]
 
     # Note: no need to softmax class logits since the loss functiona
     # (cross entropy) already incorporate the (log-)softmax function.
     loss_class = class_prob_weight * nn.functional.cross_entropy(
-        preds_class_logits, true_class_logits
+        preds_class_logits, true_class_inds
     )
 
     if verbose:
@@ -305,11 +328,11 @@ def _test():
     device = "cuda"
     test_num_inst_train = 2
     test_num_inst_eval = 2
-    train_epochs = 0
-    epochs_per_checkpoint = 1
-    plot_lr_losses = False
+    train_epochs = 10
+    epochs_per_checkpoint = 2
+    plot_lr_losses = True
     debug = False
-    lrs = [1e-3]
+    lrs = [8e-4]
     dropout = 0.30
 
     model = Model(dropout=dropout)
@@ -352,11 +375,11 @@ def _test():
 
         criterion = functools.partial(
             loss_func,
-            pos_weight=18.0,
+            pos_weight=10.0,
             is_object_weight=5.0,
-            center_coord_weight=30.0,
-            frame_dims_weight=20.0,
-            class_prob_weight=1.0,
+            center_coord_weight=64.0,
+            frame_dims_weight=45.0,
+            class_prob_weight=3.00,
             verbose=False,
         )
 
