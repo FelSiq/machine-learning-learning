@@ -71,8 +71,10 @@ def plot_instance(
 
                 ax.annotate(
                     f"{cls_id} ({cls_prob:.2f})",
-                    xy=(true_center_x, true_center_y + 1),
+                    xy=(true_center_x, true_center_y - 0.25 * config.CELL_HEIGHT),
+                    horizontalalignment="center",
                     size=8,
+                    bbox=dict(boxstyle="square", fc="white", lw=1, ec="r"),
                     color="red",
                 )
 
