@@ -136,39 +136,31 @@ def predict(model, X):
     y_preds = model(X)
     is_object, coords, dims, class_logits = model.split_output(y_preds)
 
-    y_preds[:, 0, ...] = torch.sigmoid(is_object)
-    y_preds[:, [1, 2], ...] = torch.sigmoid(coords)
-    y_preds[:, [3, 4], ...] = torch.exp(dims)
-    y_preds[:, 5:, ...] = torch.softmax(class_logits, dim=1)
+    is_object = torch.sigmoid(is_object)
+    coords = torch.sigmoid(coords)
+    dims = torch.exp(dims)
+    class_probs = torch.softmax(class_logits, dim=1)
 
-    is_object = is_object.reshape(-1)
-    idxs = class_logits.argmax(dim=1).view(-1)
+    y_preds[:, 0, ...] = is_object
+    y_preds[:, [1, 2], ...] = coords
+    y_preds[:, [3, 4], ...] = dims
+    y_preds[:, 5:, ...] = class_probs
 
-    coords = coords.view(-1, 2)
-    dims = dims.view(-1, 2)
-    half_dims = 0.5 * dims
-    boxes = torch.cat((coords - half_dims, coords + half_dims), dim=1)
-    keep_inds = set(
-        torchvision.ops.batched_nms(
-            boxes=boxes, scores=is_object, idxs=idxs, iou_threshold=0.6
-        ).tolist()
-    )
+    return utils.non_max_suppresion(y_preds)
 
-    erase_inds = torch.tensor([i for i in range(len(is_object)) if i not in keep_inds])
 
-    y_preds_shape = y_preds.shape
-    output_depth = y_preds_shape[1]
-    y_preds = y_preds.view(-1, output_depth)
-    y_preds[erase_inds, 0] = 0.0
-    y_preds = y_preds.view(*y_preds_shape)
-
-    return y_preds
+def calc_recall(y_preds, y_batch, is_object_threshold: float = 0.6):
+    preds_verdict = torch.sigmoid(y_preds[:, 0, ...]) >= is_object_threshold
+    true_verdict = y_batch[:, 0, ...] >= 0.999
+    is_obj_correct = torch.masked_select(preds_verdict, true_verdict)
+    recall = (is_obj_correct.sum() / true_verdict.sum()).item()
+    return recall
 
 
 def train_step(model, optim, criterion, train_dataloader, device):
     model.train()
     train_total_batches = 0
-    train_loss = train_detection_acc = 0.0
+    train_loss = train_detection_rcl = 0.0
 
     for X_batch, y_batch in tqdm.auto.tqdm(train_dataloader):
         optim.zero_grad()
@@ -188,25 +180,20 @@ def train_step(model, optim, criterion, train_dataloader, device):
         with torch.no_grad():
             train_total_batches += 1
             train_loss += loss.item()
-            train_detection_acc += (
-                ((torch.sigmoid(y_preds[:, 0]) >= 0.6) == (y_batch[:, 0] >= 0.999))
-                .float()
-                .mean()
-                .item()
-            )
+            train_detection_rcl += calc_recall(y_preds, y_batch)
 
         del X_batch, y_batch, y_preds
 
     train_loss /= train_total_batches
-    train_detection_acc /= train_total_batches
+    train_detection_rcl /= train_total_batches
 
-    return train_loss, train_detection_acc
+    return train_loss, train_detection_rcl
 
 
 def eval_step(model, criterion, eval_dataloader, device):
     model.eval()
     eval_total_batches = 0
-    eval_loss = eval_detection_acc = 0.0
+    eval_loss = eval_detection_rcl = 0.0
 
     for X_batch, y_batch in tqdm.auto.tqdm(eval_dataloader):
         X_batch = X_batch.to(device)
@@ -217,19 +204,14 @@ def eval_step(model, criterion, eval_dataloader, device):
 
         eval_total_batches += 1
         eval_loss += loss.item()
-        eval_detection_acc += (
-            ((torch.sigmoid(y_preds[:, 0]) >= 0.6) == (y_batch[:, 0] >= 0.999))
-            .float()
-            .mean()
-            .item()
-        )
+        eval_detection_rcl += calc_recall(y_preds, y_batch)
 
         del X_batch, y_batch, y_preds
 
     eval_loss /= eval_total_batches
-    eval_detection_acc /= eval_total_batches
+    eval_detection_rcl /= eval_total_batches
 
-    return eval_loss, eval_detection_acc
+    return eval_loss, eval_detection_rcl
 
 
 def train_model(
@@ -251,8 +233,8 @@ def train_model(
 
     for epoch in range(1, 1 + train_epochs):
         print(f"Epoch: {epoch:4d} / {train_epochs}...")
-        total_train_loss = total_train_acc = 0.0
-        total_eval_loss = total_eval_acc = 0.0
+        total_train_loss = total_train_rcl = 0.0
+        total_eval_loss = total_eval_rcl = 0.0
         total_chunks = 0
 
         for train_dataset, eval_dataset in utils.get_data(train_frac=0.95, debug=debug):
@@ -264,16 +246,16 @@ def train_model(
                 eval_dataset, batch_size=eval_batch_size
             )
 
-            train_loss, train_detection_acc = train_step(
+            train_loss, train_detection_rcl = train_step(
                 model, optim, criterion, train_dataloader, device
             )
-            eval_loss, eval_detection_acc = eval_step(
+            eval_loss, eval_detection_rcl = eval_step(
                 model, criterion, eval_dataloader, device
             )
             total_train_loss += train_loss
             total_eval_loss += eval_loss
-            total_train_acc += train_detection_acc
-            total_eval_acc += eval_detection_acc
+            total_train_rcl += train_detection_rcl
+            total_eval_rcl += eval_detection_rcl
             total_chunks += 1
 
             del train_dataloader, eval_dataloader
@@ -286,16 +268,16 @@ def train_model(
         train_losses[epoch - 1] = train_loss
         eval_losses[epoch - 1] = eval_loss
 
-        train_detection_acc = total_train_acc / total_chunks
-        eval_detection_acc = total_eval_acc / total_chunks
+        train_detection_rcl = total_train_rcl / total_chunks
+        eval_detection_rcl = total_eval_rcl / total_chunks
 
         scheduler.step(eval_loss)
 
         print(
-            f"train loss: {train_loss:.4f} - train detection acc: {train_detection_acc:.4f}"
+            f"train loss: {train_loss:.4f} - train detection recall: {train_detection_rcl:.4f}"
         )
         print(
-            f"eval  loss: {eval_loss:.4f} - eval  detection acc: {eval_detection_acc:.4f}"
+            f"eval  loss: {eval_loss:.4f} - eval  detection recall: {eval_detection_rcl:.4f}"
         )
 
         if epochs_per_checkpoint > 0 and (
@@ -323,9 +305,9 @@ def _test():
     device = "cuda"
     test_num_inst_train = 2
     test_num_inst_eval = 2
-    train_epochs = 5
-    epochs_per_checkpoint = 2
-    plot_lr_losses = True
+    train_epochs = 0
+    epochs_per_checkpoint = 1
+    plot_lr_losses = False
     debug = False
     lrs = [1e-3]
     dropout = 0.30
@@ -370,7 +352,7 @@ def _test():
 
         criterion = functools.partial(
             loss_func,
-            pos_weight=8.0,
+            pos_weight=18.0,
             is_object_weight=5.0,
             center_coord_weight=30.0,
             frame_dims_weight=20.0,
