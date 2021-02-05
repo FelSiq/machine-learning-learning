@@ -145,10 +145,10 @@ def loss_func(
     )
 
     if verbose:
-        print("loss is_object : {loss_is_object.item():.4f}")
-        print("loss coords    : {loss_coords.item():.4f}")
-        print("loss dims      : {loss_dims.item():.4f}")
-        print("loss class     : {loss_class.item():.4f}")
+        print(f"loss is_object : {loss_is_object.item():.4f}")
+        print(f"loss coords    : {loss_coords.item():.4f}")
+        print(f"loss dims      : {loss_dims.item():.4f}")
+        print(f"loss class     : {loss_class.item():.4f}")
 
     total_loss = loss_is_object + loss_coords + loss_dims + loss_class
 
