@@ -87,7 +87,7 @@ def _test(plot: int = 0):
 
         for j in np.arange(num_digits):
             sample_ind = np.random.randint(y.size())
-            sample = X[sample_ind, ...]
+            sample = X[sample_ind, ...].float()
             target = y[sample_ind].item()
 
             if KEEP_ASPECT_RATIO:
@@ -118,8 +118,8 @@ def _test(plot: int = 0):
                 sample,
             )
 
-            center_y = top_left_coord_y + inst_height // 2
-            center_x = top_left_coord_x + inst_width // 2
+            center_y = top_left_coord_y + 0.5 * inst_height
+            center_x = top_left_coord_x + 0.5 * inst_width
 
             cell_y, in_cell_y = divmod(center_y, config.CELL_HEIGHT)
             cell_x, in_cell_x = divmod(center_x, config.CELL_WIDTH)
