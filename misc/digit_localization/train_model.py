@@ -327,19 +327,21 @@ def _test():
         "dl_checkpoint.tar"
     )
     device = "cuda"
-    test_num_inst_train = 5
-    test_num_inst_eval = 5
+    test_num_inst_train = 10
+    test_num_inst_eval = 10
     train_epochs = 10
     epochs_per_checkpoint = 1
     plot_lr_losses = True
     debug = False
     lrs = [1e-3]
-    dropout = 0.30
+    dropout = 0.40
 
     model = Model(dropout=dropout)
 
     lr_train_losses = np.zeros((train_epochs, len(lrs)), dtype=np.float32)
     lr_eval_losses = np.zeros((train_epochs, len(lrs)), dtype=np.float32)
+
+    plot_lr_losses &= train_epochs > 1
 
     print(f"Will run for {len(lrs)} different learning rates.")
 
