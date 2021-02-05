@@ -38,7 +38,7 @@ def plot_instance(
                 rect_height_prop,
                 rect_width_prop,
                 *class_probs,
-            ) = label[:, y, x]
+            ) = label[:, y, x].tolist()
 
             if is_object >= is_object_threshold:
                 true_center_y = (y + center_y_prop) * config.CELL_HEIGHT
