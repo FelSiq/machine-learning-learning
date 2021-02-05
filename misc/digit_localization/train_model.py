@@ -145,10 +145,10 @@ def loss_func(
     )
 
     if verbose:
-        print("loss is_object :", loss_is_object)
-        print("loss coords    :", loss_coords)
-        print("loss dims      :", loss_dims)
-        print("loss class     :", loss_class)
+        print("loss is_object : {loss_is_object.item():.4f}")
+        print("loss coords    : {loss_coords.item():.4f}")
+        print("loss dims      : {loss_dims.item():.4f}")
+        print("loss class     : {loss_class.item():.4f}")
 
     total_loss = loss_is_object + loss_coords + loss_dims + loss_class
 
@@ -329,12 +329,12 @@ def _test():
     device = "cuda"
     test_num_inst_train = 5
     test_num_inst_eval = 5
-    train_epochs = 20
+    train_epochs = 5
     epochs_per_checkpoint = 1
     plot_lr_losses = True
     debug = False
     lrs = [1e-3]
-    dropout = 0.20
+    dropout = 0.30
 
     model = Model(dropout=dropout)
 
@@ -358,7 +358,7 @@ def _test():
 
         optim = torch.optim.Adam(model.parameters(), lr)
         scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-            optim, factor=0.99, patience=5, verbose=True
+            optim, factor=0.95, patience=5, verbose=True
         )
 
         try:
