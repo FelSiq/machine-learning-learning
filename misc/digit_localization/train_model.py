@@ -329,7 +329,7 @@ def _test():
     device = "cuda"
     test_num_inst_train = 5
     test_num_inst_eval = 5
-    train_epochs = 5
+    train_epochs = 10
     epochs_per_checkpoint = 1
     plot_lr_losses = True
     debug = False
@@ -381,7 +381,7 @@ def _test():
             center_coord_weight=12.0,
             frame_dims_weight=12.0,
             class_prob_weight=1.5,
-            verbose=True,
+            verbose=False,
         )
 
         train_losses, eval_losses = train_model(
