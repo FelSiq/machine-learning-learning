@@ -10,6 +10,7 @@ import matplotlib.axes
 import matplotlib
 import numpy as np
 import torch
+import torchvision
 
 import config
 
@@ -134,6 +135,63 @@ def get_data(
         del train_dataset, eval_dataset
         del X_train, y_train, X_eval, y_eval
         del X, y
+
+
+def non_max_suppresion(y_preds, iou_threshold: float = 0.1, by_class: bool = True):
+    is_object = y_preds[:, 0, ...]
+    coords = y_preds[:, [1, 2], ...]
+    dims = y_preds[:, [3, 4], ...]
+    class_probs = y_preds[:, 5:, ...]
+
+    pos_inds_y = (
+        torch.tensor(range(config.NUM_CELLS_VERT))
+        .repeat_interleave(config.NUM_CELLS_HORIZ)
+        .reshape(config.NUM_CELLS_VERT, config.NUM_CELLS_HORIZ)
+    )
+    pos_inds_x = torch.tensor(range(config.NUM_CELLS_HORIZ)).repeat(
+        config.NUM_CELLS_VERT, 1
+    )
+    coords = coords.permute(0, 2, 3, 1)
+    dims = dims.permute(0, 2, 3, 1)
+
+    coords[..., 0] += pos_inds_y.to(coords.device)
+    coords[..., 1] += pos_inds_x.to(coords.device)
+
+    coords = coords.reshape(-1, 2)
+    dims = dims.reshape(-1, 2)
+    is_object = is_object.reshape(-1)
+
+    half_dims = 0.5 * dims
+    boxes = torch.cat((coords - half_dims, coords + half_dims), dim=1)
+
+    if by_class:
+        idxs = class_probs.argmax(dim=1).view(-1)
+        keep_inds = torchvision.ops.batched_nms(
+            boxes=boxes,
+            scores=is_object,
+            idxs=idxs,
+            iou_threshold=iou_threshold,
+        )
+
+    else:
+        keep_inds = torchvision.ops.nms(
+            boxes=boxes,
+            scores=is_object,
+            iou_threshold=iou_threshold,
+        )
+
+    erase_inds = [i for i in range(len(is_object)) if i not in set(keep_inds.tolist())]
+
+    if erase_inds:
+        y_preds = y_preds.permute(0, 2, 3, 1)
+        y_preds_shape = y_preds.shape
+        output_depth = y_preds_shape[-1]
+        y_preds = y_preds.reshape(-1, output_depth)
+        y_preds[erase_inds, 0] = 0.0
+        y_preds = y_preds.reshape(*y_preds_shape)
+        y_preds = y_preds.permute(0, 3, 1, 2)
+
+    return y_preds
 
 
 def _test():
