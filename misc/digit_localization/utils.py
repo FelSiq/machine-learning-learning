@@ -64,7 +64,7 @@ def plot_instance(
                 )
                 ax.add_patch(rect)
 
-                ax.scatter(true_center_x, true_center_y, color="red", lw=0.5)
+                ax.scatter(true_center_x, true_center_y, color="red", s=9.0)
 
                 cls_id = np.argmax(class_probs)
                 cls_prob = class_probs[cls_id]
@@ -72,10 +72,11 @@ def plot_instance(
                 ax.annotate(
                     f"{cls_id} ({cls_prob:.2f})",
                     xy=(
-                        true_center_x,
-                        true_center_y - 0.05 * config.CELL_HEIGHT - 0.5 * rect_height,
+                        true_center_x + 0.05 * config.CELL_WIDTH - 0.5 * rect_width,
+                        true_center_y - 0.1 * config.CELL_HEIGHT - 0.5 * rect_height,
                     ),
-                    horizontalalignment="center",
+                    horizontalalignment="left",
+                    verticalalignment="bottom",
                     size=8,
                     bbox=dict(boxstyle="square", fc="white", lw=1, ec="r"),
                     color="red",
