@@ -37,7 +37,8 @@ def plot_instance(
                 center_x_prop,
                 rect_height_prop,
                 rect_width_prop,
-            ) = label[:5, y, x]
+                *class_probs,
+            ) = label[:, y, x]
 
             if is_object >= is_object_threshold:
                 true_center_y = (y + center_y_prop) * config.CELL_HEIGHT
@@ -64,6 +65,16 @@ def plot_instance(
                 ax.add_patch(rect)
 
                 ax.scatter(true_center_x, true_center_y, color="red", lw=0.5)
+
+                cls_id = np.argmax(class_probs)
+                cls_prob = class_probs[cls_id]
+
+                ax.annotate(
+                    f"{cls_id} ({cls_prob:.2f})",
+                    xy=(true_center_x, true_center_y + 1),
+                    size=8,
+                    color="red",
+                )
 
     if show:
         plt.show()
