@@ -327,14 +327,15 @@ def _test():
         "dl_checkpoint.tar"
     )
     device = "cuda"
-    test_num_inst_train = 10
+    test_num_inst_train = 0
     test_num_inst_eval = 10
-    train_epochs = 10
+    train_epochs = 0
     epochs_per_checkpoint = 1
     plot_lr_losses = True
     debug = False
     lrs = [1e-3]
     dropout = 0.40
+    test_time_train_frac = 0.0
 
     model = Model(dropout=dropout)
 
@@ -421,7 +422,7 @@ def _test():
         print("Done.")
         exit(0)
 
-    train_dataset, eval_dataset = next(utils.get_data(train_frac=0.95))
+    train_dataset, eval_dataset = next(utils.get_data(train_frac=test_time_train_frac))
     X_batch_train = train_dataset.tensors[0]
     X_batch_eval = eval_dataset.tensors[0]
 
@@ -435,7 +436,11 @@ def _test():
         print(pred[0, ...].max().item())
         suptitle = ("Train" if i < test_num_inst_train else "Evaluation") + " instance"
         utils.plot_instance(
-            inst.detach().cpu().squeeze(), pred.detach().cpu(), fig_suptitle=suptitle
+            inst.detach().cpu().squeeze(),
+            pred.detach().cpu(),
+            fig_suptitle=suptitle,
+            is_object_thresholds=(0.6, 0.1),
+            box_colors=("red", "gray"),
         )
 
     print("Done.")

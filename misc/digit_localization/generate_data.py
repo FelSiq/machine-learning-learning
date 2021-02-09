@@ -13,8 +13,8 @@ import tqdm
 import config
 import utils
 
-OUTPUT_LEN = 8192
-REPEATS = 3
+OUTPUT_LEN = 10
+REPEATS = 1
 NUM_PLOTS_AFTER_GENERATION = 0
 KEEP_ASPECT_RATIO = True
 MIN_INST_DIM = 14

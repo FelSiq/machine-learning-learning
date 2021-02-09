@@ -15,14 +15,84 @@ import torchvision
 import config
 
 
+def plot_box(ax, label, y, x, threshold_interval, box_color):
+    (
+        is_object,
+        center_y_prop,
+        center_x_prop,
+        rect_height_prop,
+        rect_width_prop,
+        *class_probs,
+    ) = label[:, y, x].tolist()
+
+    threshold_min, threshold_max = threshold_interval
+
+    if not (threshold_min <= is_object < threshold_max):
+        return False
+
+    true_center_y = (y + center_y_prop) * config.CELL_HEIGHT
+    true_center_x = (x + center_x_prop) * config.CELL_WIDTH
+
+    rect_anchor_y = true_center_y - 0.5 * (rect_height_prop * config.CELL_HEIGHT)
+    rect_anchor_x = true_center_x - 0.5 * (rect_width_prop * config.CELL_WIDTH)
+
+    rect_width = rect_height_prop * config.CELL_HEIGHT
+    rect_height = rect_width_prop * config.CELL_WIDTH
+
+    rect = matplotlib.patches.Rectangle(
+        (rect_anchor_x, rect_anchor_y),
+        rect_width,
+        rect_height,
+        edgecolor=box_color,
+        facecolor="none",
+        linewidth=2,
+    )
+    ax.add_patch(rect)
+
+    ax.scatter(true_center_x, true_center_y, color=box_color, s=9.0)
+
+    cls_id = np.argmax(class_probs)
+    cls_prob = class_probs[cls_id]
+
+    ax.annotate(
+        f"{cls_id} ({cls_prob:.2f})",
+        xy=(
+            true_center_x + 0.05 * config.CELL_WIDTH - 0.5 * rect_width,
+            true_center_y - 0.1 * config.CELL_HEIGHT - 0.5 * rect_height,
+        ),
+        horizontalalignment="left",
+        verticalalignment="bottom",
+        size=8,
+        bbox=dict(boxstyle="square", fc="white", lw=1, ec="r"),
+        color="red",
+    )
+
+    return True
+
+
 def plot_instance(
     inst,
     label,
-    is_object_threshold: float = 0.6,
+    is_object_thresholds: t.Union[float, t.Sequence[float]] = 0.6,
+    box_colors: t.Union[str, t.Sequence[str]] = "red",
     show: bool = True,
     fig_suptitle: t.Optional[str] = None,
 ):
-    fig, ax = plt.subplots(1)
+    if np.isscalar(is_object_thresholds):
+        is_object_thresholds = (is_object_thresholds,)
+
+    if np.isscalar(box_colors):
+        box_colors = (box_colors,)
+
+    assert is_object_thresholds
+    assert len(is_object_thresholds) == len(box_colors)
+
+    is_object_thresholds, box_colors = zip(
+        *sorted(zip(is_object_thresholds, box_colors))
+    )
+    is_object_thresholds = (*is_object_thresholds, float("inf"))
+
+    fig, ax = plt.subplots(1, figsize=(12, 12))
     fig.suptitle(fig_suptitle, fontsize=20)
     ax.imshow(inst, cmap="gray")
     ax.grid(color="gray", linestyle="--", linewidth=1)
@@ -31,58 +101,13 @@ def plot_instance(
 
     for y in range(config.NUM_CELLS_VERT):
         for x in range(config.NUM_CELLS_HORIZ):
-            (
-                is_object,
-                center_y_prop,
-                center_x_prop,
-                rect_height_prop,
-                rect_width_prop,
-                *class_probs,
-            ) = label[:, y, x].tolist()
-
-            if is_object >= is_object_threshold:
-                true_center_y = (y + center_y_prop) * config.CELL_HEIGHT
-                true_center_x = (x + center_x_prop) * config.CELL_WIDTH
-
-                rect_anchor_y = true_center_y - 0.5 * (
-                    rect_height_prop * config.CELL_HEIGHT
-                )
-                rect_anchor_x = true_center_x - 0.5 * (
-                    rect_width_prop * config.CELL_WIDTH
-                )
-
-                rect_width = rect_height_prop * config.CELL_HEIGHT
-                rect_height = rect_width_prop * config.CELL_WIDTH
-
-                rect = matplotlib.patches.Rectangle(
-                    (rect_anchor_x, rect_anchor_y),
-                    rect_width,
-                    rect_height,
-                    edgecolor="red",
-                    facecolor="none",
-                    linewidth=2,
-                )
-                ax.add_patch(rect)
-
-                ax.scatter(true_center_x, true_center_y, color="red", s=9.0)
-
-                cls_id = np.argmax(class_probs)
-                cls_prob = class_probs[cls_id]
-
-                ax.annotate(
-                    f"{cls_id} ({cls_prob:.2f})",
-                    xy=(
-                        true_center_x + 0.05 * config.CELL_WIDTH - 0.5 * rect_width,
-                        true_center_y - 0.1 * config.CELL_HEIGHT - 0.5 * rect_height,
-                    ),
-                    horizontalalignment="left",
-                    verticalalignment="bottom",
-                    size=8,
-                    bbox=dict(boxstyle="square", fc="white", lw=1, ec="r"),
-                    color="red",
+            for i in range(len(is_object_thresholds) - 1):
+                plot_box(
+                    ax, label, y, x, is_object_thresholds[i : i + 2], box_colors[i]
                 )
 
     if show:
+        plt.tight_layout()
         plt.show()
 
     return fig, ax
