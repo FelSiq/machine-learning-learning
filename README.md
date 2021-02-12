@@ -134,3 +134,8 @@ At the end of this Readme I will build a list with links that lead to very inter
 	- Resources: Video Lectures, Lecture Notes, Assignments (no solutions)
 	- Instructors and coordinator: Chris Manning, Matthew Lamm and Amelie Byun.
 	- Taught in: every year (lectures from 2019)
+
+5. [MIT 18.05 Introduction to Probability and Statistics](https://ocw.mit.edu/courses/mathematics/18-05-introduction-to-probability-and-statistics-spring-2014/)
+	- Resources: Assignments (with solutions), Exams (with solutions)
+	- Instructors: Jeremy Orloff and Jonathan Bloom
+	- Taught in: 2014
