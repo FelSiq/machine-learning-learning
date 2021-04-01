@@ -54,22 +54,20 @@ class _Node:
         *args,
         **kwargs,
     ) -> t.Optional[t.Tuple["_Node", "_Node"]]:
-        assert len(features) == len(self.inst_ids)
-
         self.condition = condition
         self.feat_id = feat_id
 
         true_inds = np.array(
-            [self._compare(ft, condition) for ft in features], dtype=bool
+            [self._compare(ft, condition) for ft in features[self.inst_ids]], dtype=bool
         )
 
         inds_left = self.inst_ids[true_inds]
+        l_labels = self.inst_labels[true_inds]
+
         inds_right = self.inst_ids[~true_inds]
+        r_labels = self.inst_labels[~true_inds]
 
         l_weight = float(inds_left.size / self.inst_ids.size)
-
-        l_labels = self.inst_labels[inds_left]
-        r_labels = self.inst_labels[inds_right]
 
         l_impurity = impurity_fun(l_labels)
         r_impurity = impurity_fun(r_labels)
@@ -106,17 +104,16 @@ class _Node:
 
         return self.child_r
 
-    def promote(self, numerical: bool):
-        raise RuntimeError("Only leaf nodes can be promoted.")
-
-    def demote(self) -> "_NodeLeaf":
-        return _NodeLeaf(
+    def get_params(self) -> t.Dict[str, t.Any]:
+        params = dict(
             inst_ids=self.inst_ids,
             inst_labels=self.inst_labels,
             impurity=self.impurity,
             label=self.label,
             depth=self.depth,
         )
+
+        return params
 
 
 class _NodeLeaf(_Node):
@@ -133,22 +130,6 @@ class _NodeLeaf(_Node):
 
     def select(self, inst: np.ndarray):
         raise NotImplementedError
-
-    def promote(self, numerical: bool):
-        node_type = _NodeNumerical if numerical else _NodeCategorical
-
-        node = node_type(
-            inst_ids=self.inst_ids,
-            inst_labels=self.inst_labels,
-            impurity=self.impurity,
-            label=self.label,
-            depth=self.depth,
-        )
-
-        return node
-
-    def demote(self):
-        raise RuntimeError("Leaf node can't be demoted.")
 
 
 class _NodeNumerical(_Node):
@@ -186,13 +167,13 @@ class _DecisionTreeBase:
         max_depth: int = 8,
         max_node_num: int = 64,
         cat_max_comb_size: int = 2,
-        min_inst_to_split: int = 1,
-        min_impurity_to_split: float = -np.inf,
+        min_inst_to_split: int = 2,
+        min_impurity_to_split: float = 1e-2,
     ):
         assert int(max_depth) >= 1
         assert int(cat_max_comb_size) >= 1
         assert int(max_node_num) >= 1
-        assert int(min_inst_to_split) >= 1
+        assert int(min_inst_to_split) >= 2
 
         self.root = None
         self.max_depth = int(max_depth)
@@ -205,7 +186,10 @@ class _DecisionTreeBase:
         self.col_inds_cat = frozenset()
         self._col_inds_translator = dict()
 
-        self._node_num = -1
+        self._node_num = 0
+
+    def __len__(self):
+        return self._node_num
 
     @staticmethod
     def _prepare_X_y(
@@ -232,15 +216,15 @@ class _DecisionTreeBase:
         X, y = self._prepare_X_y(X, y)
         self.dtype = y.dtype
         self.root = None
-        self._node_num = 1
 
+        col_inds_all = frozenset(range(X.shape[1]))
         self.col_inds_num = frozenset(col_inds_num)
-        self.col_inds_cat = frozenset(set(range(X.shape[1])) - self.col_inds_num)
+        self.col_inds_cat = col_inds_all.difference(self.col_inds_num)
 
         sorted_numeric_vals = self._prepare_numerical(X)
         comb_by_feat = self._prepare_categorical(X)
 
-        root_inst_args = dict(
+        new_node_inst_args = dict(
             inst_ids=np.arange(y.size),
             inst_labels=y,
             impurity=self.impurity_fun(y),
@@ -251,30 +235,63 @@ class _DecisionTreeBase:
         self.root = self._search_new_cut(
             X=X,
             avail_feat_ids=np.arange(X.shape[1]),
-            root_inst_args=root_inst_args,
+            new_node_inst_args=new_node_inst_args,
             sorted_numeric_vals=sorted_numeric_vals,
             comb_by_feat=comb_by_feat,
         )
+        self._node_num = 1
 
         cat_attrs_in_path = set()
 
-        if self.root.feat_id in self.col_inds_num:
+        if self.root.feat_id in self.col_inds_cat:
             cat_attrs_in_path.add(self.root.feat_id)
 
         heap = [
-            (-self.root.child_l.impurity, self.root.child_l, cat_attrs_in_path.copy()),
-            (-self.root.child_r.impurity, self.root.child_r, cat_attrs_in_path.copy()),
+            (-self.root.child_l.impurity, True, self.root, cat_attrs_in_path.copy()),
+            (-self.root.child_r.impurity, False, self.root, cat_attrs_in_path.copy()),
         ]
 
         heapq.heapify(heap)
 
         while heap and self._node_num < self.max_node_num:
-            _, cur_node, cat_attrs_in_path = heapq.heappop(heap)
+            _, is_left, cur_parent, cat_attrs_in_path = heapq.heappop(heap)
+            cur_leaf = cur_parent.child_l if is_left else cur_parent.child_r
+            cur_leaf_inst_args = cur_leaf.get_params()
 
-            if not self._can_split(cur_node):
+            avail_feat_inds = col_inds_all.difference(cat_attrs_in_path)
+
+            new_node = self._search_new_cut(
+                X=X,
+                avail_feat_ids=avail_feat_inds,
+                new_node_inst_args=cur_leaf_inst_args,
+                sorted_numeric_vals=sorted_numeric_vals,
+                comb_by_feat=comb_by_feat,
+            )
+
+            if new_node is None:
                 continue
 
-            # cur_node = cur_node.promote()
+            self._node_num += 1
+
+            new_child_l = new_node if is_left else None
+            new_child_r = None if is_left else new_node
+            cur_parent.set_childrens(child_l=new_child_l, child_r=new_child_r)
+
+            if isinstance(new_node, _NodeCategorical):
+                cat_attrs_in_path = cat_attrs_in_path.union()
+                cat_attrs_in_path.add(new_node.feat_id)
+
+            if self._can_split(new_node.child_l):
+                heapq.heappush(
+                    heap,
+                    (-new_node.child_l.impurity, True, new_node, cat_attrs_in_path),
+                )
+
+            if self._can_split(new_node.child_r):
+                heapq.heappush(
+                    heap,
+                    (-new_node.child_r.impurity, False, new_node, cat_attrs_in_path),
+                )
 
         return self
 
@@ -282,7 +299,7 @@ class _DecisionTreeBase:
         can_split = (
             node.depth < self.max_depth
             and node.inst_ids.size >= self.min_inst_to_split
-            and node.impurity >= self.min_impurity_to_split
+            and node.impurity > self.min_impurity_to_split
         )
         return can_split
 
@@ -291,9 +308,7 @@ class _DecisionTreeBase:
             return None
 
         _col_inds_num_arr = np.asarray(list(self.col_inds_num), dtype=int)
-
         self._col_inds_translator = {cin: i for i, cin in enumerate(_col_inds_num_arr)}
-
         return np.sort(X[:, _col_inds_num_arr], axis=0)
 
     def _prepare_categorical(self, X: np.ndarray) -> t.Dict[int, t.Set[t.Any]]:
@@ -316,7 +331,7 @@ class _DecisionTreeBase:
         self,
         X: np.ndarray,
         avail_feat_ids: np.ndarray,
-        root_inst_args: t.Dict[str, t.Any],
+        new_node_inst_args: t.Dict[str, t.Any],
         sorted_numeric_vals: np.ndarray,
         comb_by_feat: t.Dict[int, t.Set[t.Any]],
         chosen_node: t.Optional[_Node] = None,
@@ -330,7 +345,7 @@ class _DecisionTreeBase:
                 chosen_node = self._create_new_cut(
                     attr,
                     feat_id,
-                    root_inst_args,
+                    new_node_inst_args,
                     True,
                     sorted_numeric_vals[:, sorted_attr_ind],
                     chosen_node=chosen_node,
@@ -340,7 +355,7 @@ class _DecisionTreeBase:
                 chosen_node = self._create_new_cut(
                     attr,
                     feat_id,
-                    root_inst_args,
+                    new_node_inst_args,
                     False,
                     comb_by_feat[feat_id],
                     chosen_node=chosen_node,
@@ -352,14 +367,14 @@ class _DecisionTreeBase:
         self,
         attr: np.ndarray,
         feat_id: int,
-        root_inst_args: t.Dict[str, t.Any],
+        new_node_inst_args: t.Dict[str, t.Any],
         numerical: bool,
         *args,
         chosen_node: t.Optional[_Node] = None,
     ) -> t.Optional[_Node]:
         gen_cand = functools.partial(
             _NodeNumerical if numerical else _NodeCategorical,
-            **root_inst_args,
+            **new_node_inst_args,
         )
 
         cand_node = gen_cand()
@@ -451,7 +466,8 @@ def _test():
     X_eval = disc.transform(X_eval)
 
     model = DecisionTreeClassifier()
-    model.fit(X_train, y_train, col_inds_num=[1, 3])
+    model.fit(X_train, y_train, col_inds_num=[0, 1, 2, 3])
+    print(len(model))
     y_preds = model.predict(X_eval)
 
     eval_acc = sklearn.metrics.accuracy_score(y_preds, y_eval)
