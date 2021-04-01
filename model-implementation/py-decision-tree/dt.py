@@ -545,7 +545,7 @@ def _test():
     import sklearn.preprocessing
     import sklearn.tree
 
-    X, y = sklearn.datasets.load_iris(return_X_y=True)
+    X, y = sklearn.datasets.load_boston(return_X_y=True)
 
     X_train, X_eval, y_train, y_eval = sklearn.model_selection.train_test_split(
         X,
@@ -560,8 +560,21 @@ def _test():
 
     print(X.shape, y.shape)
 
-    model = DecisionTreeClassifier()
-    model.fit(X_train, y_train, col_inds_num=list(range(X.shape[1])))
+    model = DecisionTreeRegressor(min_inst_to_split=8)
+
+    sample_weight = None
+
+    if isinstance(model, DecisionTreeClassifier):
+        _, freqs = np.unique(y_train, return_counts=True)
+        sample_weight = freqs[y_train].astype(float)
+        sample_weight /= float(np.sum(sample_weight))
+
+    model.fit(
+        X_train,
+        y_train,
+        col_inds_num=list(range(X.shape[1])),
+        sample_weight=sample_weight,
+    )
     print(len(model))
     y_preds = model.predict(X_eval)
 
@@ -575,7 +588,7 @@ def _test():
         print(f"Eval rmse: {eval_rmse:.4f}")
         comparer = sklearn.tree.DecisionTreeRegressor()
 
-    comparer.fit(X_train, y_train)
+    comparer.fit(X_train, y_train, sample_weight=sample_weight)
     y_preds = comparer.predict(X_eval)
 
     if isinstance(model, DecisionTreeClassifier):
