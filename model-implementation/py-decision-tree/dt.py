@@ -34,6 +34,15 @@ class _Node:
         self.label = label
         self.depth = int(depth)
 
+    def __lt__(self, other: "_Node") -> bool:
+        return True
+
+    def __gt__(self, other: "_Node") -> bool:
+        return True
+
+    def __eq__(self, other: "_Node") -> bool:
+        return True
+
     def set_childrens(
         self,
         child_l: t.Optional["_Node"] = None,
@@ -176,7 +185,7 @@ class _NodeCategorical(_Node):
 class _DecisionTreeBase:
     def __init__(
         self,
-        max_depth: int = 8,
+        max_depth: int = 16,
         max_node_num: int = 64,
         cat_max_comb_size: int = 2,
         min_inst_to_split: int = 2,
@@ -497,7 +506,7 @@ class DecisionTreeClassifier(_DecisionTreeBase):
     @staticmethod
     def weighted_mode(labels: np.ndarray, sample_weight: np.ndarray) -> t.Any:
         cls, _ = sklearn.utils.extmath.weighted_mode(a=labels, w=sample_weight)
-        return cls
+        return np.squeeze(cls)
 
     @staticmethod
     def weighted_gini(labels: np.ndarray, sample_weight: np.ndarray) -> float:
@@ -555,7 +564,7 @@ def _test():
     import sklearn.preprocessing
     import sklearn.tree
 
-    X, y = sklearn.datasets.load_iris(return_X_y=True)
+    X, y = sklearn.datasets.load_boston(return_X_y=True)
 
     X_train, X_eval, y_train, y_eval = sklearn.model_selection.train_test_split(
         X,
@@ -570,7 +579,7 @@ def _test():
 
     print(X.shape, y.shape)
 
-    model = DecisionTreeClassifier(max_depth=16)
+    model = DecisionTreeRegressor(max_depth=32, max_node_num=256, min_inst_to_split=5)
 
     sample_weight = None
 
