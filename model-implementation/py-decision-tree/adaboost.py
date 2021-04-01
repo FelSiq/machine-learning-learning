@@ -65,7 +65,8 @@ class AdaBoost:
 
         self.ensemble = []
 
-        for _ in np.arange(self.max_learners):
+        for i in np.arange(self.max_learners):
+            print(f"\rit: {i}...", end="")
             weak_learner = self.weak_learner_gen()
             weak_learner.fit(X, y, sample_weight=inst_weights)
             y_preds = weak_learner.predict(X)
@@ -89,7 +90,7 @@ class AdaBoost:
         return self
 
     def predict(self, X):
-        votes = np.zeros((self._classes.size, X.shape[0]))
+        votes = np.zeros((self._classes.size, X.shape[0]), dtype=float)
 
         for model, model_weight in self.ensemble:
             y_preds = model.predict(X)
@@ -105,30 +106,29 @@ def _test():
     import sklearn.metrics
     import sklearn.ensemble
     import functools
+    import dt
 
     def weighted_acc(y_pred, y_true, weight):
         return sklearn.metrics.accuracy_score(y_pred, y_true, sample_weight=weight)
 
     X, y = sklearn.datasets.load_breast_cancer(return_X_y=True)
-
-    weak_learner_gen = functools.partial(
-        sklearn.tree.DecisionTreeClassifier,
-        max_depth=1,
-    )
     perf_metric = weighted_acc
 
     X_train, X_eval, y_train, y_eval = sklearn.model_selection.train_test_split(
         X, y, test_size=0.1, shuffle=True
     )
 
-    booster = AdaBoost(weak_learner_gen, perf_metric=perf_metric, max_learners=50)
-    booster.fit(X_train, y_train)
-    print(len(booster))
+    for wlg in [sklearn.tree.DecisionTreeClassifier, dt.DecisionTreeClassifier]:
+        weak_learner_gen = functools.partial(wlg, max_depth=1)
 
-    y_preds = booster.predict(X_eval)
+        booster = AdaBoost(weak_learner_gen, perf_metric=perf_metric, max_learners=50)
+        booster.fit(X_train, y_train)
+        print(len(booster))
 
-    eval_acc = sklearn.metrics.accuracy_score(y_preds, y_eval)
-    print(f"Eval acc: {eval_acc:.4f}")
+        y_preds = booster.predict(X_eval)
+
+        eval_acc = sklearn.metrics.accuracy_score(y_preds, y_eval)
+        print(f"Eval acc: {eval_acc:.4f}")
 
     comparer = sklearn.ensemble.AdaBoostClassifier(algorithm="SAMME")
     comparer.fit(X_train, y_train)
