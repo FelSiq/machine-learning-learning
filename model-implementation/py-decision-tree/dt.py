@@ -53,7 +53,7 @@ class _Node:
         label_fun: t.Callable[[np.ndarray], t.Any],
         *args,
         **kwargs,
-    ) -> t.Optional[t.Tuple[_Node, _Node]]:
+    ) -> t.Optional[t.Tuple["_Node", "_Node"]]:
         assert len(features) == len(self.inst_ids)
 
         self.condition = condition
@@ -98,7 +98,7 @@ class _Node:
 
         return None
 
-    def select(self, inst: np.ndarray) -> _Node:
+    def select(self, inst: np.ndarray) -> "_Node":
         assert self.child_l is not None and self.child_r is not None
 
         if self._compare(inst[self.feat_id], self.condition):
@@ -109,7 +109,7 @@ class _Node:
     def promote(self, numerical: bool):
         raise RuntimeError("Only leaf nodes can be promoted.")
 
-    def demote(self) -> _NodeLeaf:
+    def demote(self) -> "_NodeLeaf":
         return _NodeLeaf(
             inst_ids=self.inst_ids,
             inst_labels=self.inst_labels,
@@ -187,6 +187,7 @@ class _DecisionTreeBase:
         max_node_num: int = 64,
         cat_max_comb_size: int = 2,
         min_inst_to_split: int = 1,
+        min_impurity_to_split: float = -np.inf,
     ):
         assert int(max_depth) >= 1
         assert int(cat_max_comb_size) >= 1
@@ -198,9 +199,11 @@ class _DecisionTreeBase:
         self.max_node_num = int(max_node_num)
         self.cat_max_comb_size = int(cat_max_comb_size)
         self.min_inst_to_split = int(min_inst_to_split)
+        self.min_impurity_to_split = float(min_impurity_to_split)
 
         self.col_inds_num = frozenset()
         self.col_inds_cat = frozenset()
+        self._col_inds_translator = dict()
 
         self._node_num = -1
 
@@ -234,11 +237,8 @@ class _DecisionTreeBase:
         self.col_inds_num = frozenset(col_inds_num)
         self.col_inds_cat = frozenset(set(range(X.shape[1])) - self.col_inds_num)
 
-        if self.col_inds_num:
-            sorted_numeric_vals = self._prepare_numerical(X)
-
-        if self.col_inds_cat:
-            comb_by_feat = self._prepare_categorical(X)
+        sorted_numeric_vals = self._prepare_numerical(X)
+        comb_by_feat = self._prepare_categorical(X)
 
         root_inst_args = dict(
             inst_ids=np.arange(y.size),
@@ -248,62 +248,58 @@ class _DecisionTreeBase:
             depth=0,
         )
 
-        for feat_id in np.arange(X.shape[1]):
-            attr = X[:, feat_id]
+        self.root = self._search_new_cut(
+            X=X,
+            avail_feat_ids=np.arange(X.shape[1]),
+            root_inst_args=root_inst_args,
+            sorted_numeric_vals=sorted_numeric_vals,
+            comb_by_feat=comb_by_feat,
+        )
 
-            if feat_id in self.col_inds_num:
-                self._root_cut(
-                    attr,
-                    feat_id,
-                    root_inst_args,
-                    True,
-                    sorted_numeric_vals[:, feat_id],
-                )
+        cat_attrs_in_path = set()
 
-            else:
-                self._root_cut(
-                    attr,
-                    feat_id,
-                    root_inst_args,
-                    False,
-                    comb_by_feat[feat_id],
-                )
+        if self.root.feat_id in self.col_inds_num:
+            cat_attrs_in_path.add(self.root.feat_id)
 
         heap = [
-            (-self.root.child_l.impurity, self.root.child_l),
-            (-self.root.child_r.impurity, self.root.child_r),
+            (-self.root.child_l.impurity, self.root.child_l, cat_attrs_in_path.copy()),
+            (-self.root.child_r.impurity, self.root.child_r, cat_attrs_in_path.copy()),
         ]
 
         heapq.heapify(heap)
 
         while heap and self._node_num < self.max_node_num:
-            _, cur_node = heapq.heappop(heap)
+            _, cur_node, cat_attrs_in_path = heapq.heappop(heap)
 
             if not self._can_split(cur_node):
                 continue
+
+            # cur_node = cur_node.promote()
 
         return self
 
     def _can_split(self, node: _Node) -> bool:
         can_split = (
-            cur_node.depth < self.max_depth
-            and cur_node.inst_ids.size >= self.min_inst_to_split
+            node.depth < self.max_depth
+            and node.inst_ids.size >= self.min_inst_to_split
+            and node.impurity >= self.min_impurity_to_split
         )
         return can_split
 
-    @staticmethod
-    def _pop_from_heap(heap: t.List[t.Tuple]) -> t.Tuple:
-        impurity, inst_ids, depth = heapq.heappop(heap)
-        inst_labels = y[inst_ids]
-        impurity *= -1
-        depth += 1
-        return impurity, inst_ids, inst_labels, depth
-
     def _prepare_numerical(self, X: np.ndarray) -> np.ndarray:
-        col_inds_num_arr = np.asarray(list(self.col_inds_num), dtype=int)
-        return np.sort(X[:, col_inds_num_arr], axis=0)
+        if not self.col_inds_num:
+            return None
+
+        _col_inds_num_arr = np.asarray(list(self.col_inds_num), dtype=int)
+
+        self._col_inds_translator = {cin: i for i, cin in enumerate(_col_inds_num_arr)}
+
+        return np.sort(X[:, _col_inds_num_arr], axis=0)
 
     def _prepare_categorical(self, X: np.ndarray) -> t.Dict[int, t.Set[t.Any]]:
+        if not self.col_inds_cat:
+            return None
+
         feat_uniq_vals = {
             feat_id: frozenset(X[:, feat_id]) for feat_id in self.col_inds_cat
         }
@@ -316,14 +312,51 @@ class _DecisionTreeBase:
 
         return comb_by_feat
 
-    def _root_cut(
+    def _search_new_cut(
+        self,
+        X: np.ndarray,
+        avail_feat_ids: np.ndarray,
+        root_inst_args: t.Dict[str, t.Any],
+        sorted_numeric_vals: np.ndarray,
+        comb_by_feat: t.Dict[int, t.Set[t.Any]],
+        chosen_node: t.Optional[_Node] = None,
+    ):
+        for feat_id in avail_feat_ids:
+            attr = X[:, feat_id]
+
+            if feat_id in self.col_inds_num:
+                sorted_attr_ind = self._col_inds_translator[feat_id]
+
+                chosen_node = self._create_new_cut(
+                    attr,
+                    feat_id,
+                    root_inst_args,
+                    True,
+                    sorted_numeric_vals[:, sorted_attr_ind],
+                    chosen_node=chosen_node,
+                )
+
+            else:
+                chosen_node = self._create_new_cut(
+                    attr,
+                    feat_id,
+                    root_inst_args,
+                    False,
+                    comb_by_feat[feat_id],
+                    chosen_node=chosen_node,
+                )
+
+        return chosen_node
+
+    def _create_new_cut(
         self,
         attr: np.ndarray,
         feat_id: int,
         root_inst_args: t.Dict[str, t.Any],
         numerical: bool,
         *args,
-    ) -> t.Optional[_None]:
+        chosen_node: t.Optional[_Node] = None,
+    ) -> t.Optional[_Node]:
         gen_cand = functools.partial(
             _NodeNumerical if numerical else _NodeCategorical,
             **root_inst_args,
@@ -350,11 +383,14 @@ class _DecisionTreeBase:
             if childrens is None:
                 continue
 
-            if self.root is None or self.root.impurity_split > cand_node.impurity_split:
-                self.root = cand_node
+            if (
+                chosen_node is None
+                or chosen_node.impurity_split > cand_node.impurity_split
+            ):
+                chosen_node = cand_node
                 cand_node = gen_cand()
 
-        return self.root
+        return chosen_node
 
     def predict(self, X: np.ndarray) -> np.ndarray:
         X = self._prepare_X_y(X)
@@ -415,7 +451,7 @@ def _test():
     X_eval = disc.transform(X_eval)
 
     model = DecisionTreeClassifier()
-    model.fit(X_train, y_train, col_inds_num=[])
+    model.fit(X_train, y_train, col_inds_num=[1, 3])
     y_preds = model.predict(X_eval)
 
     eval_acc = sklearn.metrics.accuracy_score(y_preds, y_eval)
