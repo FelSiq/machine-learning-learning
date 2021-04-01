@@ -97,7 +97,7 @@ class _Node:
 
         return self.child_r
 
-    def promote(self):
+    def promote(self, numerical: bool):
         raise RuntimeError("Only leaf nodes can be promoted.")
 
     def demote(self):
@@ -119,13 +119,17 @@ class _NodeLeaf(_Node):
     def select(self, inst: np.ndarray):
         raise NotImplementedError
 
-    def promote(self):
-        return _Node(
+    def promote(self, numerical: bool):
+        node_type = _NodeNumerical if numerical else _NodeCategorical
+
+        node = node_type(
             inst_ids=self.inst_ids,
             inst_labels=self.inst_labels,
             impurity=self.impurity,
             depth=self.depth,
         )
+
+        return node
 
     def demote(self):
         raise RuntimeError("Leaf node can't be demoted.")
@@ -167,6 +171,10 @@ class DecisionTree:
         max_node_num: int = 64,
         cat_max_comb_size: int = 2,
     ):
+        assert int(max_depth) >= 1
+        assert int(cat_max_comb_size) >= 1
+        assert int(max_node_num) >= 1
+
         self.root = None
         self.max_depth = int(max_depth)
         self.max_node_num = int(max_node_num)
@@ -174,6 +182,8 @@ class DecisionTree:
 
         self.col_inds_num = frozenset()
         self.col_inds_cat = frozenset()
+
+        self._node_num = -1
 
     @staticmethod
     def _prepare_X_y(X: np.ndarray, y: np.ndarray = None):
@@ -198,11 +208,10 @@ class DecisionTree:
         X, y = self._prepare_X_y(X, y)
         self.dtype = y.dtype
         self.root = None
+        self._node_num = 1
 
         self.col_inds_num = frozenset(col_inds_num)
-        self.col_inds_cat = frozenset(self.col_inds_num - set(range(X.shape[1])))
-
-        _root_args = (y, self.impurity_fun(y), np.arange(y.size))
+        self.col_inds_cat = frozenset(set(range(X.shape[1])) - self.col_inds_num)
 
         if self.col_inds_num:
             sorted_numeric_vals = self._prepare_numerical(X)
@@ -210,15 +219,35 @@ class DecisionTree:
         if self.col_inds_cat:
             comb_by_feat = self._prepare_categorical(X)
 
+        root_inst_args = dict(
+            inst_ids=np.arange(y.size),
+            inst_labels=y,
+            impurity=self.impurity_fun(y),
+            label=self.label_fun(y),
+            depth=0,
+        )
+
         for feat_id in np.arange(X.shape[1]):
             attr = X[:, feat_id]
             if feat_id in self.col_inds_num:
                 self._root_cut_numerical(
-                    attr, feat_id, *_root_args, sorted_numeric_vals[:, feat_id]
+                    attr,
+                    feat_id,
+                    sorted_numeric_vals[:, feat_id],
+                    root_inst_args,
                 )
 
             else:
-                self._root_cut_categorical(attr, feat_id, *_root_args, comb_by_feat)
+                self._root_cut_categorical(
+                    attr, feat_id, comb_by_feat[feat_id], root_inst_args
+                )
+
+        heap = [
+            (self.root.child_l.impurity, self.root.child_l),
+            (self.root.child_r.impurity, self.root.child_r),
+        ]
+
+        heapq.heapify(heap)
 
         return self
 
@@ -234,7 +263,7 @@ class DecisionTree:
         comb_by_feat = collections.defaultdict(set)
 
         for feat_id, uniq_vals in feat_uniq_vals.items():
-            for k in range(1, 1 + min(len(uniq_vals), cat_max_comb_size)):
+            for k in range(1, 1 + min(len(uniq_vals), self.cat_max_comb_size)):
                 comb_by_feat[feat_id].update(itertools.combinations(uniq_vals, k))
 
         return comb_by_feat
@@ -247,22 +276,18 @@ class DecisionTree:
         depth += 1
         return impurity, inst_ids, inst_labels, depth
 
-    def _root_cut_numerical(self, attr, feat_id, y, impurity, inst_ids, sorted_attr):
+    def _root_cut_numerical(self, attr, feat_id, sorted_attr, root_inst_args):
         gen_cand = functools.partial(
             _NodeNumerical,
-            inst_ids=inst_ids,
-            inst_labels=y,
-            impurity=impurity,
-            label=self.label_fun(y),
-            depth=0,
+            **root_inst_args,
         )
 
         cand_node = gen_cand()
-
         thresholds = 0.5 * (sorted_attr[1:] + sorted_attr[:-1])
 
         for threshold in thresholds:
-            childrens = cand_node.split(
+            cand_node = self._root_try_split(
+                cand_node,
                 threshold,
                 attr,
                 feat_id,
@@ -270,17 +295,41 @@ class DecisionTree:
                 label_fun=self.label_fun,
             )
 
-            if childrens is None:
-                continue
-
-            if self.root is None or self.root.impurity_split > cand_node.impurity_split:
-                self.root = cand_node
+            if cand_node is None:
                 cand_node = gen_cand()
 
-    def _root_cut_categorical(
-        self, attr, feat_id, y, impurity, inds_inds, comb_by_feat
-    ):
-        raise NotImplementedError
+    def _root_cut_categorical(self, attr, feat_id, feat_combs, root_inst_args):
+        gen_cand = functools.partial(
+            _NodeCategorical,
+            **root_inst_args,
+        )
+
+        cand_node = gen_cand()
+
+        for cats in feat_combs:
+            cand_node = self._root_try_split(
+                cand_node,
+                cats,
+                attr,
+                feat_id,
+                impurity_fun=self.impurity_fun,
+                label_fun=self.label_fun,
+            )
+
+            if cand_node is None:
+                cand_node = gen_cand()
+
+    def _root_try_split(self, cand_node, *args, **kwargs):
+        childrens = cand_node.split(*args, **kwargs)
+
+        if childrens is None:
+            return cand_node
+
+        if self.root is None or self.root.impurity_split > cand_node.impurity_split:
+            self.root = cand_node
+            return None
+
+        return cand_node
 
     def predict(self, X):
         X = self._prepare_X_y(X)
@@ -325,15 +374,23 @@ def _test():
     import sklearn.datasets
     import sklearn.model_selection
     import sklearn.metrics
+    import sklearn.preprocessing
 
     X, y = sklearn.datasets.load_iris(return_X_y=True)
 
     X_train, X_eval, y_train, y_eval = sklearn.model_selection.train_test_split(
-        X, y, shuffle=True
+        X,
+        y,
+        shuffle=True,
+        test_size=0.15,
     )
 
+    disc = sklearn.preprocessing.KBinsDiscretizer(encode="ordinal")
+    X_train = disc.fit_transform(X_train)
+    X_eval = disc.transform(X_eval)
+
     model = DecisionTreeClassifier()
-    model.fit(X_train, y_train, col_inds_num=[0, 1, 2, 3])
+    model.fit(X_train, y_train, col_inds_num=[])
     y_preds = model.predict(X_eval)
 
     eval_acc = sklearn.metrics.accuracy_score(y_preds, y_eval)
