@@ -75,7 +75,7 @@ class _Node:
         l_weight = self.inst_weight[true_inds]
         r_weight = self.inst_weight[~true_inds]
 
-        l_child_weight = float(inds_left.size / self.inst_ids.size)
+        l_child_weight = np.sum(l_weight) / float(np.sum(self.inst_weight))
         r_child_weight = 1.0 - l_child_weight
 
         l_impurity = impurity_fun(l_labels, l_weight)
@@ -226,8 +226,8 @@ class _DecisionTreeBase:
         self,
         X: np.ndarray,
         y: np.ndarray,
-        col_inds_num: t.Sequence[int],
         sample_weight: t.Optional[t.Sequence[float]] = None,
+        col_inds_num: t.Sequence[int] = None,
     ):
         X, y = self._prepare_X_y(X, y)
         self.root = None
@@ -237,6 +237,9 @@ class _DecisionTreeBase:
 
         if sample_weight is None:
             sample_weight = np.full(y.size, fill_value=1.0 / y.size)
+
+        if col_inds_num is None:
+            col_inds_num = list(range(X.shape[1]))
 
         col_inds_all = frozenset(range(X.shape[1]))
         self.col_inds_num = frozenset(col_inds_num)
@@ -260,7 +263,9 @@ class _DecisionTreeBase:
         comb_by_feat: t.Dict[int, t.Set[t.Any]],
         col_inds_all: t.FrozenSet[int],
     ):
-        self._build_root(X, y, sample_weight, sorted_numeric_vals, comb_by_feat)
+        self._build_root(
+            X, y, sample_weight, sorted_numeric_vals, comb_by_feat, col_inds_all
+        )
 
         cat_attrs_in_path = set()
 
@@ -321,23 +326,27 @@ class _DecisionTreeBase:
         sample_weight: np.ndarray,
         sorted_numeric_vals: np.ndarray,
         comb_by_feat: t.Dict[int, t.Set[t.Any]],
+        col_inds_all: t.FrozenSet[int],
     ):
         new_node_inst_args = dict(
             inst_ids=np.arange(y.size),
             inst_labels=y,
             inst_weight=sample_weight,
-            impurity=self.impurity_fun(y, sample_weight),
+            impurity=np.inf,
             label=self.label_fun(y, sample_weight),
             depth=0,
         )
 
         self.root = self._search_new_cut(
             X=X,
-            avail_feat_ids=np.arange(X.shape[1]),
+            avail_feat_ids=col_inds_all,
             new_node_inst_args=new_node_inst_args,
             sorted_numeric_vals=sorted_numeric_vals,
             comb_by_feat=comb_by_feat,
         )
+
+        self.root.impurity = self.impurity_fun(y, sample_weight)
+
         self._node_num = 1
 
     def _can_split(self, node: _Node) -> bool:
@@ -499,7 +508,7 @@ class DecisionTreeClassifier(_DecisionTreeBase):
         cls_weights = np.zeros(freqs.size, dtype=float)
         np.add.at(cls_weights, inv_inds, sample_weight)
 
-        total_cls_weights = float(np.sum(cls_weights))
+        total_cls_weights = float(np.sum(sample_weight))
 
         return float(1.0 - np.sum(np.square(cls_weights * freqs / total_cls_weights)))
 
