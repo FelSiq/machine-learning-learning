@@ -278,7 +278,7 @@ class _DecisionTreeBase:
             cur_parent.set_childrens(child_l=new_child_l, child_r=new_child_r)
 
             if isinstance(new_node, _NodeCategorical):
-                cat_attrs_in_path = cat_attrs_in_path.union()
+                cat_attrs_in_path = cat_attrs_in_path.copy()
                 cat_attrs_in_path.add(new_node.feat_id)
 
             if self._can_split(new_node.child_l):
