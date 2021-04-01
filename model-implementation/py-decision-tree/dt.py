@@ -62,9 +62,12 @@ class _Node:
         )
 
         inds_left = self.inst_ids[true_inds]
-        l_labels = self.inst_labels[true_inds]
-
         inds_right = self.inst_ids[~true_inds]
+
+        if inds_left.size == 0 or inds_right.size == 0:
+            return None
+
+        l_labels = self.inst_labels[true_inds]
         r_labels = self.inst_labels[~true_inds]
 
         l_weight = float(inds_left.size / self.inst_ids.size)
@@ -190,6 +193,7 @@ class _DecisionTreeBase:
         self._col_inds_translator = dict()
 
         self._node_num = 0
+        self.dtype = None
 
     def __len__(self):
         return self._node_num
@@ -214,11 +218,13 @@ class _DecisionTreeBase:
         X: np.ndarray,
         y: np.ndarray,
         col_inds_num: t.Sequence[int],
-        inst_weights: t.Optional[t.Sequence[float]] = None,
+        sample_weight: t.Optional[t.Sequence[float]] = None,
     ):
         X, y = self._prepare_X_y(X, y)
-        self.dtype = y.dtype
         self.root = None
+
+        if self.dtype is None:
+            self.dtype = y.dtype
 
         col_inds_all = frozenset(range(X.shape[1]))
         self.col_inds_num = frozenset(col_inds_num)
@@ -462,6 +468,7 @@ class DecisionTreeClassifier(_DecisionTreeBase):
         super(DecisionTreeClassifier, self).__init__(*args, **kwargs)
         self.impurity_fun = self.gini
         self.label_fun = self.mode
+        self.dtype = None
 
     @staticmethod
     def mode(labels: np.ndarray):
@@ -477,8 +484,16 @@ class DecisionTreeClassifier(_DecisionTreeBase):
 class DecisionTreeRegressor(_DecisionTreeBase):
     def __init__(self, *args, **kwargs):
         super(DecisionTreeRegressor, self).__init__(*args, **kwargs)
-        self.impurity_fun = np.var
+        self.impurity_fun = self.var
         self.label_fun = np.mean
+        self.dtype = float
+
+    @staticmethod
+    def var(labels: np.ndarray, ddof: int = 1):
+        if labels.size == 1:
+            return 0.0
+
+        return np.var(labels, ddof=ddof)
 
 
 def _test():
@@ -488,7 +503,7 @@ def _test():
     import sklearn.preprocessing
     import sklearn.tree
 
-    X, y = sklearn.datasets.load_breast_cancer(return_X_y=True)
+    X, y = sklearn.datasets.load_diabetes(return_X_y=True)
 
     X_train, X_eval, y_train, y_eval = sklearn.model_selection.train_test_split(
         X,
@@ -503,19 +518,31 @@ def _test():
 
     print(X.shape, y.shape)
 
-    model = DecisionTreeClassifier(max_depth=3)
+    model = DecisionTreeRegressor(max_depth=3)
     model.fit(X_train, y_train, col_inds_num=list(range(X.shape[1])))
     print(len(model))
     y_preds = model.predict(X_eval)
 
-    eval_acc = sklearn.metrics.accuracy_score(y_preds, y_eval)
-    print(f"Eval acc: {eval_acc:.4f}")
+    if isinstance(model, DecisionTreeClassifier):
+        eval_acc = sklearn.metrics.accuracy_score(y_preds, y_eval)
+        print(f"Eval acc: {eval_acc:.4f}")
+        comparer = sklearn.tree.DecisionTreeClassifier(max_depth=3)
 
-    comparer = sklearn.tree.DecisionTreeClassifier(max_depth=3)
+    else:
+        eval_rmse = sklearn.metrics.mean_squared_error(y_preds, y_eval, squared=False)
+        print(f"Eval rmse: {eval_rmse:.4f}")
+        comparer = sklearn.tree.DecisionTreeRegressor(max_depth=3)
+
     comparer.fit(X_train, y_train)
     y_preds = comparer.predict(X_eval)
-    eval_acc = sklearn.metrics.accuracy_score(y_preds, y_eval)
-    print(f"Eval acc: {eval_acc:.4f}")
+
+    if isinstance(model, DecisionTreeClassifier):
+        eval_acc = sklearn.metrics.accuracy_score(y_preds, y_eval)
+        print(f"Eval acc: {eval_acc:.4f}")
+
+    else:
+        eval_rmse = sklearn.metrics.mean_squared_error(y_preds, y_eval, squared=False)
+        print(f"Eval rmse: {eval_rmse:.4f}")
 
 
 if __name__ == "__main__":
