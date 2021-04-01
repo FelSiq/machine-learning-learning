@@ -169,11 +169,13 @@ class _DecisionTreeBase:
         cat_max_comb_size: int = 2,
         min_inst_to_split: int = 2,
         min_impurity_to_split: float = 1e-2,
+        num_threshold_inst_skips: int = 10,
     ):
         assert int(max_depth) >= 1
         assert int(cat_max_comb_size) >= 1
         assert int(max_node_num) >= 1
         assert int(min_inst_to_split) >= 2
+        assert int(num_threshold_inst_skips) >= 1
 
         self.root = None
         self.max_depth = int(max_depth)
@@ -181,6 +183,7 @@ class _DecisionTreeBase:
         self.cat_max_comb_size = int(cat_max_comb_size)
         self.min_inst_to_split = int(min_inst_to_split)
         self.min_impurity_to_split = float(min_impurity_to_split)
+        self.num_threshold_inst_skips = int(num_threshold_inst_skips)
 
         self.col_inds_num = frozenset()
         self.col_inds_cat = frozenset()
@@ -224,22 +227,19 @@ class _DecisionTreeBase:
         sorted_numeric_vals = self._prepare_numerical(X)
         comb_by_feat = self._prepare_categorical(X)
 
-        new_node_inst_args = dict(
-            inst_ids=np.arange(y.size),
-            inst_labels=y,
-            impurity=self.impurity_fun(y),
-            label=self.label_fun(y),
-            depth=0,
-        )
+        self._build_tree(X, y, sorted_numeric_vals, comb_by_feat, col_inds_all)
 
-        self.root = self._search_new_cut(
-            X=X,
-            avail_feat_ids=np.arange(X.shape[1]),
-            new_node_inst_args=new_node_inst_args,
-            sorted_numeric_vals=sorted_numeric_vals,
-            comb_by_feat=comb_by_feat,
-        )
-        self._node_num = 1
+        return self
+
+    def _build_tree(
+        self,
+        X: np.ndarray,
+        y: np.ndarray,
+        sorted_numeric_vals: np.ndarray,
+        comb_by_feat: t.Dict[int, t.Set[t.Any]],
+        col_inds_all: t.FrozenSet[int],
+    ):
+        self._build_root(X, y, sorted_numeric_vals, comb_by_feat)
 
         cat_attrs_in_path = set()
 
@@ -293,7 +293,29 @@ class _DecisionTreeBase:
                     (-new_node.child_r.impurity, False, new_node, cat_attrs_in_path),
                 )
 
-        return self
+    def _build_root(
+        self,
+        X: np.ndarray,
+        y: np.ndarray,
+        sorted_numeric_vals: np.ndarray,
+        comb_by_feat: t.Dict[int, t.Set[t.Any]],
+    ):
+        new_node_inst_args = dict(
+            inst_ids=np.arange(y.size),
+            inst_labels=y,
+            impurity=self.impurity_fun(y),
+            label=self.label_fun(y),
+            depth=0,
+        )
+
+        self.root = self._search_new_cut(
+            X=X,
+            avail_feat_ids=np.arange(X.shape[1]),
+            new_node_inst_args=new_node_inst_args,
+            sorted_numeric_vals=sorted_numeric_vals,
+            comb_by_feat=comb_by_feat,
+        )
+        self._node_num = 1
 
     def _can_split(self, node: _Node) -> bool:
         can_split = (
@@ -309,7 +331,12 @@ class _DecisionTreeBase:
 
         _col_inds_num_arr = np.asarray(list(self.col_inds_num), dtype=int)
         self._col_inds_translator = {cin: i for i, cin in enumerate(_col_inds_num_arr)}
-        return np.sort(X[:, _col_inds_num_arr], axis=0)
+        sorted_vals = np.sort(X[:, _col_inds_num_arr], axis=0)
+
+        if self.num_threshold_inst_skips > 1:
+            sorted_vals = sorted_vals[:: self.num_threshold_inst_skips, :]
+
+        return sorted_vals
 
     def _prepare_categorical(self, X: np.ndarray) -> t.Dict[int, t.Set[t.Any]]:
         if not self.col_inds_cat:
@@ -386,7 +413,15 @@ class _DecisionTreeBase:
         else:
             conditions = args[0]
 
+        _cached_cond = set()
+
         for cond in conditions:
+
+            if cond in _cached_cond:
+                continue
+
+            _cached_cond.add(cond)
+
             childrens = cand_node.split(
                 cond,
                 attr,
@@ -453,7 +488,7 @@ def _test():
     import sklearn.preprocessing
     import sklearn.tree
 
-    X, y = sklearn.datasets.load_iris(return_X_y=True)
+    X, y = sklearn.datasets.load_breast_cancer(return_X_y=True)
 
     X_train, X_eval, y_train, y_eval = sklearn.model_selection.train_test_split(
         X,
@@ -466,8 +501,10 @@ def _test():
     # X_train = disc.fit_transform(X_train)
     # X_eval = disc.transform(X_eval)
 
+    print(X.shape, y.shape)
+
     model = DecisionTreeClassifier(max_depth=3)
-    model.fit(X_train, y_train, col_inds_num=[0, 1, 2, 3])
+    model.fit(X_train, y_train, col_inds_num=list(range(X.shape[1])))
     print(len(model))
     y_preds = model.predict(X_eval)
 
