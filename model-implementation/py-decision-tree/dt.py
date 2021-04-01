@@ -5,7 +5,7 @@ import itertools
 import collections
 
 import numpy as np
-import scipy.stats
+import sklearn.utils.extmath
 
 
 class _Node:
@@ -13,6 +13,7 @@ class _Node:
         self,
         inst_ids: np.ndarray,
         inst_labels: np.ndarray,
+        inst_weight: np.ndarray,
         impurity: float,
         label: t.Optional[t.Any] = None,
         depth: int = 0,
@@ -21,8 +22,9 @@ class _Node:
         assert int(depth) >= 0
 
         self.childrens = []  # type: t.List[_Node]
-        self.inst_ids = np.asarray(inst_ids)
+        self.inst_ids = np.asarray(inst_ids, dtype=int)
         self.inst_labels = np.asarray(inst_labels)
+        self.inst_weight = np.asfarray(inst_weight)
         self.feat_id = -1
         self.child_l = None  # type: t.Optional[_Node]
         self.child_r = None  # type: t.Optional[_Node]
@@ -70,28 +72,34 @@ class _Node:
         l_labels = self.inst_labels[true_inds]
         r_labels = self.inst_labels[~true_inds]
 
-        l_weight = float(inds_left.size / self.inst_ids.size)
+        l_weight = self.inst_weight[true_inds]
+        r_weight = self.inst_weight[~true_inds]
 
-        l_impurity = impurity_fun(l_labels)
-        r_impurity = impurity_fun(r_labels)
+        l_child_weight = float(inds_left.size / self.inst_ids.size)
+        r_child_weight = 1.0 - l_child_weight
+
+        l_impurity = impurity_fun(l_labels, l_weight)
+        r_impurity = impurity_fun(r_labels, r_weight)
 
         self.impurity_split = float(
-            np.dot([l_weight, 1.0 - l_weight], [l_impurity, r_impurity])
+            np.dot([l_child_weight, l_child_weight], [l_impurity, r_impurity])
         )
 
         if self.impurity_split < self.impurity:
             child_l = _NodeLeaf(
                 inds_left,
                 l_labels,
+                l_weight,
                 l_impurity,
-                label=label_fun(l_labels),
+                label=label_fun(l_labels, l_weight),
                 depth=self.depth + 1,
             )
             child_r = _NodeLeaf(
                 inds_right,
                 r_labels,
+                r_weight,
                 r_impurity,
-                label=label_fun(r_labels),
+                label=label_fun(r_labels, r_weight),
                 depth=self.depth + 1,
             )
             self.set_childrens(child_l, child_r)
@@ -111,6 +119,7 @@ class _Node:
         params = dict(
             inst_ids=self.inst_ids,
             inst_labels=self.inst_labels,
+            inst_weight=self.inst_weight,
             impurity=self.impurity,
             label=self.label,
             depth=self.depth,
@@ -226,6 +235,9 @@ class _DecisionTreeBase:
         if self.dtype is None:
             self.dtype = y.dtype
 
+        if sample_weight is None:
+            sample_weight = np.full(y.size, fill_value=1.0 / y.size)
+
         col_inds_all = frozenset(range(X.shape[1]))
         self.col_inds_num = frozenset(col_inds_num)
         self.col_inds_cat = col_inds_all.difference(self.col_inds_num)
@@ -233,7 +245,9 @@ class _DecisionTreeBase:
         sorted_numeric_vals = self._prepare_numerical(X)
         comb_by_feat = self._prepare_categorical(X)
 
-        self._build_tree(X, y, sorted_numeric_vals, comb_by_feat, col_inds_all)
+        self._build_tree(
+            X, y, sample_weight, sorted_numeric_vals, comb_by_feat, col_inds_all
+        )
 
         return self
 
@@ -241,11 +255,12 @@ class _DecisionTreeBase:
         self,
         X: np.ndarray,
         y: np.ndarray,
+        sample_weight: np.ndarray,
         sorted_numeric_vals: np.ndarray,
         comb_by_feat: t.Dict[int, t.Set[t.Any]],
         col_inds_all: t.FrozenSet[int],
     ):
-        self._build_root(X, y, sorted_numeric_vals, comb_by_feat)
+        self._build_root(X, y, sample_weight, sorted_numeric_vals, comb_by_feat)
 
         cat_attrs_in_path = set()
 
@@ -303,14 +318,16 @@ class _DecisionTreeBase:
         self,
         X: np.ndarray,
         y: np.ndarray,
+        sample_weight: np.ndarray,
         sorted_numeric_vals: np.ndarray,
         comb_by_feat: t.Dict[int, t.Set[t.Any]],
     ):
         new_node_inst_args = dict(
             inst_ids=np.arange(y.size),
             inst_labels=y,
-            impurity=self.impurity_fun(y),
-            label=self.label_fun(y),
+            inst_weight=sample_weight,
+            impurity=self.impurity_fun(y, sample_weight),
+            label=self.label_fun(y, sample_weight),
             depth=0,
         )
 
@@ -466,34 +483,59 @@ class _DecisionTreeBase:
 class DecisionTreeClassifier(_DecisionTreeBase):
     def __init__(self, *args, **kwargs):
         super(DecisionTreeClassifier, self).__init__(*args, **kwargs)
-        self.impurity_fun = self.gini
-        self.label_fun = self.mode
+        self.impurity_fun = self.weighted_gini
+        self.label_fun = self.weighted_mode
         self.dtype = None
 
     @staticmethod
-    def mode(labels: np.ndarray):
-        res = scipy.stats.mode(labels)
-        return res.mode
+    def weighted_mode(labels: np.ndarray, sample_weight: np.ndarray) -> t.Any:
+        cls, _ = sklearn.utils.extmath.weighted_mode(a=labels, w=sample_weight)
+        return cls
 
     @staticmethod
-    def gini(labels: np.ndarray):
-        _, freqs = np.unique(labels, return_counts=True)
-        return 1.0 - np.sum(np.square(freqs / np.sum(freqs)))
+    def weighted_gini(labels: np.ndarray, sample_weight: np.ndarray) -> float:
+        _, inv_inds, freqs = np.unique(labels, return_inverse=True, return_counts=True)
+
+        cls_weights = np.zeros(freqs.size, dtype=float)
+        np.add.at(cls_weights, inv_inds, sample_weight)
+
+        total_cls_weights = float(np.sum(cls_weights))
+
+        return float(1.0 - np.sum(np.square(cls_weights * freqs / total_cls_weights)))
 
 
 class DecisionTreeRegressor(_DecisionTreeBase):
     def __init__(self, *args, **kwargs):
         super(DecisionTreeRegressor, self).__init__(*args, **kwargs)
-        self.impurity_fun = self.var
-        self.label_fun = np.mean
+        self.impurity_fun = self.weighted_var
+        self.label_fun = self.weighted_avg
         self.dtype = float
 
     @staticmethod
-    def var(labels: np.ndarray, ddof: int = 1):
+    def weighted_avg(labels: np.ndarray, sample_weight: np.ndarray) -> float:
+        return float(np.average(labels, weights=sample_weight))
+
+    @staticmethod
+    def weighted_var(
+        labels: np.ndarray, sample_weight: np.ndarray, bias_correction: bool = True
+    ) -> float:
         if labels.size == 1:
             return 0.0
 
-        return np.var(labels, ddof=ddof)
+        weighted_avg = np.average(labels, weights=sample_weight)
+
+        weighted_var = np.dot(sample_weight, np.square(labels - weighted_avg))
+        weighted_var /= float(np.sum(sample_weight))
+
+        if bias_correction:
+            sqr_sum_sample_weight = np.square(np.sum(sample_weight))
+            sum_sqr_sample_weight = np.sum(np.square(sample_weight))
+
+            weighted_var *= sqr_sum_sample_weight / (
+                sqr_sum_sample_weight - sum_sqr_sample_weight
+            )
+
+        return float(weighted_var)
 
 
 def _test():
@@ -503,7 +545,7 @@ def _test():
     import sklearn.preprocessing
     import sklearn.tree
 
-    X, y = sklearn.datasets.load_diabetes(return_X_y=True)
+    X, y = sklearn.datasets.load_iris(return_X_y=True)
 
     X_train, X_eval, y_train, y_eval = sklearn.model_selection.train_test_split(
         X,
@@ -518,7 +560,7 @@ def _test():
 
     print(X.shape, y.shape)
 
-    model = DecisionTreeRegressor(max_depth=3)
+    model = DecisionTreeClassifier()
     model.fit(X_train, y_train, col_inds_num=list(range(X.shape[1])))
     print(len(model))
     y_preds = model.predict(X_eval)
@@ -526,12 +568,12 @@ def _test():
     if isinstance(model, DecisionTreeClassifier):
         eval_acc = sklearn.metrics.accuracy_score(y_preds, y_eval)
         print(f"Eval acc: {eval_acc:.4f}")
-        comparer = sklearn.tree.DecisionTreeClassifier(max_depth=3)
+        comparer = sklearn.tree.DecisionTreeClassifier()
 
     else:
         eval_rmse = sklearn.metrics.mean_squared_error(y_preds, y_eval, squared=False)
         print(f"Eval rmse: {eval_rmse:.4f}")
-        comparer = sklearn.tree.DecisionTreeRegressor(max_depth=3)
+        comparer = sklearn.tree.DecisionTreeRegressor()
 
     comparer.fit(X_train, y_train)
     y_preds = comparer.predict(X_eval)
