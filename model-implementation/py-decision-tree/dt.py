@@ -332,7 +332,7 @@ class _DecisionTreeBase:
             inst_ids=np.arange(y.size),
             inst_labels=y,
             inst_weight=sample_weight,
-            impurity=np.inf,
+            impurity=self.impurity_fun(y, sample_weight),
             label=self.label_fun(y, sample_weight),
             depth=0,
         )
@@ -344,8 +344,6 @@ class _DecisionTreeBase:
             sorted_numeric_vals=sorted_numeric_vals,
             comb_by_feat=comb_by_feat,
         )
-
-        self.root.impurity = self.impurity_fun(y, sample_weight)
 
         self._node_num = 1
 
@@ -508,9 +506,12 @@ class DecisionTreeClassifier(_DecisionTreeBase):
         cls_weights = np.zeros(freqs.size, dtype=float)
         np.add.at(cls_weights, inv_inds, sample_weight)
 
-        total_cls_weights = float(np.sum(sample_weight))
+        weighted_freqs = freqs * cls_weights
+        total_cls_weights = float(np.sum(weighted_freqs))
 
-        return float(1.0 - np.sum(np.square(cls_weights * freqs / total_cls_weights)))
+        w_gini = 1.0 - float(np.sum(np.square(weighted_freqs / total_cls_weights)))
+
+        return w_gini
 
 
 class DecisionTreeRegressor(_DecisionTreeBase):
@@ -554,7 +555,7 @@ def _test():
     import sklearn.preprocessing
     import sklearn.tree
 
-    X, y = sklearn.datasets.load_boston(return_X_y=True)
+    X, y = sklearn.datasets.load_iris(return_X_y=True)
 
     X_train, X_eval, y_train, y_eval = sklearn.model_selection.train_test_split(
         X,
@@ -569,7 +570,7 @@ def _test():
 
     print(X.shape, y.shape)
 
-    model = DecisionTreeRegressor(min_inst_to_split=8)
+    model = DecisionTreeClassifier(max_depth=16)
 
     sample_weight = None
 
