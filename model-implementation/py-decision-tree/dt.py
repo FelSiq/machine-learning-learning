@@ -18,6 +18,7 @@ class _Node:
         depth: int = 0,
     ):
         assert len(inst_ids) == len(inst_labels)
+        assert int(depth) >= 0
 
         self.childrens = []  # type: t.List[_Node]
         self.inst_ids = np.asarray(inst_ids)
@@ -31,9 +32,17 @@ class _Node:
         self.label = label
         self.depth = int(depth)
 
-    def set_childrens(self, child_l: "_Node", child_r: "_Node"):
-        self.child_l = child_l
-        self.child_r = child_r
+    def set_childrens(
+        self,
+        child_l: t.Optional["_Node"] = None,
+        child_r: t.Optional["_Node"] = None,
+        set_none: bool = False,
+    ) -> None:
+        if set_none or child_l is not None:
+            self.child_l = child_l
+
+        if set_none or child_r is not None:
+            self.child_r = child_r
 
     def split(
         self,
@@ -43,8 +52,8 @@ class _Node:
         impurity_fun: t.Callable[[np.ndarray], float],
         label_fun: t.Callable[[np.ndarray], t.Any],
         *args,
-        **kawrgs,
-    ):
+        **kwargs,
+    ) -> t.Optional[t.Tuple[_Node, _Node]]:
         assert len(features) == len(self.inst_ids)
 
         self.condition = condition
@@ -89,7 +98,7 @@ class _Node:
 
         return None
 
-    def select(self, inst: np.ndarray):
+    def select(self, inst: np.ndarray) -> _Node:
         assert self.child_l is not None and self.child_r is not None
 
         if self._compare(inst[self.feat_id], self.condition):
@@ -100,17 +109,23 @@ class _Node:
     def promote(self, numerical: bool):
         raise RuntimeError("Only leaf nodes can be promoted.")
 
-    def demote(self):
+    def demote(self) -> _NodeLeaf:
         return _NodeLeaf(
             inst_ids=self.inst_ids,
             inst_labels=self.inst_labels,
             impurity=self.impurity,
+            label=self.label,
             depth=self.depth,
         )
 
 
 class _NodeLeaf(_Node):
-    def set_childrens(self, child_l: _Node, child_r: _Node):
+    def set_childrens(
+        self,
+        child_l: t.Optional[_Node] = None,
+        child_r: t.Optional[_Node] = None,
+        set_none: bool = False,
+    ):
         raise NotImplementedError
 
     def split(self, condition: t.Any, *args, **kwargs):
@@ -126,6 +141,7 @@ class _NodeLeaf(_Node):
             inst_ids=self.inst_ids,
             inst_labels=self.inst_labels,
             impurity=self.impurity,
+            label=self.label,
             depth=self.depth,
         )
 
@@ -164,21 +180,24 @@ class _NodeCategorical(_Node):
         return super(_NodeCategorical, self).split(categories, *args, **kwargs)
 
 
-class DecisionTree:
+class _DecisionTreeBase:
     def __init__(
         self,
         max_depth: int = 8,
         max_node_num: int = 64,
         cat_max_comb_size: int = 2,
+        min_inst_to_split: int = 1,
     ):
         assert int(max_depth) >= 1
         assert int(cat_max_comb_size) >= 1
         assert int(max_node_num) >= 1
+        assert int(min_inst_to_split) >= 1
 
         self.root = None
         self.max_depth = int(max_depth)
         self.max_node_num = int(max_node_num)
         self.cat_max_comb_size = int(cat_max_comb_size)
+        self.min_inst_to_split = int(min_inst_to_split)
 
         self.col_inds_num = frozenset()
         self.col_inds_cat = frozenset()
@@ -186,7 +205,9 @@ class DecisionTree:
         self._node_num = -1
 
     @staticmethod
-    def _prepare_X_y(X: np.ndarray, y: np.ndarray = None):
+    def _prepare_X_y(
+        X: np.ndarray, y: np.ndarray = None
+    ) -> t.Union[np.ndarray, t.Tuple[np.ndarray, np.ndarray]]:
         X = np.asarray(X)
 
         if X.ndim == 1:
@@ -200,8 +221,8 @@ class DecisionTree:
 
     def fit(
         self,
-        X,
-        y,
+        X: np.ndarray,
+        y: np.ndarray,
         col_inds_num: t.Sequence[int],
         inst_weights: t.Optional[t.Sequence[float]] = None,
     ):
@@ -229,33 +250,60 @@ class DecisionTree:
 
         for feat_id in np.arange(X.shape[1]):
             attr = X[:, feat_id]
+
             if feat_id in self.col_inds_num:
-                self._root_cut_numerical(
+                self._root_cut(
                     attr,
                     feat_id,
-                    sorted_numeric_vals[:, feat_id],
                     root_inst_args,
+                    True,
+                    sorted_numeric_vals[:, feat_id],
                 )
 
             else:
-                self._root_cut_categorical(
-                    attr, feat_id, comb_by_feat[feat_id], root_inst_args
+                self._root_cut(
+                    attr,
+                    feat_id,
+                    root_inst_args,
+                    False,
+                    comb_by_feat[feat_id],
                 )
 
         heap = [
-            (self.root.child_l.impurity, self.root.child_l),
-            (self.root.child_r.impurity, self.root.child_r),
+            (-self.root.child_l.impurity, self.root.child_l),
+            (-self.root.child_r.impurity, self.root.child_r),
         ]
 
         heapq.heapify(heap)
 
+        while heap and self._node_num < self.max_node_num:
+            _, cur_node = heapq.heappop(heap)
+
+            if not self._can_split(cur_node):
+                continue
+
         return self
 
-    def _prepare_numerical(self, X):
+    def _can_split(self, node: _Node) -> bool:
+        can_split = (
+            cur_node.depth < self.max_depth
+            and cur_node.inst_ids.size >= self.min_inst_to_split
+        )
+        return can_split
+
+    @staticmethod
+    def _pop_from_heap(heap: t.List[t.Tuple]) -> t.Tuple:
+        impurity, inst_ids, depth = heapq.heappop(heap)
+        inst_labels = y[inst_ids]
+        impurity *= -1
+        depth += 1
+        return impurity, inst_ids, inst_labels, depth
+
+    def _prepare_numerical(self, X: np.ndarray) -> np.ndarray:
         col_inds_num_arr = np.asarray(list(self.col_inds_num), dtype=int)
         return np.sort(X[:, col_inds_num_arr], axis=0)
 
-    def _prepare_categorical(self, X):
+    def _prepare_categorical(self, X: np.ndarray) -> t.Dict[int, t.Set[t.Any]]:
         feat_uniq_vals = {
             feat_id: frozenset(X[:, feat_id]) for feat_id in self.col_inds_cat
         }
@@ -268,70 +316,47 @@ class DecisionTree:
 
         return comb_by_feat
 
-    @staticmethod
-    def _pop_from_heap(heap):
-        impurity, inst_ids, depth = heapq.heappop(heap)
-        inst_labels = y[inst_ids]
-        impurity *= -1
-        depth += 1
-        return impurity, inst_ids, inst_labels, depth
-
-    def _root_cut_numerical(self, attr, feat_id, sorted_attr, root_inst_args):
+    def _root_cut(
+        self,
+        attr: np.ndarray,
+        feat_id: int,
+        root_inst_args: t.Dict[str, t.Any],
+        numerical: bool,
+        *args,
+    ) -> t.Optional[_None]:
         gen_cand = functools.partial(
-            _NodeNumerical,
+            _NodeNumerical if numerical else _NodeCategorical,
             **root_inst_args,
         )
 
         cand_node = gen_cand()
-        thresholds = 0.5 * (sorted_attr[1:] + sorted_attr[:-1])
 
-        for threshold in thresholds:
-            cand_node = self._root_try_split(
-                cand_node,
-                threshold,
+        if numerical:
+            sorted_attr = args[0]
+            conditions = 0.5 * (sorted_attr[1:] + sorted_attr[:-1])
+
+        else:
+            conditions = args[0]
+
+        for cond in conditions:
+            childrens = cand_node.split(
+                cond,
                 attr,
                 feat_id,
                 impurity_fun=self.impurity_fun,
                 label_fun=self.label_fun,
             )
 
-            if cand_node is None:
+            if childrens is None:
+                continue
+
+            if self.root is None or self.root.impurity_split > cand_node.impurity_split:
+                self.root = cand_node
                 cand_node = gen_cand()
 
-    def _root_cut_categorical(self, attr, feat_id, feat_combs, root_inst_args):
-        gen_cand = functools.partial(
-            _NodeCategorical,
-            **root_inst_args,
-        )
+        return self.root
 
-        cand_node = gen_cand()
-
-        for cats in feat_combs:
-            cand_node = self._root_try_split(
-                cand_node,
-                cats,
-                attr,
-                feat_id,
-                impurity_fun=self.impurity_fun,
-                label_fun=self.label_fun,
-            )
-
-            if cand_node is None:
-                cand_node = gen_cand()
-
-    def _root_try_split(self, cand_node, *args, **kwargs):
-        childrens = cand_node.split(*args, **kwargs)
-
-        if childrens is None:
-            return cand_node
-
-        if self.root is None or self.root.impurity_split > cand_node.impurity_split:
-            self.root = cand_node
-            return None
-
-        return cand_node
-
-    def predict(self, X):
+    def predict(self, X: np.ndarray) -> np.ndarray:
         X = self._prepare_X_y(X)
         preds = np.zeros(X.shape[0], dtype=self.dtype)
 
@@ -346,7 +371,7 @@ class DecisionTree:
         return np.squeeze(preds)
 
 
-class DecisionTreeClassifier(DecisionTree):
+class DecisionTreeClassifier(_DecisionTreeBase):
     def __init__(self, *args, **kwargs):
         super(DecisionTreeClassifier, self).__init__(*args, **kwargs)
         self.impurity_fun = self.gini
@@ -363,7 +388,7 @@ class DecisionTreeClassifier(DecisionTree):
         return 1.0 - np.sum(np.square(freqs / np.sum(freqs)))
 
 
-class DecisionTreeRegressor(DecisionTree):
+class DecisionTreeRegressor(_DecisionTreeBase):
     def __init__(self, *args, **kwargs):
         super(DecisionTreeRegressor, self).__init__(*args, **kwargs)
         self.impurity_fun = np.var
