@@ -3,6 +3,7 @@ import heapq
 import functools
 import itertools
 import collections
+import multiprocessing
 
 import numpy as np
 import sklearn.utils.extmath
@@ -197,6 +198,7 @@ class _DecisionTreeBase:
         min_inst_to_split: int = 2,
         min_impurity_to_split: float = 0.0,
         num_threshold_inst_skips: int = 10,
+        num_workers: int = -1,
     ):
         assert int(max_depth) >= 1
         assert int(cat_max_comb_size) >= 1
@@ -211,6 +213,9 @@ class _DecisionTreeBase:
         self.min_inst_to_split = int(min_inst_to_split)
         self.min_impurity_to_split = float(min_impurity_to_split)
         self.num_threshold_inst_skips = int(num_threshold_inst_skips)
+        self.num_workers = (
+            int(num_workers) if num_workers >= 1 else multiprocessing.cpu_count()
+        )
 
         self.col_inds_num = frozenset()
         self.col_inds_cat = frozenset()
@@ -489,18 +494,21 @@ class _DecisionTreeBase:
 
         return chosen_node
 
+    def _pred_instance(self, inst: np.ndarray):
+        cur_node = self.root
+
+        while not isinstance(cur_node, _NodeLeaf):
+            cur_node = cur_node.select(inst)
+
+        return cur_node.label
+
     def predict(self, X: np.ndarray) -> np.ndarray:
         X = self._prepare_X_y(X)
-        preds = np.zeros(X.shape[0], dtype=self.dtype)
 
-        for i, inst in enumerate(X):
-            cur_node = self.root
+        with multiprocessing.Pool(self.num_workers) as pool:
+            preds = pool.map(self._pred_instance, X)
 
-            while not isinstance(cur_node, _NodeLeaf):
-                cur_node = cur_node.select(inst)
-
-            preds[i] = cur_node.label
-
+        preds = np.hstack(preds).astype(dtype=self.dtype, copy=False)
         return np.squeeze(preds)
 
 
