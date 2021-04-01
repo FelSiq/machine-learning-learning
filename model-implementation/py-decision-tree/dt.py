@@ -33,6 +33,8 @@ class _Node:
         self.condition = None
         self.label = label
         self.depth = int(depth)
+        self.empty_cut_left = False
+        self.empty_cut_right = False
 
     def __lt__(self, other: "_Node") -> bool:
         return True
@@ -67,6 +69,8 @@ class _Node:
     ) -> t.Optional[t.Tuple["_Node", "_Node"]]:
         self.condition = condition
         self.feat_id = feat_id
+        self.empty_cut_left = False
+        self.empty_cut_right = False
 
         true_inds = np.array(
             [self._compare(ft, condition) for ft in features[self.inst_ids]], dtype=bool
@@ -76,6 +80,8 @@ class _Node:
         inds_right = self.inst_ids[~true_inds]
 
         if inds_left.size == 0 or inds_right.size == 0:
+            self.empty_cut_left = inds_left.size == 0
+            self.empty_cut_right = inds_right.size == 0
             return None
 
         l_labels = self.inst_labels[true_inds]
@@ -185,11 +191,11 @@ class _NodeCategorical(_Node):
 class _DecisionTreeBase:
     def __init__(
         self,
-        max_depth: int = 16,
+        max_depth: int = 32,
         max_node_num: int = 64,
         cat_max_comb_size: int = 2,
         min_inst_to_split: int = 2,
-        min_impurity_to_split: float = 1e-2,
+        min_impurity_to_split: float = 0.0,
         num_threshold_inst_skips: int = 10,
     ):
         assert int(max_depth) >= 1
@@ -452,14 +458,13 @@ class _DecisionTreeBase:
         else:
             conditions = args[0]
 
-        _cached_cond = set()
+        _last_cond = -np.inf
 
         for cond in conditions:
-
-            if cond in _cached_cond:
+            if (numerical and np.isclose(cond, _last_cond)) or (cond == _last_cond):
                 continue
 
-            _cached_cond.add(cond)
+            _last_cond = cond
 
             childrens = cand_node.split(
                 cond,
@@ -468,6 +473,9 @@ class _DecisionTreeBase:
                 impurity_fun=self.impurity_fun,
                 label_fun=self.label_fun,
             )
+
+            if cand_node.empty_cut_right:
+                break
 
             if childrens is None:
                 continue
@@ -564,7 +572,7 @@ def _test():
     import sklearn.preprocessing
     import sklearn.tree
 
-    X, y = sklearn.datasets.load_boston(return_X_y=True)
+    X, y = sklearn.datasets.load_wine(return_X_y=True)
 
     X_train, X_eval, y_train, y_eval = sklearn.model_selection.train_test_split(
         X,
@@ -579,7 +587,10 @@ def _test():
 
     print(X.shape, y.shape)
 
-    model = DecisionTreeRegressor(max_depth=32, max_node_num=256, min_inst_to_split=5)
+    args_a = dict(max_depth=80, max_node_num=256, min_inst_to_split=2)
+    args_b = dict(max_depth=80, min_samples_split=2)
+
+    model = DecisionTreeClassifier(**args_a)
 
     sample_weight = None
 
@@ -591,7 +602,6 @@ def _test():
     model.fit(
         X_train,
         y_train,
-        col_inds_num=list(range(X.shape[1])),
         sample_weight=sample_weight,
     )
     print(len(model))
@@ -600,12 +610,12 @@ def _test():
     if isinstance(model, DecisionTreeClassifier):
         eval_acc = sklearn.metrics.accuracy_score(y_preds, y_eval)
         print(f"Eval acc: {eval_acc:.4f}")
-        comparer = sklearn.tree.DecisionTreeClassifier()
+        comparer = sklearn.tree.DecisionTreeClassifier(**args_b)
 
     else:
         eval_rmse = sklearn.metrics.mean_squared_error(y_preds, y_eval, squared=False)
         print(f"Eval rmse: {eval_rmse:.4f}")
-        comparer = sklearn.tree.DecisionTreeRegressor()
+        comparer = sklearn.tree.DecisionTreeRegressor(**args_b)
 
     comparer.fit(X_train, y_train, sample_weight=sample_weight)
     y_preds = comparer.predict(X_eval)
