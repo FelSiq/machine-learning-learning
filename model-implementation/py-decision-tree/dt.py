@@ -451,6 +451,7 @@ def _test():
     import sklearn.model_selection
     import sklearn.metrics
     import sklearn.preprocessing
+    import sklearn.tree
 
     X, y = sklearn.datasets.load_iris(return_X_y=True)
 
@@ -461,15 +462,21 @@ def _test():
         test_size=0.15,
     )
 
-    disc = sklearn.preprocessing.KBinsDiscretizer(encode="ordinal")
-    X_train = disc.fit_transform(X_train)
-    X_eval = disc.transform(X_eval)
+    # disc = sklearn.preprocessing.KBinsDiscretizer(encode="ordinal")
+    # X_train = disc.fit_transform(X_train)
+    # X_eval = disc.transform(X_eval)
 
-    model = DecisionTreeClassifier()
+    model = DecisionTreeClassifier(max_depth=3)
     model.fit(X_train, y_train, col_inds_num=[0, 1, 2, 3])
     print(len(model))
     y_preds = model.predict(X_eval)
 
+    eval_acc = sklearn.metrics.accuracy_score(y_preds, y_eval)
+    print(f"Eval acc: {eval_acc:.4f}")
+
+    comparer = sklearn.tree.DecisionTreeClassifier(max_depth=3)
+    comparer.fit(X_train, y_train)
+    y_preds = comparer.predict(X_eval)
     eval_acc = sklearn.metrics.accuracy_score(y_preds, y_eval)
     print(f"Eval acc: {eval_acc:.4f}")
 
