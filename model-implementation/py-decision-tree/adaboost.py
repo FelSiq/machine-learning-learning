@@ -3,6 +3,7 @@
 import typing as t
 
 import numpy as np
+import tqdm.auto
 
 
 class AdaBoost:
@@ -65,8 +66,7 @@ class AdaBoost:
 
         self.ensemble = []
 
-        for i in np.arange(self.max_learners):
-            print(f"\rit: {i}...", end="")
+        for _ in tqdm.auto.tqdm(np.arange(self.max_learners), leave=False):
             weak_learner = self.weak_learner_gen()
             weak_learner.fit(X, y, sample_weight=inst_weights)
             y_preds = weak_learner.predict(X)
@@ -121,7 +121,7 @@ def _test():
     for wlg in [sklearn.tree.DecisionTreeClassifier, dt.DecisionTreeClassifier]:
         weak_learner_gen = functools.partial(wlg, max_depth=1)
 
-        booster = AdaBoost(weak_learner_gen, perf_metric=perf_metric, max_learners=50)
+        booster = AdaBoost(weak_learner_gen, perf_metric=perf_metric, max_learners=20)
         booster.fit(X_train, y_train)
         print(len(booster))
 
