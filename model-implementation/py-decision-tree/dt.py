@@ -4,6 +4,7 @@ import functools
 import itertools
 import collections
 import multiprocessing
+import bisect
 
 import numpy as np
 import sklearn.utils.extmath
@@ -30,12 +31,12 @@ class _Node:
         self.child_l = None  # type: t.Optional[_Node]
         self.child_r = None  # type: t.Optional[_Node]
         self.impurity = float(impurity)
-        self.impurity_split = np.nan
+        self.impurity_split = np.inf
         self.condition = None
         self.label = label
         self.depth = int(depth)
-        self.empty_cut_left = False
-        self.empty_cut_right = False
+        self.l_child_weight = np.nan
+        self.r_child_weight = np.nan
 
     def __lt__(self, other: "_Node") -> bool:
         return True
@@ -68,10 +69,7 @@ class _Node:
         *args,
         **kwargs,
     ) -> t.Optional[t.Tuple["_Node", "_Node"]]:
-        self.condition = condition
-        self.feat_id = feat_id
-        self.empty_cut_left = False
-        self.empty_cut_right = False
+        self.impurity_split = np.inf
 
         true_inds = np.array(
             [self._compare(ft, condition) for ft in features[self.inst_ids]], dtype=bool
@@ -81,8 +79,6 @@ class _Node:
         inds_right = self.inst_ids[~true_inds]
 
         if inds_left.size == 0 or inds_right.size == 0:
-            self.empty_cut_left = inds_left.size == 0
-            self.empty_cut_right = inds_right.size == 0
             return None
 
         l_labels = self.inst_labels[true_inds]
@@ -91,17 +87,17 @@ class _Node:
         l_weight = self.inst_weight[true_inds]
         r_weight = self.inst_weight[~true_inds]
 
-        l_child_weight = np.sum(l_weight) / float(np.sum(self.inst_weight))
+        l_child_weight = float(np.sum(l_weight)) / float(np.sum(self.inst_weight))
         r_child_weight = 1.0 - l_child_weight
 
         l_impurity = impurity_fun(l_labels, l_weight)
         r_impurity = impurity_fun(r_labels, r_weight)
 
-        self.impurity_split = float(
-            np.dot([l_child_weight, l_child_weight], [l_impurity, r_impurity])
+        impurity_split = float(
+            np.dot([l_child_weight, r_child_weight], [l_impurity, r_impurity])
         )
 
-        if self.impurity_split < self.impurity:
+        if impurity_split < self.impurity:
             child_l = _NodeLeaf(
                 inds_left,
                 l_labels,
@@ -118,13 +114,26 @@ class _Node:
                 label=label_fun(r_labels, r_weight),
                 depth=self.depth + 1,
             )
+
             self.set_childrens(child_l, child_r)
+
+            self.condition = condition
+            self.feat_id = feat_id
+            self.l_child_weight = l_child_weight
+            self.r_child_weight = r_child_weight
+            self.impurity_split = impurity_split
+
             return (inds_left, inds_right)
+
+        self.l_child_weight = np.nan
+        self.r_child_weight = np.nan
+        self.impurity_split = np.nan
 
         return None
 
     def select(self, inst: np.ndarray) -> "_Node":
         assert self.child_l is not None and self.child_r is not None
+        assert inst.ndim == 1
 
         if self._compare(inst[self.feat_id], self.condition):
             return self.child_l
@@ -197,14 +206,14 @@ class _DecisionTreeBase:
         cat_max_comb_size: int = 2,
         min_inst_to_split: int = 2,
         min_impurity_to_split: float = 0.0,
-        num_threshold_inst_skips: int = 10,
+        num_threshold_inst_skips: t.Union[float, int] = 0.05,
         num_workers: int = -1,
     ):
         assert int(max_depth) >= 1
         assert int(cat_max_comb_size) >= 1
         assert int(max_node_num) >= 1
         assert int(min_inst_to_split) >= 2
-        assert int(num_threshold_inst_skips) >= 1
+        assert num_threshold_inst_skips > 0
 
         self.root = None
         self.max_depth = int(max_depth)
@@ -212,7 +221,7 @@ class _DecisionTreeBase:
         self.cat_max_comb_size = int(cat_max_comb_size)
         self.min_inst_to_split = int(min_inst_to_split)
         self.min_impurity_to_split = float(min_impurity_to_split)
-        self.num_threshold_inst_skips = int(num_threshold_inst_skips)
+        self.num_threshold_inst_skips = num_threshold_inst_skips
         self.num_workers = (
             int(num_workers) if num_workers >= 1 else multiprocessing.cpu_count()
         )
@@ -383,8 +392,16 @@ class _DecisionTreeBase:
         self._col_inds_translator = {cin: i for i, cin in enumerate(_col_inds_num_arr)}
         sorted_vals = np.sort(X[:, _col_inds_num_arr], axis=0)
 
-        if self.num_threshold_inst_skips > 1:
-            sorted_vals = sorted_vals[:: self.num_threshold_inst_skips, :]
+        if self.num_threshold_inst_skips != 1:
+            skips = self.num_threshold_inst_skips
+
+            if 0 < skips < 1:
+                skips = int(np.ceil(X.shape[0] * skips))
+
+            sorted_vals = sorted_vals[::skips, :]
+
+            if sorted_vals.shape[0] % skips:
+                sorted_vals = np.vstack((sorted_vals, sorted_vals[-1, :]))
 
         return sorted_vals
 
@@ -458,7 +475,11 @@ class _DecisionTreeBase:
 
         if numerical:
             sorted_attr = args[0]
-            conditions = 0.5 * (sorted_attr[1:] + sorted_attr[:-1])
+            min_, max_ = np.quantile(attr[new_node_inst_args["inst_ids"]], (0, 1))
+            start = bisect.bisect_left(sorted_attr, min_)
+            end = bisect.bisect_right(sorted_attr, max_)
+            sorted_attr = sorted_attr[start:end]
+            conditions = 0.5 * (sorted_attr[:-1] + sorted_attr[1:])
 
         else:
             conditions = args[0]
@@ -478,9 +499,6 @@ class _DecisionTreeBase:
                 impurity_fun=self.impurity_fun,
                 label_fun=self.label_fun,
             )
-
-            if cand_node.empty_cut_right:
-                break
 
             if childrens is None:
                 continue
