@@ -39,13 +39,13 @@ class _Node:
         self.r_child_weight = np.nan
 
     def __lt__(self, other: "_Node") -> bool:
-        return True
+        return self.impurity < other.impurity
 
     def __gt__(self, other: "_Node") -> bool:
-        return True
+        return self.impurity > other.impurity
 
     def __eq__(self, other: "_Node") -> bool:
-        return True
+        return np.isclose(self.impurity, other.impurity)
 
     def set_childrens(
         self,
@@ -302,15 +302,14 @@ class _DecisionTreeBase:
             cat_attrs_in_path.add(self.root.feat_id)
 
         heap = [
-            (-self.root.child_l.impurity, True, self.root, cat_attrs_in_path.copy()),
-            (-self.root.child_r.impurity, False, self.root, cat_attrs_in_path.copy()),
+            (self.root.child_l, self.root, cat_attrs_in_path.copy()),
+            (self.root.child_r, self.root, cat_attrs_in_path.copy()),
         ]
 
         heapq.heapify(heap)
 
         while heap and self._node_num < self.max_node_num:
-            _, is_left, cur_parent, cat_attrs_in_path = heapq.heappop(heap)
-            cur_leaf = cur_parent.child_l if is_left else cur_parent.child_r
+            cur_leaf, cur_parent, cat_attrs_in_path = heapq.heappop(heap)
             cur_leaf_inst_args = cur_leaf.get_params()
 
             avail_feat_inds = col_inds_all.difference(cat_attrs_in_path)
@@ -328,6 +327,7 @@ class _DecisionTreeBase:
 
             self._node_num += 1
 
+            is_left = cur_parent.child_l == cur_leaf
             new_child_l = new_node if is_left else None
             new_child_r = None if is_left else new_node
             cur_parent.set_childrens(child_l=new_child_l, child_r=new_child_r)
@@ -339,13 +339,13 @@ class _DecisionTreeBase:
             if self._can_split(new_node.child_l):
                 heapq.heappush(
                     heap,
-                    (-new_node.child_l.impurity, True, new_node, cat_attrs_in_path),
+                    (new_node.child_l, new_node, cat_attrs_in_path),
                 )
 
             if self._can_split(new_node.child_r):
                 heapq.heappush(
                     heap,
-                    (-new_node.child_r.impurity, False, new_node, cat_attrs_in_path),
+                    (new_node.child_r, new_node, cat_attrs_in_path),
                 )
 
     def _build_root(
@@ -598,7 +598,7 @@ def _test():
     import sklearn.preprocessing
     import sklearn.tree
 
-    X, y = sklearn.datasets.load_wine(return_X_y=True)
+    X, y = sklearn.datasets.load_breast_cancer(return_X_y=True)
 
     X_train, X_eval, y_train, y_eval = sklearn.model_selection.train_test_split(
         X,
