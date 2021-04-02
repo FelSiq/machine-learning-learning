@@ -543,8 +543,13 @@ class DecisionTreeClassifier(_DecisionTreeBase):
         return np.squeeze(cls)
 
     @staticmethod
-    def weighted_gini(labels: np.ndarray, sample_weight: np.ndarray) -> float:
+    def weighted_gini(
+        labels: np.ndarray, sample_weight: np.ndarray, bias_correction: bool = False
+    ) -> float:
         _, inv_inds, freqs = np.unique(labels, return_inverse=True, return_counts=True)
+
+        if freqs.size == 1:
+            return 0.0
 
         cls_weights = np.zeros(freqs.size, dtype=float)
         np.add.at(cls_weights, inv_inds, sample_weight)
@@ -553,6 +558,9 @@ class DecisionTreeClassifier(_DecisionTreeBase):
         total_cls_weights = float(np.sum(weighted_freqs))
 
         w_gini = 1.0 - float(np.sum(np.square(weighted_freqs / total_cls_weights)))
+
+        if bias_correction:
+            w_gini *= float(labels.size / (labels.size - 1))
 
         return w_gini
 
@@ -597,62 +605,62 @@ def _test():
     import sklearn.metrics
     import sklearn.preprocessing
     import sklearn.tree
+    import tqdm.auto
 
-    X, y = sklearn.datasets.load_breast_cancer(return_X_y=True)
-
-    X_train, X_eval, y_train, y_eval = sklearn.model_selection.train_test_split(
-        X,
-        y,
-        shuffle=True,
-        test_size=0.15,
-    )
-
-    # disc = sklearn.preprocessing.KBinsDiscretizer(encode="ordinal")
-    # X_train = disc.fit_transform(X_train)
-    # X_eval = disc.transform(X_eval)
-
-    print(X.shape, y.shape)
-
+    k = 20
+    X, y = sklearn.datasets.load_wine(return_X_y=True)
+    splitter = sklearn.model_selection.KFold(n_splits=k, shuffle=True)
     args_a = dict(max_depth=80, max_node_num=256, min_inst_to_split=2)
     args_b = dict(max_depth=80, min_samples_split=2)
 
     model = DecisionTreeClassifier(**args_a)
 
-    sample_weight = None
-
     if isinstance(model, DecisionTreeClassifier):
-        _, freqs = np.unique(y_train, return_counts=True)
-        sample_weight = freqs[y_train].astype(float)
-        sample_weight /= float(np.sum(sample_weight))
-
-    model.fit(
-        X_train,
-        y_train,
-        sample_weight=sample_weight,
-    )
-    print(len(model))
-    y_preds = model.predict(X_eval)
-
-    if isinstance(model, DecisionTreeClassifier):
-        eval_acc = sklearn.metrics.accuracy_score(y_preds, y_eval)
-        print(f"Eval acc: {eval_acc:.4f}")
-        comparer = sklearn.tree.DecisionTreeClassifier(**args_b)
+        ref = sklearn.tree.DecisionTreeClassifier(**args_b)
 
     else:
-        eval_rmse = sklearn.metrics.mean_squared_error(y_preds, y_eval, squared=False)
-        print(f"Eval rmse: {eval_rmse:.4f}")
-        comparer = sklearn.tree.DecisionTreeRegressor(**args_b)
+        ref = sklearn.tree.DecisionTreeRegressor(**args_b)
 
-    comparer.fit(X_train, y_train, sample_weight=sample_weight)
-    y_preds = comparer.predict(X_eval)
+    perfs_mine, perfs_ref = np.zeros((2, k))
 
-    if isinstance(model, DecisionTreeClassifier):
-        eval_acc = sklearn.metrics.accuracy_score(y_preds, y_eval)
-        print(f"Eval acc: {eval_acc:.4f}")
+    for i, (train_inds, eval_inds) in tqdm.auto.tqdm(
+        enumerate(splitter.split(X, y)), total=k
+    ):
+        X_train, X_eval = X[train_inds, :], X[eval_inds, :]
+        y_train, y_eval = y[train_inds], y[eval_inds]
 
-    else:
-        eval_rmse = sklearn.metrics.mean_squared_error(y_preds, y_eval, squared=False)
-        print(f"Eval rmse: {eval_rmse:.4f}")
+        sample_weight = None
+
+        if isinstance(model, DecisionTreeClassifier):
+            _, freqs = np.unique(y_train, return_counts=True)
+            sample_weight = freqs[y_train].astype(float)
+            sample_weight /= float(np.sum(sample_weight))
+
+        model.fit(X_train, y_train, sample_weight=sample_weight)
+        ref.fit(X_train, y_train, sample_weight=sample_weight)
+
+        y_preds_mine = model.predict(X_eval)
+        y_preds_ref = ref.predict(X_eval)
+
+        if isinstance(model, DecisionTreeClassifier):
+            eval_metric_mine = sklearn.metrics.accuracy_score(y_preds_mine, y_eval)
+            eval_metric_ref = sklearn.metrics.accuracy_score(y_preds_ref, y_eval)
+
+        else:
+            eval_metric_mine = sklearn.metrics.mean_squared_error(
+                y_preds_mine, y_eval, squared=False
+            )
+            eval_metric_ref = sklearn.metrics.mean_squared_error(
+                y_preds_ref, y_eval, squared=False
+            )
+
+        perfs_mine[i] = eval_metric_mine
+        perfs_ref[i] = eval_metric_ref
+
+    perf_mine = np.mean(perfs_mine)
+    perf_ref = np.mean(perfs_ref)
+    print(f"mine : {perf_mine:.4f}")
+    print(f"ref  : {perf_ref:.4f}")
 
 
 if __name__ == "__main__":
