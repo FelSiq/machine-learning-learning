@@ -29,7 +29,11 @@ class _GradientBoostingBase(sklearn.base.BaseEstimator):
         self.estimators = []  # type: t.List[_LearnerType]
 
         self._estimator_gen = functools.partial(
-            sklearn.tree.DecisionTreeRegressor, max_depth=max_depth
+            sklearn.tree.DecisionTreeRegressor,
+            max_depth=max_depth,
+            criterion="mse",
+            *args,
+            **kwargs,
         )
         self._baseline = np.nan
 
