@@ -180,8 +180,7 @@ class GradientBoostingClassifier(_GradientBoostingBase):
         all_leaf_ids = self._estimators_leaf_id_translator[_id_est]
         log_odds_by_leaf = self._estimators_log_odds_by_leaf[_id_est]
 
-        region_ids = leaf_ids == all_leaf_ids
-        region_ids = np.argmax(region_ids, axis=0)
+        region_ids = np.argmax(leaf_ids == all_leaf_ids, axis=0)
         pred_log_odds = log_odds_by_leaf[region_ids]
 
         return pred_log_odds
@@ -242,7 +241,7 @@ def _test():
     import sklearn.model_selection
     import sklearn.metrics
 
-    regression = True
+    regression = False
 
     if regression:
         gb = GradientBoostingRegressor()
