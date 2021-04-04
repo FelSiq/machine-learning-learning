@@ -36,6 +36,10 @@ class _GradientBoostingBase(sklearn.base.BaseEstimator):
             **kwargs,
         )
         self._baseline = np.nan
+        self._n_labels = 0
+        self._encoder = sklearn.preprocessing.OneHotEncoder(
+            drop="if_binary", sparse=False, dtype=float
+        )
 
     def _check_X_y(self, X: np.ndarray, y: t.Optional[np.ndarray] = None):
         X = np.asarray(X)
@@ -44,13 +48,19 @@ class _GradientBoostingBase(sklearn.base.BaseEstimator):
             X = np.expand_dims(X, axis=0)
 
         if y is not None:
+            assert y.ndim <= 2
+
             if isinstance(self, GradientBoostingClassifier):
-                cls = set(np.unique(y))
-                assert len(cls) == 2 and not cls.symmetric_difference({0, 1})
-                y = np.asarray(y, dtype=int).ravel()
+                y = self._encoder.fit_transform(
+                    y if y.ndim == 2 else np.expand_dims(y, axis=1)
+                )
+                assert len(self._encoder.categories_) >= 1
 
             else:
-                y = np.asfarray(y).ravel()
+                y = np.asfarray(y).reshape(-1, 1)
+
+            assert X.shape[0] == y.shape[0]
+            assert X.ndim == y.ndim == 2
 
             return X, y
 
@@ -59,10 +69,11 @@ class _GradientBoostingBase(sklearn.base.BaseEstimator):
     def fit(self, X: np.ndarray, y: np.ndarray):
         X, y = self._check_X_y(X, y)
         self._prepare_fit()
+        self._n_labels = y.shape[1]
 
         self.estimators = []
         self._baseline = self._calc_baseline(y)
-        cur_preds = np.full(y.size, fill_value=self._baseline)
+        cur_preds = np.tile(self._baseline, y.shape)
 
         ref = self._calc_ref(y)
         pseudo_resid = ref - self._baseline
@@ -76,7 +87,7 @@ class _GradientBoostingBase(sklearn.base.BaseEstimator):
 
             # Units: the same as 'self._baseline' or 'cur_preds
             preds = self._cast_pseudo_resid_to_preds(
-                X, estimator, preds_pseudo_resid, cur_preds
+                X, estimator, preds_pseudo_resid, cur_preds[:, 0]
             )
 
             cur_preds += self.learning_rate * preds
@@ -88,7 +99,7 @@ class _GradientBoostingBase(sklearn.base.BaseEstimator):
 
     def predict(self, X: np.ndarray) -> np.ndarray:
         X = self._check_X_y(X)
-        preds = np.full(X.shape[0], fill_value=self._baseline)
+        preds = np.full((X.shape[0], self._n_labels), fill_value=self._baseline)
 
         for estimator in self.estimators:
             preds_pseudo_resid = estimator.predict(X)
@@ -97,7 +108,7 @@ class _GradientBoostingBase(sklearn.base.BaseEstimator):
             )
             preds += self.learning_rate * cur_preds
 
-        return self._prepare_output(preds)
+        return np.squeeze(self._prepare_output(preds))
 
     def _prepare_fit(self):
         pass
@@ -115,18 +126,20 @@ class _GradientBoostingBase(sklearn.base.BaseEstimator):
     ) -> np.ndarray:
         raise NotImplementedError
 
-    @classmethod
-    def self_calc_baseline(cls, y: np.ndarray) -> float:
+    def _prepare_output(self, preds: np.ndarray) -> np.ndarray:
         raise NotImplementedError
 
     @classmethod
-    def _prepare_output(cls, preds: np.ndarray) -> np.ndarray:
+    def self_calc_baseline(cls, y: np.ndarray) -> float:
         raise NotImplementedError
 
 
 class GradientBoostingRegressor(_GradientBoostingBase):
     def _calc_ref(self, y: np.ndarray) -> np.ndarray:
         return y
+
+    def _prepare_output(self, preds: np.ndarray) -> np.ndarray:
+        return preds
 
     def _cast_pseudo_resid_to_preds(
         self,
@@ -136,16 +149,17 @@ class GradientBoostingRegressor(_GradientBoostingBase):
         cur_preds: t.Optional[np.ndarray] = None,
         train: bool = True,
     ) -> np.ndarray:
-        return np.asfarray(pseudo_resids)
+        pseudo_resid = np.asfarray(pseudo_resids)
+
+        if pseudo_resid.ndim == 1:
+            pseudo_resid = np.expand_dims(pseudo_resid, axis=1)
+
+        return pseudo_resid
 
     @classmethod
     def _calc_baseline(cls, y: np.ndarray) -> float:
         cls_prob = float(np.mean(y))
         return cls_prob
-
-    @classmethod
-    def _prepare_output(cls, preds: np.ndarray) -> np.ndarray:
-        return preds
 
 
 class GradientBoostingClassifier(_GradientBoostingBase):
@@ -183,6 +197,9 @@ class GradientBoostingClassifier(_GradientBoostingBase):
         region_ids = np.argmax(leaf_ids == all_leaf_ids, axis=0)
         pred_log_odds = log_odds_by_leaf[region_ids]
 
+        if pred_log_odds.ndim == 1:
+            pred_log_odds = np.expand_dims(pred_log_odds, axis=1)
+
         return pred_log_odds
 
     def _register_estimator_log_odds_by_leaf(
@@ -211,21 +228,27 @@ class GradientBoostingClassifier(_GradientBoostingBase):
         self._estimators_log_odds_by_leaf[_id_est] = log_odds_by_leaf
         self._estimators_leaf_id_translator[_id_est] = all_leaf_ids[:, np.newaxis]
 
+    def _prepare_output(
+        self,
+        log_odds: np.ndarray,
+    ):
+        probs = (
+            self._softmax(log_odds) if self._n_labels > 1 else self._sigmoid(log_odds)
+        )
+        return probs
+
     @staticmethod
     def _sigmoid(log_odds: t.Union[float, np.ndarray]) -> t.Union[float, np.ndarray]:
         return 1.0 / (1.0 + np.exp(-log_odds))
 
+    @staticmethod
+    def _softmax(log_odds: np.ndarray) -> np.ndarray:
+        exp_shifted = np.exp(log_odds - np.max(log_odds, axis=-1, keepdims=True))
+        return exp_shifted / np.sum(exp_shifted, axis=-1, keepdims=True)
+
     def _calc_ref(self, y: np.ndarray) -> np.ndarray:
         inst_log_odds = np.where(y, self._baseline, -self._baseline)
         return np.asfarray(inst_log_odds)
-
-    @classmethod
-    def _prepare_output(
-        cls,
-        log_odds: np.ndarray,
-    ):
-        probs = cls._sigmoid(log_odds)
-        return probs
 
     @classmethod
     def _calc_baseline(cls, y: np.ndarray) -> float:
@@ -241,7 +264,7 @@ def _test():
     import sklearn.model_selection
     import sklearn.metrics
 
-    regression = False
+    regression = True
 
     if regression:
         gb = GradientBoostingRegressor()
