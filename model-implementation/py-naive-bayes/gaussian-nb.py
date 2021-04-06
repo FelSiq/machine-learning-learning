@@ -31,10 +31,10 @@ class GaussianNaiveBayes:
         for cls, cls_ind in enumerate(self._classes):
             X_slice = X[self._classes[cls_ind] == y, :]
 
-            mean = np.mean(X_slice, axis=0)
-            cov = np.var(X_slice, axis=0, ddof=1) + 1e-4
+            means = np.mean(X_slice, axis=0)
+            stds = np.std(X_slice, axis=0, ddof=1)
 
-            dist = scipy.stats.multivariate_normal(mean=mean, cov=cov)
+            dist = tuple(scipy.stats.norm(loc=m, scale=s) for m, s in zip(means, stds))
             self._dists.append(dist)
 
     def fit(self, X: np.ndarray, y: np.ndarray) -> "GaussianNaiveBayes":
@@ -54,7 +54,10 @@ class GaussianNaiveBayes:
         best_posterior_logprobs = np.full(len(preds), fill_value=-np.inf)
 
         for cls, cls_ind in enumerate(self._classes):
-            likelihoods = self._dists[cls_ind].logpdf(X)
+            likelihoods = np.sum(
+                [dist.logpdf(X[:, i]) for i, dist in enumerate(self._dists[cls_ind])],
+                axis=0,
+            )
             cls_posterior_logprobs = likelihoods + self._logpriors[cls_ind]
 
             update_inds = best_posterior_logprobs < cls_posterior_logprobs
@@ -73,7 +76,7 @@ def _test():
     import sklearn.preprocessing
     import sklearn.datasets
 
-    X, y = sklearn.datasets.load_breast_cancer(return_X_y=True)
+    X, y = sklearn.datasets.load_wine(return_X_y=True)
 
     n_splits = 10
     splitter = sklearn.model_selection.StratifiedKFold(
