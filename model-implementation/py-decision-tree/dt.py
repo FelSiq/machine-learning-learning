@@ -152,6 +152,15 @@ class _Node:
 
         return params
 
+    def prune(self) -> t.Tuple["_Node", "_Node"]:
+        prev_child_l = self.child_l
+        prev_child_r = self.child_r
+
+        self.child_l = _NodeLeaf(**self.child_l.get_params())
+        self.child_r = _NodeLeaf(**self.child_r.get_params())
+
+        return prev_child_l, prev_child_r
+
 
 class _NodeLeaf(_Node):
     def set_childrens(
@@ -166,6 +175,9 @@ class _NodeLeaf(_Node):
         raise NotImplementedError
 
     def select(self, inst: np.ndarray):
+        raise NotImplementedError
+
+    def prune(self):
         raise NotImplementedError
 
 
@@ -207,6 +219,7 @@ class _DecisionTreeBase:
         min_inst_to_split: int = 2,
         min_impurity_to_split: float = 0.0,
         num_threshold_inst_skips: t.Union[float, int] = 0.05,
+        ccp_alpha: float = 0.0,
         num_workers: int = -1,
     ):
         assert int(max_depth) >= 1
@@ -214,6 +227,7 @@ class _DecisionTreeBase:
         assert int(max_node_num) >= 1
         assert int(min_inst_to_split) >= 2
         assert num_threshold_inst_skips > 0
+        assert ccp_alpha >= 0.0
 
         self.root = None
         self.max_depth = int(max_depth)
@@ -225,6 +239,7 @@ class _DecisionTreeBase:
         self.num_workers = (
             int(num_workers) if num_workers >= 1 else multiprocessing.cpu_count()
         )
+        self.ccp_alpha = float(ccp_alpha)
 
         self.col_inds_num = frozenset()
         self.col_inds_cat = frozenset()
@@ -232,6 +247,10 @@ class _DecisionTreeBase:
 
         self._node_num = 0
         self.dtype = None
+
+        self._prune_min_cost = np.inf
+        self._prune_min_cost_node = None
+        self._prune_prev_cost = np.inf
 
     def __len__(self):
         return self._node_num
@@ -302,8 +321,8 @@ class _DecisionTreeBase:
             cat_attrs_in_path.add(self.root.feat_id)
 
         heap = [
-            (self.root.child_l, self.root, cat_attrs_in_path.copy()),
-            (self.root.child_r, self.root, cat_attrs_in_path.copy()),
+            (self.root.child_l, self.root, cat_attrs_in_path),
+            (self.root.child_r, self.root, cat_attrs_in_path),
         ]
 
         heapq.heapify(heap)
@@ -348,6 +367,20 @@ class _DecisionTreeBase:
                     (new_node.child_r, new_node, cat_attrs_in_path),
                 )
 
+            self._update_prune_min_cost(new_node)
+
+        prev_child_l, prev_child_r = self._prune_min_cost_node.prune()
+        self._adjust_node_count(prev_child_l)
+        self._adjust_node_count(prev_child_r)
+
+    def _adjust_node_count(self, node: _Node):
+        if node is None or isinstance(node, _NodeLeaf):
+            return
+
+        self._node_num -= 1
+        self._adjust_node_count(node.child_l)
+        self._adjust_node_count(node.child_r)
+
     def _build_root(
         self,
         X: np.ndarray,
@@ -375,6 +408,27 @@ class _DecisionTreeBase:
         )
 
         self._node_num = 1
+
+        self._prune_min_cost = np.inf
+        self._prune_min_cost_node = None
+        self._prune_prev_cost = self.root.impurity + self.ccp_alpha
+
+        self._update_prune_min_cost(self.root)
+
+    def _update_prune_min_cost(self, candidate: _Node) -> None:
+        self._prune_prev_cost = (
+            self._prune_prev_cost
+            - candidate.impurity
+            + candidate.child_l.impurity
+            + candidate.child_r.impurity
+            + self.ccp_alpha
+        )
+
+        if self._prune_min_cost <= self._prune_prev_cost:
+            return
+
+        self._prune_min_cost = self._prune_prev_cost
+        self._prune_min_cost_node = candidate
 
     def _can_split(self, node: _Node) -> bool:
         can_split = (
@@ -607,11 +661,11 @@ def _test():
     import sklearn.tree
     import tqdm.auto
 
-    k = 20
-    X, y = sklearn.datasets.load_wine(return_X_y=True)
-    splitter = sklearn.model_selection.KFold(n_splits=k, shuffle=True)
-    args_a = dict(max_depth=80, max_node_num=256, min_inst_to_split=2)
-    args_b = dict(max_depth=80, min_samples_split=2)
+    k = 5
+    X, y = sklearn.datasets.load_iris(return_X_y=True)
+    splitter = sklearn.model_selection.KFold(n_splits=k, shuffle=True, random_state=16)
+    args_a = dict(max_depth=80, max_node_num=256, min_inst_to_split=2, ccp_alpha=0.15)
+    args_b = dict(max_depth=80, min_samples_split=2, ccp_alpha=0.15)
 
     model = DecisionTreeClassifier(**args_a)
 
