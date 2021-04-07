@@ -2,7 +2,6 @@
 import numpy as np
 import scipy.spatial
 import scipy.stats
-import tqdm.auto
 
 
 class DWNN:
@@ -33,6 +32,7 @@ def _test():
     import sklearn.model_selection
     import sklearn.neighbors
     import sklearn.preprocessing
+    import tqdm.auto
 
     n_splits = 10
     X, y = sklearn.datasets.load_diabetes(return_X_y=True)

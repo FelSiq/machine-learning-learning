@@ -2,7 +2,6 @@
 import numpy as np
 import scipy.spatial
 import scipy.stats
-import tqdm.auto
 
 
 class _KNNBase:
@@ -53,6 +52,7 @@ def _test():
     import sklearn.model_selection
     import sklearn.neighbors
     import sklearn.preprocessing
+    import tqdm.auto
 
     classifier = True
     n_splits = 10
