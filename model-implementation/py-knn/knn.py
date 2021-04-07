@@ -28,6 +28,10 @@ class _KNNBase:
         knn_labels = self.y[knn_inds]
         return self._prepare_output(knn_labels)
 
+    @classmethod
+    def _prepare_output(cls, knn_labels: np.ndarray) -> np.ndarray:
+        raise NotImplementedError
+
 
 class KNNClassifier(_KNNBase):
     @classmethod
