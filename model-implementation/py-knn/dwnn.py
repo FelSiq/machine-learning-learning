@@ -6,10 +6,11 @@ import tqdm.auto
 
 
 class DWNN:
-    def __init__(self, p: int = 2):
+    def __init__(self, scale: float = 1.0, p: int = 2):
+        assert float(scale) > 0
         assert p > 0
         self.p = p
-        self._gaussian_dist = scipy.stats.norm()
+        self._gaussian_dist = scipy.stats.norm(scale=float(scale))
 
     def fit(self, X: np.ndarray, y: np.ndarray, copy: bool = False):
         self.X = X
@@ -49,7 +50,7 @@ def _test():
         X_train = scaler.fit_transform(X_train)
         X_eval = scaler.transform(X_eval)
 
-        model = DWNN()
+        model = DWNN(scale=0.5)
         model.fit(X_train, y_train)
         y_preds = model.predict(X_eval)
         eval_rmse += sklearn.metrics.mean_squared_error(y_preds, y_eval, squared=False)
