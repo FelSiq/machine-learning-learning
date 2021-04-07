@@ -10,7 +10,7 @@ class GaussianMixture:
         self,
         n: int = 1,
         max_iter: int = 128,
-        stop_threshold: float = 1e-3,
+        stop_threshold: float = 1e-4,
         random_state: t.Optional[int] = None,
     ):
         assert int(n) > 0
@@ -33,10 +33,7 @@ class GaussianMixture:
             [means[:, i] - self._gaussians[i].mean for i in range(self.n)]
         )
         diff += (1.0 - w_mean) * np.mean(
-            [
-                np.linalg.norm(covs[i] - self._gaussians[i].cov)
-                for i in range(self.n)
-            ]
+            [np.linalg.norm(covs[i] - self._gaussians[i].cov) for i in range(self.n)]
         )
 
         stop_criterion = diff < self._stop_threshold
@@ -70,12 +67,13 @@ class GaussianMixture:
             np.random.seed(self.random_state)
 
         self._reg_cov = np.diag(np.full(X.shape[1], fill_value=1e-6))
+        X_vars = np.var(X, axis=0) + 1e-6
 
         mean_inds = np.random.choice(X.shape[0], size=self.n, replace=False)
         means = X[mean_inds, :].T
 
         self._gaussians = [
-            scipy.stats.multivariate_normal(mean=means[:, i], cov=1.0)
+            scipy.stats.multivariate_normal(mean=means[:, i], cov=X_vars)
             for i in range(self.n)
         ]
 
@@ -107,11 +105,8 @@ def _test():
     import sklearn.decomposition
     import sklearn.preprocessing
 
-    n = 2
-    X, y = sklearn.datasets.load_breast_cancer(return_X_y=True)
-
-    scaler = sklearn.preprocessing.StandardScaler()
-    X = scaler.fit_transform(X)
+    n = 3
+    X, y = sklearn.datasets.load_wine(return_X_y=True)
 
     model = GaussianMixture(n=n)
     model.fit(X)
@@ -121,6 +116,8 @@ def _test():
     ref.fit(X)
     y_preds_ref = ref.predict(X)
 
+    scaler = sklearn.preprocessing.StandardScaler()
+    X = scaler.fit_transform(X)
     pca = sklearn.decomposition.PCA(n_components=2)
     X = pca.fit_transform(X)
 
