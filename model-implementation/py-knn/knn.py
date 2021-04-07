@@ -5,7 +5,7 @@ import scipy.stats
 import tqdm.auto
 
 
-class KNN:
+class _KNNBase:
     def __init__(self, k: int = 3, metric: str = "minkowski", p: int = 2):
         assert int(k) > 0
         assert p > 0
@@ -25,8 +25,22 @@ class KNN:
     def predict(self, X: np.ndarray) -> np.ndarray:
         dists = scipy.spatial.distance.cdist(X, self.X, p=self.p, metric=self.metric)
         knn_inds = np.argsort(dists, axis=1)[:, : self.k]
-        preds, _ = scipy.stats.mode(self.y[knn_inds], axis=1)
+        knn_labels = self.y[knn_inds]
+        return self._prepare_output(knn_labels)
+
+
+class KNNClassifier(_KNNBase):
+    @classmethod
+    def _prepare_output(cls, knn_labels: np.ndarray) -> np.ndarray:
+        preds, _ = scipy.stats.mode(knn_labels, axis=1)
         return preds[:, 0]
+
+
+class KNNRegressor(_KNNBase):
+    @classmethod
+    def _prepare_output(cls, knn_labels: np.ndarray) -> np.ndarray:
+        preds = np.mean(knn_labels, axis=1)
+        return preds
 
 
 def _test():
@@ -36,12 +50,13 @@ def _test():
     import sklearn.neighbors
     import sklearn.preprocessing
 
+    classifier = True
     n_splits = 10
     X, y = sklearn.datasets.load_wine(return_X_y=True)
     splitter = sklearn.model_selection.KFold(n_splits=n_splits)
     k = 3
 
-    eval_acc = ref_eval_acc = 0.0
+    eval_perf = ref_eval_perf = 0.0
 
     for train_inds, eval_inds in tqdm.auto.tqdm(
         splitter.split(X, y), total=n_splits, leave=False
@@ -53,21 +68,37 @@ def _test():
         X_train = scaler.fit_transform(X_train)
         X_eval = scaler.transform(X_eval)
 
-        model = KNN(k=k)
+        if classifier:
+            model = KNNClassifier(k=k)
+            ref = sklearn.neighbors.KNeighborsClassifier(n_neighbors=k)
+
+        else:
+            model = KNNRegressor(k=k)
+            ref = sklearn.neighbors.KNeighborsRegressor(n_neighbors=k)
+
         model.fit(X_train, y_train)
-        y_preds = model.predict(X_eval)
-        eval_acc += sklearn.metrics.accuracy_score(y_preds, y_eval)
-
-        ref = sklearn.neighbors.KNeighborsClassifier(n_neighbors=k)
         ref.fit(X_train, y_train)
+
+        y_preds = model.predict(X_eval)
         y_preds = ref.predict(X_eval)
-        ref_eval_acc += sklearn.metrics.accuracy_score(y_preds, y_eval)
 
-    eval_acc /= n_splits
-    ref_eval_acc /= n_splits
+        if classifier:
+            eval_perf += sklearn.metrics.accuracy_score(y_preds, y_eval)
+            ref_eval_perf += sklearn.metrics.accuracy_score(y_preds, y_eval)
 
-    print(f"Eval acc: {eval_acc:.4f}")
-    print(f"Eval acc: {ref_eval_acc:.4f}")
+        else:
+            eval_perf += sklearn.metrics.mean_squared_error(y_preds, y_eval, squared=False)
+            ref_eval_perf += sklearn.metrics.mean_squared_error(y_preds, y_eval, squared=False)
+
+    eval_perf /= n_splits
+    ref_eval_perf /= n_splits
+
+    if classifier:
+        print(f"Eval acc: {eval_perf:.4f}")
+        print(f"Eval acc: {ref_eval_perf:.4f}")
+    else:
+        print(f"Eval rmse: {eval_perf:.4f}")
+        print(f"Eval rmse: {ref_eval_perf:.4f}")
 
 
 if __name__ == "__main__":
