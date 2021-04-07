@@ -21,6 +21,8 @@ class _KNNBase:
             self.X = np.copy(self.X)
             self.y = np.copy(self.y)
 
+        return self
+
     def predict(self, X: np.ndarray) -> np.ndarray:
         dists = scipy.spatial.distance.cdist(X, self.X, p=self.p, metric=self.metric)
         knn_inds = np.argsort(dists, axis=1)[:, : self.k]

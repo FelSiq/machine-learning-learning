@@ -19,6 +19,8 @@ class DWNN:
             self.X = np.copy(self.X)
             self.y = np.copy(self.y)
 
+        return self
+
     def predict(self, X: np.ndarray) -> np.ndarray:
         dists = scipy.spatial.distance.cdist(X, self.X, p=self.p)
         weights = self._gaussian_dist.pdf(dists)
