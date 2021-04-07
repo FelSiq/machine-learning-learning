@@ -22,6 +22,7 @@ class DWNN:
     def predict(self, X: np.ndarray) -> np.ndarray:
         dists = scipy.spatial.distance.cdist(X, self.X, p=self.p)
         weights = self._gaussian_dist.pdf(dists)
+        weights /= np.sum(weights, axis=1, keepdims=True)
         preds = np.dot(weights, self.y)
         return preds
 
@@ -50,7 +51,7 @@ def _test():
         X_train = scaler.fit_transform(X_train)
         X_eval = scaler.transform(X_eval)
 
-        model = DWNN(scale=0.5)
+        model = DWNN()
         model.fit(X_train, y_train)
         y_preds = model.predict(X_eval)
         eval_rmse += sklearn.metrics.mean_squared_error(y_preds, y_eval, squared=False)
