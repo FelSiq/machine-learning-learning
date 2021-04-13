@@ -12,8 +12,10 @@ class PCAWithSVD(sklearn.base.TransformerMixin):
 
         self._mean = np.empty(0)
         self.loadings = np.empty(0)
-        self.var_explained = np.empty(0)
         self.n_components = n_components
+
+        self.total_sing_vals = 0.0
+        self.sing_vals = np.empty(0)
 
     def fit(self, X, y=None):
         X = np.asfarray(X)
@@ -26,6 +28,7 @@ class PCAWithSVD(sklearn.base.TransformerMixin):
             cov_mat = np.dot(X.T, X)
             D, V = np.linalg.eigh(cov_mat)
             D = np.flip(D)
+            S = np.sqrt(D)
             V = np.fliplr(V)
 
         else:
@@ -34,77 +37,71 @@ class PCAWithSVD(sklearn.base.TransformerMixin):
             D, U = np.linalg.eigh(cov_mat)
             U = np.fliplr(U)
             D = np.flip(D)
-            S = np.diag(np.sqrt(D))
-            V = np.dot(U.T, np.dot(1.0 / S, X))
+            S = np.sqrt(D)
+            V = np.dot(U.T, np.dot(1.0 / np.diag(S), X))
+
+        self.total_sing_vals = float(np.sum(S))
 
         if 0 < self.n_components < 1:
-            self.n_components = int(np.ceil(m * self.n_components))
+            cumsum_sing_vals = np.cumsum(S) / self.total_sing_vals
+            self.n_components = (
+                1 + np.flatnonzero(cumsum_sing_vals >= self.n_components)[0]
+            )
 
-        self.n_components = max(self.n_components, 1)
+        self.n_components = max(int(self.n_components), 1)
 
-        self.var_explained = D[: self.n_components :]
+        self.sing_vals = S[: self.n_components :]
         self.loadings = V[:, : self.n_components]
+
+        self.total_var_explained = float(np.sum(self.sing_vals) / self.total_sing_vals)
 
         return self
 
     def transform(self, X):
         return np.dot(X, self.loadings)
 
-    def scree_plot(self, ax=None, show: bool = True):
-        if ax is None:
-            ax = plt.gca()
+    def scree_plot(self, fig=None, index=(121, 122)):
+        if fig is None:
+            fig = plt.figure()
+
+        ax1 = fig.add_subplot(index[0])
+        ax2 = fig.add_subplot(index[1])
 
         x = np.arange(1, 1 + self.n_components)
-        var_prop = self.var_explained / np.sum(self.var_explained)
-        ax.bar(x, height=var_prop, tick_label=x)
+        var_prop = self.sing_vals / self.total_sing_vals
 
-        if show:
-            plt.show()
+        ax1.bar(x, height=var_prop, tick_label=x)
+        ax2.semilogy(x, self.sing_vals)
 
-        return ax
+        ax1.set_title(
+            f"Cumulative singular values (total: {self.total_var_explained:.4f})"
+        )
+        ax2.set_title("Semilog singular values")
+
+        return fig, (ax1, ax2)
 
 
 def _test():
-    def rm(angle):
-        cos = np.cos(angle)
-        sin = np.sin(angle)
+    import sklearn.datasets
 
-        mat = np.array(
-            [
-                [cos, -sin],
-                [sin, cos],
-            ]
-        )
+    X, y = sklearn.datasets.load_breast_cancer(return_X_y=True)
 
-        return mat
+    X /= np.std(X, axis=0, ddof=0)
 
-    np.random.seed(16)
-
-    std = np.asfarray([1, 4])
-
-    X = std * np.random.randn(200, 2)
-    X = X @ rm(np.pi / 4)
-    X -= np.mean(X, axis=0)
-
-    model = PCAWithSVD(n_components=2)
+    model = PCAWithSVD(n_components=0.95)
     X_proj = model.fit_transform(X)
 
-    aux = 3 * std * np.array([[-1, 0], [1, 0], [0, -1], [0, 1]])
-    aux_coords = model.transform(aux)
+    colors = {0: "r", 1: "g"}
 
-    if X_proj.shape[1] == 1:
-        X_proj = np.column_stack((X_proj, np.zeros(X_proj.size)))
-        aux_coords = np.column_stack((aux_coords, np.zeros(aux_coords.size)))
+    fig = plt.figure()
+    ax1 = fig.add_subplot(131)
 
-    plt.scatter(*X.T, label="original")
-    plt.scatter(*X_proj.T, label="projected")
-    plt.plot(*aux_coords[:2, :].T, linestyle="--", color="black")
-    plt.plot(*aux_coords[2:, :].T, linestyle="--", color="black")
+    if X_proj.shape[1] <= 3:
+        ax1.scatter(*X_proj.T, color=list(map(colors.get, y)))
 
-    plt.legend()
+    model.scree_plot(fig=fig, index=(132, 133))
+
     plt.show()
-
-    model.scree_plot()
 
 
 if __name__ == "__main__":
