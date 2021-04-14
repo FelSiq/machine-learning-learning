@@ -49,7 +49,9 @@ class PCAWithSVD(sklearn.base.TransformerMixin):
             U = np.fliplr(U)
             D = np.flip(D)
             S = np.sqrt(D)
-            V = np.dot(U.T, np.dot(1.0 / np.diag(S), X))
+            U = U[:, :n]
+            S = S[:n]
+            V = np.dot(X.T, np.dot(U, np.diag(1.0 / S)))
 
         self.total_sing_vals = float(np.sum(S))
 
@@ -63,8 +65,9 @@ class PCAWithSVD(sklearn.base.TransformerMixin):
         return self
 
     def _calc_n_components(self, X, sing_vals):
-        if isinstance(self.n_components, str):
-            n, m = X.shape
+        n, m = X.shape
+
+        if self.n_components == "optimal":
             beta = m / n
             omega = np.sqrt(
                 2 * (beta + 1)
@@ -81,6 +84,7 @@ class PCAWithSVD(sklearn.base.TransformerMixin):
             )
 
         self.n_components = max(int(self.n_components), 1)
+        self.n_components = min(self.n_components, m, n)
 
     def transform(self, X):
         return np.dot(X - self._mean, self.loadings)
@@ -106,21 +110,36 @@ class PCAWithSVD(sklearn.base.TransformerMixin):
 
 def _test():
     import sklearn.datasets
+    import sklearn.decomposition
 
-    X, y = sklearn.datasets.load_breast_cancer(return_X_y=True)
+    X, y = sklearn.datasets.load_iris(return_X_y=True)
 
     X /= np.std(X, axis=0)
 
-    model = PCAWithSVD(n_components="optimal")
+    model = PCAWithSVD(n_components=2)
+    ref = sklearn.decomposition.PCA(n_components=2, svd_solver="full")
+
     X_proj = model.fit_transform(X)
+    X_proj_ref = ref.fit_transform(X)
+    X_proj_ref[:, 0] *= -1
 
     colors = {0: "r", 1: "g"}
 
     fig = plt.figure()
     ax1 = fig.add_subplot(131)
 
-    if X_proj.shape[1] <= 3:
-        ax1.scatter(*X_proj.T, c=list(map(colors.get, y)) if len(set(y)) == 2 else None)
+    if X_proj.shape[1] <= 2:
+        ax1.scatter(
+            *X_proj.T,
+            c=list(map(colors.get, y)) if len(set(y)) == 2 else None,
+            label="mine",
+        )
+        ax1.scatter(
+            *X_proj_ref.T,
+            c=list(map(colors.get, y)) if len(set(y)) == 2 else None,
+            label="reference",
+        )
+        ax1.legend()
 
     model.scree_plot(fig=fig, index=(132, 133))
 
