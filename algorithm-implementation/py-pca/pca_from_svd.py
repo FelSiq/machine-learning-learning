@@ -5,10 +5,13 @@ import matplotlib.pyplot as plt
 import numpy as np
 import sklearn.base
 
+import marchenko_pastur
+
 
 class PCAWithSVD(sklearn.base.TransformerMixin):
-    def __init__(self, n_components: t.Union[int, float] = -1):
-        assert not np.isclose(n_components, 0)
+    def __init__(self, n_components: t.Union[int, float, str] = "optimal"):
+        assert not np.isreal(n_components) or not np.isclose(n_components, 0)
+        assert not isinstance(n_components, str) or n_components == "optimal"
 
         self._mean = np.empty(0)
         self.loadings = np.empty(0)
@@ -42,13 +45,7 @@ class PCAWithSVD(sklearn.base.TransformerMixin):
 
         self.total_sing_vals = float(np.sum(S))
 
-        if 0 < self.n_components < 1:
-            cumsum_sing_vals = np.cumsum(S) / self.total_sing_vals
-            self.n_components = (
-                1 + np.flatnonzero(cumsum_sing_vals >= self.n_components)[0]
-            )
-
-        self.n_components = max(int(self.n_components), 1)
+        self._calc_n_components(X, S)
 
         self.sing_vals = S[: self.n_components :]
         self.loadings = V[:, : self.n_components]
@@ -56,6 +53,26 @@ class PCAWithSVD(sklearn.base.TransformerMixin):
         self.total_var_explained = float(np.sum(self.sing_vals) / self.total_sing_vals)
 
         return self
+
+    def _calc_n_components(self, X, sing_vals):
+        if isinstance(self.n_components, str):
+            n, m = X.shape
+            beta = m / n
+            omega = np.sqrt(
+                2 * (beta + 1)
+                + 8 * beta / (beta + 1 + np.sqrt(beta ** 2 + 14 * beta + 1))
+            )
+            mp_median = marchenko_pastur.median(beta)
+            optim_threshold = np.median(sing_vals) * omega / np.sqrt(mp_median)
+            self.n_components = np.flatnonzero(sing_vals < optim_threshold)[0]
+
+        elif 0 < self.n_components < 1:
+            cumsum_sing_vals = np.cumsum(S) / self.total_sing_vals
+            self.n_components = (
+                1 + np.flatnonzero(cumsum_sing_vals >= self.n_components)[0]
+            )
+
+        self.n_components = max(int(self.n_components), 1)
 
     def transform(self, X):
         return np.dot(X, self.loadings)
@@ -86,9 +103,9 @@ def _test():
 
     X, y = sklearn.datasets.load_breast_cancer(return_X_y=True)
 
-    X /= np.std(X, axis=0, ddof=0)
+    X /= np.std(X, axis=0)
 
-    model = PCAWithSVD(n_components=0.95)
+    model = PCAWithSVD(n_components="optimal")
     X_proj = model.fit_transform(X)
 
     colors = {0: "r", 1: "g"}
@@ -97,7 +114,7 @@ def _test():
     ax1 = fig.add_subplot(131)
 
     if X_proj.shape[1] <= 3:
-        ax1.scatter(*X_proj.T, color=list(map(colors.get, y)))
+        ax1.scatter(*X_proj.T, c=list(map(colors.get, y)) if len(set(y)) == 2 else None)
 
     model.scree_plot(fig=fig, index=(132, 133))
 
