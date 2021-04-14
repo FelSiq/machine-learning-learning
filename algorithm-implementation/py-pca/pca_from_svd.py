@@ -9,19 +9,27 @@ import marchenko_pastur
 
 
 class PCAWithSVD(sklearn.base.TransformerMixin):
-    def __init__(self, n_components: t.Union[int, float, str] = "optimal"):
+    def __init__(
+        self, n_components: t.Union[int, float, str] = "optimal", copy: bool = True
+    ):
         assert not np.isreal(n_components) or not np.isclose(n_components, 0)
         assert not isinstance(n_components, str) or n_components == "optimal"
 
         self._mean = np.empty(0)
         self.loadings = np.empty(0)
         self.n_components = n_components
+        self.copy = copy
 
         self.total_sing_vals = 0.0
         self.sing_vals = np.empty(0)
 
     def fit(self, X, y=None):
-        X = np.asfarray(X)
+        if self.copy:
+            X = np.copy(X).astype(float, copy=False)
+
+        else:
+            X = np.asfarray(X)
+
         self._mean = np.mean(X, axis=0)
         X -= self._mean
         n, m = X.shape
@@ -75,7 +83,7 @@ class PCAWithSVD(sklearn.base.TransformerMixin):
         self.n_components = max(int(self.n_components), 1)
 
     def transform(self, X):
-        return np.dot(X, self.loadings)
+        return np.dot(X - self._mean, self.loadings)
 
     def scree_plot(self, fig=None, index=(121, 122)):
         if fig is None:
@@ -90,9 +98,7 @@ class PCAWithSVD(sklearn.base.TransformerMixin):
         ax1.bar(x, height=var_prop, tick_label=x)
         ax2.semilogy(x, self.sing_vals)
 
-        ax1.set_title(
-            f"Cumulative singular values (total: {self.total_var_explained:.4f})"
-        )
+        ax1.set_title(f"Singular values (total: {self.total_var_explained:.4f})")
         ax2.set_title("Semilog singular values")
 
         return fig, (ax1, ax2)
