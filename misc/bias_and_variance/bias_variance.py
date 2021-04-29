@@ -1,11 +1,13 @@
+import typing as t
+
 import numpy as np
 import sklearn.preprocessing
 
 
 def decompose_mse(
-    degrees,
-    true_std,
-    true_underlying_func,
+    degrees: t.Sequence[int],
+    true_std: float,
+    true_underlying_func: t.Callable[[t.Sequence[float]], t.Sequence[float]],
     n: int = 2000,
     train_size: int = 50,
     xlim=(-10, 10),
@@ -86,7 +88,7 @@ def _test():
 
     mse = irredutible_err + var + np.square(bias)
 
-    t = np.linspace(-25, 25, 200)
+    X = np.linspace(-25, 25, 200)
 
     fig, axes = plt.subplots(2, 2, figsize=(10, 10), sharex=True)
     fig.suptitle(
@@ -94,9 +96,9 @@ def _test():
     )
 
     for i, c in enumerate(coeffs):
-        t_design = t.reshape(-1, 1) ** list(range(len(c)))
-        preds = np.sum(t_design * c, axis=1)
-        true_y = true_underlying_func(t, False)
+        X_design = X.reshape(-1, 1) ** list(range(len(c)))
+        preds = np.sum(X_design * c, axis=1)
+        true_y = true_underlying_func(X, False)
 
         ax = axes[i // 2][i % 2]
         ax.set_title(
@@ -104,8 +106,8 @@ def _test():
             f"$Bias^{{{2}}}(f_{{{train_size}}})$: {bias[i] ** 2:.2f}, "
             f"$Var[f_{{{train_size}}}]$: {var[i]:.2f}"
         )
-        ax.plot(t, true_y, label="true function")
-        ax.plot(t, preds, label="mean fit pred", color="orange")
+        ax.plot(X, true_y, label="true function")
+        ax.plot(X, preds, label="mean fit pred", color="orange")
         ax.legend()
 
     plt.show()
