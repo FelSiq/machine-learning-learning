@@ -52,17 +52,30 @@ class GDA:
     def _calc_gaussian_dists(self, X: np.ndarray, y: np.ndarray) -> None:
         self._dists = []
 
+        means = []
+        covs = []
+
         if not self.quadratic:
-            cov = np.cov(X, rowvar=False, ddof=0)
+            _, m = X.shape
+            shared_cov = np.zeros((m, m), dtype=float)
 
         for cls, cls_ind in enumerate(self._classes):
             X_slice = X[self._classes[cls_ind] == y, :]
 
-            mean = np.mean(X_slice, axis=0)
+            cls_mean = np.mean(X_slice, axis=0)
 
             if self.quadratic:
-                cov = np.cov(X_slice, rowvar=False, ddof=0)
+                cls_cov = np.cov(X_slice, rowvar=False, ddof=0)
 
+            else:
+                X_shifted = X_slice - cls_mean
+                shared_cov += np.dot(X_shifted.T, X_shifted)
+                cls_cov = shared_cov
+
+            means.append(cls_mean)
+            covs.append(cls_cov)
+
+        for mean, cov in zip(means, covs):
             dist = scipy.stats.multivariate_normal(
                 mean=mean, cov=cov, allow_singular=True
             )
@@ -108,7 +121,7 @@ def _test_a():
 
     quadratic = True
 
-    X, y = sklearn.datasets.load_wine(return_X_y=True)
+    X, y = sklearn.datasets.load_iris(return_X_y=True)
 
     n_splits = 10
     splitter = sklearn.model_selection.StratifiedKFold(
@@ -147,7 +160,58 @@ def _test_a():
 def _test_b():
     import matplotlib.pyplot as plt
     import sklearn.discriminant_analysis
+    import sklearn.preprocessing
     import scipy.stats
+    import torch
+    import torch.nn as nn
+
+    class SoftmaxClassification(nn.Module):
+        def __init__(self, degree: int = 1, n_input: int = 2, n_class: int = 3):
+            super(SoftmaxClassification, self).__init__()
+            assert int(degree) >= 1
+            self.degree = int(degree)
+            self.n_class = int(n_class)
+
+            self.poly = sklearn.preprocessing.PolynomialFeatures(
+                degree=self.degree, include_bias=False
+            )
+            self.poly.fit(np.empty((1, n_input)))
+
+            self.weights = nn.Linear(
+                self.poly.n_output_features_, self.n_class, bias=True
+            )
+
+        def fit(self, X, y):
+            X = self.poly.transform(X)
+            X = torch.tensor(X, dtype=torch.float)
+            y = torch.tensor(y, dtype=torch.long)
+
+            criterion = nn.CrossEntropyLoss()
+            optim = torch.optim.RMSprop(self.parameters(), lr=0.01)
+
+            for i in np.arange(200):
+                optim.zero_grad()
+                y_preds = self(X)
+                loss = criterion(y_preds, y)
+                loss.backward()
+                optim.step()
+
+            return self
+
+        def forward(self, X):
+            logits = self.weights(X)
+
+            if self.training:
+                return logits
+
+            return logits.argmax(dim=-1)
+
+        def predict(self, X):
+            if not self.training:
+                X = self.poly.transform(X)
+                X = torch.tensor(X, dtype=torch.float)
+
+            return self.forward(X).detach().numpy().ravel()
 
     def gen_data(mean, cov, cls_ind, n=75):
         dist = scipy.stats.multivariate_normal(mean=mean, cov=cov)
@@ -160,7 +224,7 @@ def _test_b():
         X[...] = X[inds, :]
         y[...] = y[inds]
 
-    np.random.seed(16)
+    np.random.seed(8)
 
     X1, y1 = gen_data([0.0, 2.0], [[1, 0.25], [0.25, 1]], 0)
     X2, y2 = gen_data([-2.0, 2.0], [[0.5, -0.125], [-0.125, 0.5]], 1)
@@ -179,9 +243,11 @@ def _test_b():
 
     models = (
         ("LDA", GDA()),
-        ("QDA", GDA(quadratic=True)),
         ("sklearn LDA", sklearn.discriminant_analysis.LinearDiscriminantAnalysis()),
+        ("softmax degree 1", SoftmaxClassification(degree=1)),
+        ("QDA", GDA(quadratic=True)),
         ("sklearn QDA", sklearn.discriminant_analysis.QuadraticDiscriminantAnalysis()),
+        ("softmax degree 2", SoftmaxClassification(degree=2)),
     )
 
     min_, max_ = np.quantile(X, (0, 1), axis=0)
@@ -189,10 +255,10 @@ def _test_b():
     plot_X, plot_Y = np.meshgrid(t[:, 0], t[:, 1], copy=False)
     plot_data = np.column_stack((plot_X.ravel(), plot_Y.ravel()))
 
-    fig, axes = plt.subplots(2, 2, figsize=(15, 10), sharex=True, sharey=True)
+    fig, axes = plt.subplots(2, 3, figsize=(15, 10), sharex=True, sharey=True)
 
     def find_boundaries(plot_preds):
-        plot_preds = plot_preds.reshape(t.size // 2, t.size // 2)
+        plot_preds = plot_preds.reshape(t.shape[0], t.shape[0])
         plot_preds = plot_preds.astype(int, copy=False)
 
         boundary_horiz = plot_preds[:, 1:] != plot_preds[:, :-1]
@@ -207,14 +273,22 @@ def _test_b():
 
     for i, (model_name, model) in enumerate(models):
         model.fit(X, y)
+
+        try:
+            model.eval()
+
+        except AttributeError:
+            pass
+
         plot_preds = model.predict(plot_data)
         plot_colors = map_color(plot_preds, mapper_plot)
 
         boundary_inds = find_boundaries(plot_preds)
+
         for j in boundary_inds:
             plot_colors[j] = (0.0, 0.0, 0.0)
 
-        ax = axes[i // 2][i % 2]
+        ax = axes[i // 3][i % 3]
         ax.set_title(model_name)
         ax.scatter(*plot_data.T, s=4, c=plot_colors)
         ax.scatter(*X.T, s=4, c=data_colors)
@@ -223,5 +297,5 @@ def _test_b():
 
 
 if __name__ == "__main__":
-    _test_a()
+    # _test_a()
     _test_b()
