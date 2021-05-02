@@ -23,7 +23,7 @@ class GaussianMixture:
         self._gaussians = []
         self._reg_cov = np.empty(0)
         self._stop_threshold = stop_threshold
-        self._apriori_prob = np.empty(0)
+        self._prior_probs = np.empty(0)
 
     def _calc_stop_criterion(self, means: np.ndarray, covs: np.ndarray) -> bool:
         if not self._gaussians:
@@ -57,7 +57,7 @@ class GaussianMixture:
             for i in range(self.n)
         ]
 
-        self._apriori_prob = np.mean(centroid_conf, axis=0)
+        self._prior_probs = np.mean(centroid_conf, axis=0)
 
         return stop_criterion
 
@@ -76,7 +76,7 @@ class GaussianMixture:
         mean_inds = np.random.choice(X.shape[0], size=self.n, replace=False)
         means = X[mean_inds, :].T
 
-        self._apriori_prob = np.full(self.n, fill_value=1.0 / self.n)
+        self._prior_probs = np.full(self.n, fill_value=1.0 / self.n)
 
         self._gaussians = [
             scipy.stats.multivariate_normal(mean=means[:, i], cov=X_vars)
@@ -97,7 +97,7 @@ class GaussianMixture:
 
         for i in range(self.n):
             dist = self._gaussians[i]
-            centroid_conf[:, i] = self._apriori_prob[i] * dist.pdf(X)
+            centroid_conf[:, i] = self._prior_probs[i] * dist.pdf(X)
 
         centroid_conf /= np.sum(centroid_conf, axis=1, keepdims=True)
 
