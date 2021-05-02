@@ -56,7 +56,7 @@ class GDA:
         covs = []
 
         if not self.quadratic:
-            _, m = X.shape
+            n, m = X.shape
             shared_cov = np.zeros((m, m), dtype=float)
 
         for cls, cls_ind in enumerate(self._classes):
@@ -64,12 +64,14 @@ class GDA:
 
             cls_mean = np.mean(X_slice, axis=0)
 
-            if self.quadratic:
-                cls_cov = np.cov(X_slice, rowvar=False, ddof=0)
+            cls_cov = np.cov(
+                X_slice,
+                rowvar=False,
+                ddof=0 if self.quadratic else X_slice.shape[0] - 1,
+            )
 
-            else:
-                X_shifted = X_slice - cls_mean
-                shared_cov += np.dot(X_shifted.T, X_shifted)
+            if not self.quadratic:
+                shared_cov += cls_cov / n
                 cls_cov = shared_cov
 
             means.append(cls_mean)
