@@ -189,7 +189,7 @@ def _test_b():
             y = torch.tensor(y, dtype=torch.long)
 
             criterion = nn.CrossEntropyLoss()
-            optim = torch.optim.RMSprop(self.parameters(), lr=0.01)
+            optim = torch.optim.RMSprop(self.parameters(), lr=0.1)
 
             for i in np.arange(200):
                 optim.zero_grad()
