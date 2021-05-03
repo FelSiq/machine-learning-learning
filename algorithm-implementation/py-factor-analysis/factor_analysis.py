@@ -4,12 +4,18 @@ import sklearn.base
 
 
 class FactorAnalysis(sklearn.base.TransformerMixin):
-    def __init__(self, n_components: int = 3, max_iter: int = 200):
+    def __init__(
+        self, n_components: int = 3, max_iter: int = 1000, threshold: float = 1e-3
+    ):
         assert int(n_components) >= 1
         assert int(max_iter) >= 1
+        assert float(threshold) >= 0
+
+        self.proj_mat = np.empty(0)
 
         self.mu = np.empty(0)
-        self.cov = np.empty(0)
+        self.cov_z = np.empty(0)
+        self.mu_z = np.empty(0)
 
         self.L = np.empty(0)
         self.psi = np.empty(0)
@@ -17,60 +23,73 @@ class FactorAnalysis(sklearn.base.TransformerMixin):
         self.n_components = int(n_components)
         self.max_iter = int(max_iter)
 
-    def _e_step(self, X_shifted, z):
-        aux = self.L.T @ np.linalg.inv(self.L @ self.L.T + self.psi)
+        self.log_likelihood = 0.0
+        self.threshold = float(threshold)
 
+    def _e_step(self, X_shifted):
+        aux = self.L.T @ np.linalg.inv(self.L @ self.L.T + np.diag(self.psi))
         self.mu_z = aux @ X_shifted
-
         self.cov_z = np.eye(aux.shape[0]) - aux @ self.L
 
-        self.q = np.array(
-            [
-                scipy.stats.multivariate_normal.pdf(
-                    z[:, i], mean=self.mu_z[:, i], cov=self.cov_z
-                )
-                for i in np.arange(z.shape[1])
-            ]
-        )
-
-    def _m_step(self, X_shifted, X):
+    def _m_step(self, X_shifted):
         m, n = X_shifted.shape
         k, _ = self.mu_z.shape
+
         L_aux_a = np.einsum("ji,ki->jk", X_shifted, self.mu_z)
         L_aux_b = np.einsum("ji,ki->jk", self.mu_z, self.mu_z) + n * self.cov_z
         L = L_aux_a @ np.linalg.inv(L_aux_b)
-        phi_aux_a = np.einsum("ij,ik->jk", X, X)
+
+        # NOTE: Those lecture notes: http://cs229.stanford.edu/summer2019/cs229-notes9.pdf
+        # imply that the correct solution would be:
+        # phi_aux_a = np.einsum("ji,ki->jk", X.T, X.T)
+        # But this makes the result awfully weird visually.
+        phi_aux_a = np.einsum("ji,ki->jk", X_shifted, X_shifted)
         phi_aux_b = -np.einsum("ij,ki->jk", X, self.mu_z) @ self.L.T
         phi_aux_c = self.L @ L_aux_b @ self.L.T
-        phi = np.diag(phi_aux_a + phi_aux_b + phi_aux_b.T + phi_aux_c) / n
+        phi = (phi_aux_a + phi_aux_b + phi_aux_b.T + phi_aux_c) / n
+        psi = np.diag(phi)
 
-        self.phi = phi
+        self.psi = psi
         self.L = L
 
     def _init_random_parameters(self, X):
         n, m = X.shape
         self.mu = np.mean(X, axis=0)
-        self.psi = np.diag(np.random.random(m))
-        self.L = np.random.random((m, self.n_components))
-        z = np.random.randn(self.n_components, n)
-        return z
+        self.psi = np.ones(m)
+        self.L = np.random.randn(m, self.n_components)
+
+    def _compute_lll(self, X):
+        dist = scipy.stats.multivariate_normal(
+            mean=self.mu, cov=self.L @ self.L.T + np.diag(self.psi)
+        )
+        lll = float(np.sum(dist.logpdf(X)))
+        return lll
 
     def fit(self, X, y=None):
         X = np.asfarray(X)
 
         n, m = X.shape
-        z = self._init_random_parameters(X)
+        self._init_random_parameters(X)
         X_shifted = (X - self.mu).T
+        self.log_likelihood = -np.inf
 
         for i in np.arange(self.max_iter):
-            self._e_step(X_shifted, z)
-            self._m_step(X_shifted, X)
+            self._e_step(X_shifted)
+            self._m_step(X_shifted)
+
+            prev_log_likelihood = self.log_likelihood
+            self.log_likelihood = self._compute_lll(X)
+
+            if self.log_likelihood - prev_log_likelihood < self.threshold:
+                break
+
+        self.proj_mat = np.linalg.inv(self.L.T @ self.L) @ self.L.T
 
         return self
 
     def transform(self, X, y=None):
         X = np.asfarray(X)
-        proj = np.linalg.inv(self.L.T @ self.L) @ self.L.T @ (X - self.mu).T
+        proj = self.proj_mat @ (X - self.mu).T
         return proj.T
 
 
