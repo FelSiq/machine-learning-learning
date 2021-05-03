@@ -1,11 +1,12 @@
 import numpy as np
 import scipy.stats
 import sklearn.base
+import tqdm.auto
 
 
 class FactorAnalysis(sklearn.base.TransformerMixin):
     def __init__(
-        self, n_components: int = 3, max_iter: int = 1000, threshold: float = 1e-3
+        self, n_components: int = 3, max_iter: int = 100, threshold: float = 1e-2
     ):
         assert int(n_components) >= 1
         assert int(max_iter) >= 1
@@ -19,6 +20,7 @@ class FactorAnalysis(sklearn.base.TransformerMixin):
 
         self.L = np.empty(0)
         self.psi = np.empty(0)
+        self.likelihood_cov = np.empty(0)
 
         self.n_components = int(n_components)
         self.max_iter = int(max_iter)
@@ -27,7 +29,8 @@ class FactorAnalysis(sklearn.base.TransformerMixin):
         self.threshold = float(threshold)
 
     def _e_step(self, X_shifted):
-        aux = self.L.T @ np.linalg.inv(self.L @ self.L.T + np.diag(self.psi))
+        self.likelihood_cov = self.L @ self.L.T + np.diag(self.psi)
+        aux = self.L.T @ np.linalg.inv(self.likelihood_cov)
         self.mu_z = aux @ X_shifted
         self.cov_z = np.eye(aux.shape[0]) - aux @ self.L
 
@@ -39,15 +42,16 @@ class FactorAnalysis(sklearn.base.TransformerMixin):
         L_aux_b = np.einsum("ji,ki->jk", self.mu_z, self.mu_z) + n * self.cov_z
         L = L_aux_a @ np.linalg.inv(L_aux_b)
 
-        # NOTE: Those lecture notes: http://cs229.stanford.edu/summer2019/cs229-notes9.pdf
+        # NOTE: These lecture notes: http://cs229.stanford.edu/summer2019/cs229-notes9.pdf
         # imply that the correct solution would be:
         # phi_aux_a = np.einsum("ji,ki->jk", X.T, X.T)
+        # phi_aux_b = -np.einsum("ji,ki->jk", X.T, self.mu_z) @ self.L.T
         # But this makes the result awfully weird visually.
         phi_aux_a = np.einsum("ji,ki->jk", X_shifted, X_shifted)
         phi_aux_b = -np.einsum("ji,ki->jk", X_shifted, self.mu_z) @ self.L.T
         phi_aux_c = self.L @ L_aux_b @ self.L.T
-        phi = (phi_aux_a + phi_aux_b + phi_aux_b.T + phi_aux_c) / n
-        psi = np.diag(phi)
+        phi_unscaled = phi_aux_a + phi_aux_b + phi_aux_b.T + phi_aux_c
+        psi = np.diag(phi_unscaled) / n
 
         self.psi = psi
         self.L = L
@@ -60,9 +64,13 @@ class FactorAnalysis(sklearn.base.TransformerMixin):
 
     def _compute_lll(self, X):
         dist = scipy.stats.multivariate_normal(
-            mean=self.mu, cov=self.L @ self.L.T + np.diag(self.psi)
+            mean=self.mu,
+            cov=self.likelihood_cov,
+            allow_singular=True,
         )
+
         lll = float(np.sum(dist.logpdf(X)))
+
         return lll
 
     def fit(self, X, y=None):
@@ -73,7 +81,7 @@ class FactorAnalysis(sklearn.base.TransformerMixin):
         X_shifted = (X - self.mu).T
         self.log_likelihood = -np.inf
 
-        for i in np.arange(self.max_iter):
+        for i in tqdm.auto.tqdm(np.arange(self.max_iter), leave=False):
             self._e_step(X_shifted)
             self._m_step(X_shifted)
 
@@ -98,7 +106,8 @@ def _test():
     import sklearn.decomposition
     import matplotlib.pyplot as plt
 
-    X, _ = sklearn.datasets.load_iris(return_X_y=True)
+    X, _ = sklearn.datasets.load_breast_cancer(return_X_y=True)
+    X = X.T
 
     model = FactorAnalysis(n_components=2)
     ref = sklearn.decomposition.FactorAnalysis(n_components=2)
