@@ -44,7 +44,7 @@ class FactorAnalysis(sklearn.base.TransformerMixin):
         # phi_aux_a = np.einsum("ji,ki->jk", X.T, X.T)
         # But this makes the result awfully weird visually.
         phi_aux_a = np.einsum("ji,ki->jk", X_shifted, X_shifted)
-        phi_aux_b = -np.einsum("ij,ki->jk", X, self.mu_z) @ self.L.T
+        phi_aux_b = -np.einsum("ji,ki->jk", X_shifted, self.mu_z) @ self.L.T
         phi_aux_c = self.L @ L_aux_b @ self.L.T
         phi = (phi_aux_a + phi_aux_b + phi_aux_b.T + phi_aux_c) / n
         psi = np.diag(phi)
