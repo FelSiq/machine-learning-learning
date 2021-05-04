@@ -85,7 +85,7 @@ class LinReg:
                 max_diff = max(max_diff, inf_norm_diff)
 
             if max_diff < self.epsilon:
-                print("Break loop in {i} epoch...")
+                print(f"Break loop in {i} epoch.")
                 break
 
         self._training = False
