@@ -2,6 +2,8 @@ import numpy as np
 
 
 class LinReg:
+    """Implements Linear Regression with SGD."""
+
     def __init__(
         self,
         max_epochs: int = 512,
@@ -93,6 +95,7 @@ class LinReg:
 
 def _test():
     import test
+
     test.test(model=LinReg())
 
 
