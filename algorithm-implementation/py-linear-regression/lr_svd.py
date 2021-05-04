@@ -23,6 +23,8 @@ class LinReg:
         pseudo_inv = Vt.T @ np.diag(1.0 / S) @ U.T
         self.coeffs = np.dot(pseudo_inv, y)
 
+        return self
+
     def predict(self, X):
         n, _ = X.shape
 
