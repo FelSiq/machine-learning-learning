@@ -6,6 +6,7 @@ class LinReg:
 
     def __init__(self, add_intercept: bool = True):
         self.add_intercept = add_intercept
+        self.coeffs = np.empty(0)
 
     def fit(self, X, y):
         X = np.asfarray(X)
