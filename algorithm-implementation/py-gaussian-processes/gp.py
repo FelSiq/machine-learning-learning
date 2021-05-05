@@ -5,45 +5,55 @@ import scipy.stats
 
 
 class GP:
-    def __init__(
-        self,
-        kernel: t.Callable[[np.ndarray, np.ndarray], np.ndarray],
-        noise_var: t.Optional[float] = None,
-    ):
-        assert noise_var is None or float(noise_var) > 0.0
+    def __init__(self, kernel: t.Callable[[np.ndarray, np.ndarray], np.ndarray]):
         self.kernel = kernel
-        self.X = np.empty(0)
-        self.noise_var = noise_var
+        self.X_train = np.empty(0)
+
+        self.aux_inv = np.empty(0)
+        self.aux_mu = np.empty(0)
+
+        self.y_mean = 0.0
+        self.y_std = 0.0
 
     def fit(self, X, y):
-        self.X = np.array(X, dtype=float)
-        y = np.asfarray(y)
+        self.X_train = np.array(X, dtype=float)
+        y = np.asfarray(y).ravel()
 
-        if self.noise_var is None:
-            self.noise_var = np.var(y, ddof=1)
+        self.y_mean = np.mean(y)
+        self.y_std = np.std(y)
 
         n, m = X.shape
 
         kernel_mat = self.kernel(X, X)
 
-        eye_var = np.diag(np.full(n, fill_value=self.noise_var))
-        self.aux_inv = np.linalg.inv(kernel_mat + eye_var)
-        self.aux_mu = self.aux_inv @ y
+        self.aux_inv = np.linalg.inv(kernel_mat + np.eye(n))
+        self.aux_mu = self.aux_inv @ (y - self.y_mean)
 
         return self
 
-    def predict(self, X):
+    def predict(self, X, return_std: bool = False, return_cov: bool = False):
         n, m = X.shape
 
-        kernel_mat = self.kernel(X, self.X)
+        kernel_mat = self.kernel(X, self.X_train)
         kernel_mat_pred = self.kernel(X, X)
 
-        mu = kernel_mat @ self.aux_mu
+        mu = kernel_mat @ self.aux_mu + self.y_mean
 
-        eye_var = np.diag(np.full(n, fill_value=self.noise_var))
-        sigma = kernel_mat_pred + eye_var - kernel_mat @ self.aux_inv @ kernel_mat.T
+        if return_std or return_cov:
+            sigma = (
+                kernel_mat_pred + np.eye(n) - kernel_mat @ self.aux_inv @ kernel_mat.T
+            ) * np.square(self.y_std)
 
-        return mu
+        ret = [mu]
+
+        if return_std:
+            std = np.sqrt(np.diag(sigma))
+            ret.append(std)
+
+        if return_cov:
+            ret.append(sigma)
+
+        return tuple(ret) if len(ret) > 1 else ret[0]
 
 
 def _test():
@@ -53,7 +63,8 @@ def _test():
     import sklearn.gaussian_process
 
     X, y = sklearn.datasets.load_boston(return_X_y=True)
-    n_splits = 10
+
+    n_splits = 5
     splitter = sklearn.model_selection.KFold(
         n_splits=n_splits, shuffle=True, random_state=16
     )
@@ -61,9 +72,14 @@ def _test():
     rmse_train = rmse_eval = 0.0
     rmse_train_ref = rmse_eval_ref = 0.0
 
-    kernel = sklearn.gaussian_process.kernels.RBF()
+    kernel = (
+        sklearn.gaussian_process.kernels.WhiteKernel()
+        + sklearn.gaussian_process.kernels.DotProduct()
+    )
     model = GP(kernel=kernel)
-    ref = sklearn.gaussian_process.GaussianProcessRegressor(kernel=kernel)
+    ref = sklearn.gaussian_process.GaussianProcessRegressor(
+        kernel=kernel, normalize_y=True
+    )
 
     def rmse(a, b):
         return sklearn.metrics.mean_squared_error(a, b, squared=False)
@@ -90,7 +106,7 @@ def _test():
     rmse_train_ref /= n_splits
     rmse_eval_ref /= n_splits
 
-    baseline = np.var(y)
+    baseline = np.std(y)
 
     print(f"Baseline          : {baseline:.3f}")
     print(f"(mine) Train rmse : {rmse_train:.3f}")
