@@ -9,11 +9,11 @@ class ICA(sklearn.base.TransformerMixin):
     def __init__(
         self,
         n_components: int,
-        learning_rate: float = 1e-3,
+        learning_rate: float = 1e-4,
         max_epochs: int = 512,
         batch_size: int = 32,
         source_dist: str = "sigmoid",
-        threshold: float = 1e-3,
+        threshold: float = 1e-5,
         *args,
         **kwargs,
     ):
@@ -50,9 +50,9 @@ class ICA(sklearn.base.TransformerMixin):
 
             source_dist_grad = self._source_dist_grad_fun(transform)
 
-            grad = np.dot(X_batch.T, -source_dist_grad) + np.linalg.inv(
-                self.unmixing_matrix.T
-            )
+            grad = np.dot(
+                X_batch.T, -source_dist_grad
+            ) - self.batch_size * np.linalg.inv(self.unmixing_matrix.T)
 
             update = self.learning_rate * grad / self.batch_size
             self.unmixing_matrix -= update
@@ -88,6 +88,7 @@ class ICA(sklearn.base.TransformerMixin):
         return self
 
     def transform(self, X, y=None):
+        X = np.asfarray(X)
         return X @ self.unmixing_matrix
 
 
@@ -95,11 +96,12 @@ def _test():
     import matplotlib.pyplot as plt
     import sklearn.decomposition
 
-    np.random.seed(16)
+    np.random.seed(8)
 
-    t = np.linspace(0, 10, 100)
-    signal_1 = np.sin(2.0 * np.pi * 1.5 * t) + 0.1 * np.random.randn(t.size)
-    signal_2 = np.cos(2.0 * np.pi * 0.33 * t) + 0.2 * np.random.randn(t.size)
+    t = np.linspace(0, 10, 200)
+    signal_1 = np.sin(2.0 * np.pi * 0.5 * t) + 0.1 * np.random.randn(t.size)
+    signal_2 = np.cumsum(np.random.randn(t.size))
+    signal_2 = (signal_2 - np.min(signal_2)) / np.ptp(signal_2)
 
     signal_1 -= np.mean(signal_1)
     signal_2 -= np.mean(signal_2)
@@ -112,7 +114,7 @@ def _test():
     print(mixes.shape)
 
     model = ICA(n_components=2, source_dist="sigmoid", batch_size=1)
-    ref = sklearn.decomposition.FastICA(n_components=2)
+    ref = sklearn.decomposition.FastICA()
     sources = model.fit_transform(mixes)
     sources_ref = ref.fit_transform(mixes)
 
