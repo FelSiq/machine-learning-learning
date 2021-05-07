@@ -1,137 +1,173 @@
 import numpy as np
-import pandas as pd
-import random
+
+import activations
 
 
-class perceptron:
-    def __init__(self):
-        # The 'Theta' (linear coeff) of the Perceptron is in the last index of the weight vector.
-        self.weights = np.array([])
+class PerceptronClassifier:
+    def __init__(
+        self,
+        learning_rate: float = 1e-2,
+        max_epochs: int = 128,
+        batch_size: int = 32,
+        activation: str = "sigmoid",
+        add_intercept: bool = True,
+        epsilon: float = 1e-2,
+    ):
+        assert int(max_epochs) >= 1
+        assert int(batch_size) >= 1
+        assert float(learning_rate) > 0.0
+        assert float(epsilon) >= 0.0
+        assert activation in {"sigmoid", "relu", "tanh"}
 
-    """
-	Uses the 'weights (and Theta)', adjusted by a previous 'fit' operation, to
-	predict a output real value of a given query sample.
-	"""
+        self.weights = np.empty(0)
+        self.add_intercept = add_intercept
+        self.max_epochs = int(max_epochs)
+        self.batch_size = int(batch_size)
+        self.learning_rate = float(learning_rate)
+        self.epsilon = float(epsilon)
+        self.activation = activation
+        self._activation_fun, self._activation_grad = activations.get_activation(
+            activation
+        )
 
-    def predict(self, query, outThreshold=0.5):
-        return int(
-            np.sum(np.concatenate(
-                (query, [1.0])) * self.weights) > outThreshold)
+        self._training = False
 
-    """
-	Method used on the fit method. Should not be called outside him. 
-	"""
+    def _run_epoch(self, X, y, batch_inds):
+        max_diff = -np.inf
 
-    def _updateWeights(self, x, y, trainStep=0.1):
-        xConc = np.concatenate((x, [1.0]))
+        for start in np.arange(0, y.size, self.batch_size):
+            end = start + self.batch_size
 
-        # Originally the formula was w[i] = w[i] - transStep(2.0 * -xConc[i] * consFactor),
-        # but it was simplified.
-        constFactor = y - self.predict(x)
-        for i in range(len(self.weights)):
-            self.weights[i] += trainStep * xConc[i] * constFactor
+            X_batch = X[batch_inds[start:end], :]
+            y_batch = y[batch_inds[start:end]]
 
-        return constFactor
+            y_preds = self.predict(X_batch)
 
-    """
-	The Fit method will adjust the 'weights' (and the 'Theta') of the perceptron.
-	It will repeat the training until the sum of mean squared error for all samples is smaller 
-	than maxError or the number of iterations reaches maxIterations. 
+            grad = X_batch.T @ (
+                self._activation_grad(y_preds)
+                * (y_preds - y_batch)
+                / (1e-6 + y_preds * (1.0 - y_preds))
+            )
 
-	The trainStep parameter tells how much each iteration will influence the current weights 
-	(and Theta) of the Perceptron.
+            update = self.learning_rate * grad / self.batch_size
+            self.weights -= update
 
-	Obvious enough, but I'll still gonna say, x is the independent variables of the dataset,
-	and y the dependent/output/label/class value.
+            if self.epsilon <= 0.0:
+                max_diff = np.inf
+                continue
 
-	Set showError to True to see the sum of the mean squared error for each iteration.
-	"""
+            max_diff = max(max_diff, np.linalg.norm(update, ord=np.inf))
 
-    def fit(self,
-            x,
-            y,
-            maxError=1.0e-04,
-            maxIterations=500,
-            trainStep=0.1,
-            showError=False):
-        # Initial fit setup
-        meanSqrdError = maxError * 2
+        return max_diff
 
-        self.weights = np.array([0.0] * (x.shape[1] + 1))
-        for i in range(len(self.weights)):
-            self.weights[i] = random.uniform(-0.5, 0.5)
+    def fit(self, X, y):
+        X = np.asfarray(X)
+        y = np.asarray(y)
 
-        # Perceptron training loop
-        curIteration = 0
-        n = x.shape[0]
-        while meanSqrdError > maxError and curIteration < maxIterations:
-            curIteration += 1
-            meanSqrdError = 0.0
+        assert X.ndim == 2
+        assert X.shape[0] == y.size
 
-            for i in range(n):
-                meanSqrdError += (self._updateWeights(x[i], y[i],
-                                                      trainStep))**2.0
-            meanSqrdError /= n
+        n, m = X.shape
 
-            if showError:
-                print('i:', curIteration, '- meanSqrdError:', meanSqrdError)
+        if self.add_intercept:
+            X = np.column_stack((np.ones(n, dtype=float), X))
 
-        print(self.weights)
+        self.weights = np.random.randn(m + 1)
+        self._training = True
+        batch_inds = np.arange(n)
+
+        for i in np.arange(1, 1 + self.max_epochs):
+            np.random.shuffle(batch_inds)
+            max_diff = self._run_epoch(X, y, batch_inds)
+
+            if max_diff < self.epsilon:
+                print(f"Early stopped at epoch {i}.")
+                break
+
+        self._training = False
+
+        return self
+
+    def predict(self, X):
+        X = np.asfarray(X)
+        n, _ = X.shape
+
+        if not self._training and self.add_intercept:
+            X = np.column_stack((np.ones(n, dtype=float), X))
+
+        preds = self._activation_fun(X @ self.weights)
+
+        return preds
 
 
-# Perceptron testing
-if __name__ == '__main__':
-    p = perceptron()
+def _test():
+    import sklearn.model_selection
+    import sklearn.datasets
+    import sklearn.metrics
+    import sklearn.preprocessing
+    import sklearn.linear_model
+    import matplotlib.pyplot as plt
 
-    print('AND TESTING:')
-    dataset = pd.read_csv('./test/ANDTruthTable.in', sep=' ')
-    p.fit(
-        dataset.iloc[:, :-1].values,
-        dataset.iloc[:, -1].values,
-        showError=True)
-    ANDQueries = np.array([
-        [0, 0, 0],
-        [0, 1, 1],
-        [1, 1, 1],
-        [1, 0, 0],
-        [0, 1, 0],
-        [0, 1, 1],
-    ])
+    X, y = sklearn.datasets.load_breast_cancer(return_X_y=True)
 
-    for a in ANDQueries:
-        print('Query:', a, '- Output:', p.predict(a))
+    print(X.shape)
 
-    print('\nOR TESTING:')
-    dataset = pd.read_csv('./test/ORTruthTable.in', sep=' ')
-    p.fit(
-        dataset.iloc[:, :-1].values,
-        dataset.iloc[:, -1].values,
-        showError=True)
+    model = PerceptronClassifier(
+        batch_size=64,
+        learning_rate=5e-2,
+        epsilon=1e-4,
+        activation="relu",
+        max_epochs=32,
+    )
 
-    ORQueries = np.array([
-        [0, 0, 0],
-        [0, 1, 1],
-        [1, 1, 1],
-        [1, 0, 0],
-        [0, 1, 0],
-        [0, 1, 1],
-    ])
+    ref = sklearn.linear_model.Perceptron(max_iter=1024)
+    n_splits = 10
+    splitter = sklearn.model_selection.KFold(
+        n_splits=n_splits, shuffle=True, random_state=16
+    )
+    scaler = sklearn.preprocessing.StandardScaler()
 
-    for o in ORQueries:
-        print('Query:', o, '- Output:', p.predict(o))
+    train_err = eval_err = 0.0
+    train_err_ref = eval_err_ref = 0.0
 
-    # Perceptron is a linear separator. Because of this, it is
-    # incapable of understanding the XOR Truth table.
-    print('\nXOR TESTING (!!):')
-    dataset = pd.read_csv('./test/XORTruthTable.in', sep=' ')
-    p.fit(dataset.iloc[:, :-1].values, dataset.iloc[:, -1].values)
+    for inds_train, inds_eval in splitter.split(X, y):
+        X_train, X_eval = X[inds_train, :], X[inds_eval, :]
+        y_train, y_eval = y[inds_train], y[inds_eval]
 
-    XORQueries = np.array([
-        [0, 0],
-        [0, 1],
-        [1, 1],
-        [0, 1],
-    ])
+        X_train = scaler.fit_transform(X_train)
+        X_eval = scaler.transform(X_eval)
 
-    for x in XORQueries:
-        print('Query:', x, '- Output:', p.predict(x))
+        model.fit(X_train, y_train)
+        ref.fit(X_train, y_train)
+
+        y_preds_train = model.predict(X_train)
+        y_preds_eval = model.predict(X_eval)
+
+        threshold = np.mean(y_train)
+        y_preds_train = y_preds_train > threshold
+        y_preds_eval = y_preds_eval > threshold
+
+        y_preds_train = y_preds_train.astype(int, copy=False)
+        y_preds_eval = y_preds_eval.astype(int, copy=False)
+
+        y_preds_train_ref = ref.predict(X_train)
+        y_preds_eval_ref = ref.predict(X_eval)
+
+        train_err += sklearn.metrics.accuracy_score(y_preds_train, y_train)
+        eval_err += sklearn.metrics.accuracy_score(y_preds_eval, y_eval)
+        train_err_ref += sklearn.metrics.accuracy_score(y_preds_train_ref, y_train)
+        eval_err_ref += sklearn.metrics.accuracy_score(y_preds_eval_ref, y_eval)
+
+    train_err /= n_splits
+    eval_err /= n_splits
+    train_err_ref /= n_splits
+    eval_err_ref /= n_splits
+
+    print(f"(mine) Train err : {train_err:.3f}")
+    print(f"(mine) Eval err  : {eval_err:.3f}")
+    print(f"(ref)  Train err : {train_err_ref:.3f}")
+    print(f"(ref)  Eval err  : {eval_err_ref:.3f}")
+
+
+if __name__ == "__main__":
+    _test()
