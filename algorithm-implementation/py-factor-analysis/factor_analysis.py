@@ -34,7 +34,7 @@ class FactorAnalysis(sklearn.base.TransformerMixin):
         self.mu_z = aux @ X_shifted
         self.cov_z = np.eye(aux.shape[0]) - aux @ self.L
 
-    def _m_step(self, X_shifted):
+    def _m_step(self, X_shifted, X):
         m, n = X_shifted.shape
         k, _ = self.mu_z.shape
 
@@ -42,13 +42,8 @@ class FactorAnalysis(sklearn.base.TransformerMixin):
         L_aux_b = np.einsum("ji,ki->jk", self.mu_z, self.mu_z) + n * self.cov_z
         L = L_aux_a @ np.linalg.inv(L_aux_b)
 
-        # NOTE: These lecture notes: http://cs229.stanford.edu/summer2019/cs229-notes9.pdf
-        # imply that the correct solution would be:
-        # phi_aux_a = np.einsum("ji,ki->jk", X.T, X.T)
-        # phi_aux_b = -np.einsum("ji,ki->jk", X.T, self.mu_z) @ self.L.T
-        # But this makes the result awfully weird visually.
-        phi_aux_a = np.einsum("ji,ki->jk", X_shifted, X_shifted)
-        phi_aux_b = -np.einsum("ji,ki->jk", X_shifted, self.mu_z) @ self.L.T
+        phi_aux_a = np.einsum("ij,ik->jk", X, X)
+        phi_aux_b = -np.einsum("ij,ki->jk", X, self.mu_z) @ self.L.T
         phi_aux_c = self.L @ L_aux_b @ self.L.T
         phi_unscaled = phi_aux_a + phi_aux_b + phi_aux_b.T + phi_aux_c
         psi = np.diag(phi_unscaled) / n
@@ -83,7 +78,7 @@ class FactorAnalysis(sklearn.base.TransformerMixin):
 
         for i in tqdm.auto.tqdm(np.arange(self.max_iter), leave=False):
             self._e_step(X_shifted)
-            self._m_step(X_shifted)
+            self._m_step(X_shifted, X)
 
             prev_log_likelihood = self.log_likelihood
             self.log_likelihood = self._compute_lll(X)
@@ -91,7 +86,7 @@ class FactorAnalysis(sklearn.base.TransformerMixin):
             if self.log_likelihood - prev_log_likelihood < self.threshold:
                 break
 
-        self.proj_mat = np.linalg.inv(self.L.T @ self.L) @ self.L.T
+        self.proj_mat = self.L.T @ np.linalg.inv(self.L @ self.L.T + self.psi)
 
         return self
 
