@@ -8,23 +8,20 @@ import dist_grad
 class ICA(sklearn.base.TransformerMixin):
     def __init__(
         self,
-        n_components: int,
-        learning_rate: float = 1e-4,
+        learning_rate: float = 1e-2,
         max_epochs: int = 512,
         batch_size: int = 32,
         source_dist: str = "sigmoid",
-        threshold: float = 1e-5,
+        threshold: float = 1e-3,
         *args,
         **kwargs,
     ):
-        assert int(n_components) >= 2
         assert int(max_epochs) > 0
         assert int(batch_size) > 0
         assert float(learning_rate) > 0.0
         assert source_dist in {"sigmoid", "laplace"}
         assert float(threshold) >= 0.0
 
-        self.n_components = int(n_components)
         self.source_dist = source_dist
         self.max_epochs = max_epochs
         self.batch_size = batch_size
@@ -74,6 +71,11 @@ class ICA(sklearn.base.TransformerMixin):
 
         assert n > d
 
+        self.mean = np.mean(X, axis=0)
+        self.std = np.std(X, axis=0)
+
+        X = (X - self.mean) / self.std
+
         self.unmixing_matrix = np.random.randn(d, d)
         batch_inds = np.arange(n)
 
@@ -88,65 +90,87 @@ class ICA(sklearn.base.TransformerMixin):
         return self
 
     def transform(self, X, y=None):
-        X = np.asfarray(X)
+        X = (np.asfarray(X) - self.mean) / self.std
         return X @ self.unmixing_matrix
 
 
 def _test():
     import matplotlib.pyplot as plt
     import sklearn.decomposition
+    import pandas as pd
 
-    np.random.seed(8)
+    np.random.seed(16)
 
-    t = np.linspace(0, 10, 200)
-    signal_1 = np.sin(2.0 * np.pi * 0.5 * t) + 0.1 * np.random.randn(t.size)
-    signal_2 = np.cumsum(np.random.randn(t.size))
-    signal_2 = (signal_2 - np.min(signal_2)) / np.ptp(signal_2)
+    def prepare_mixtures():
+        data = pd.read_csv("data.csv", index_col=0, squeeze=True)
+        max_size = 500
+        X = np.asfarray([v.split(",")[:max_size] for v in data.values])
 
-    signal_1 -= np.mean(signal_1)
-    signal_2 -= np.mean(signal_2)
+        signals = X[[9, 2, 7], :].T
+        signals = (signals - np.min(signals, axis=0)) / np.ptp(signals, axis=0)
+        signals -= np.mean(signals, axis=0)
 
-    mix_1 = 0.7 * signal_1 + 0.3 * signal_2
-    mix_2 = 0.2 * signal_1 + 0.8 * signal_2
+        mix_mat = np.random.random((3, 3))
+        mix_mat /= np.sum(mix_mat, axis=0)
 
-    mixes = np.column_stack((mix_1, mix_2))
+        mixes = signals @ mix_mat
 
-    print(mixes.shape)
+        assert mixes.shape == signals.shape
 
-    model = ICA(n_components=2, source_dist="sigmoid", batch_size=1)
-    ref = sklearn.decomposition.FastICA()
-    sources = model.fit_transform(mixes)
-    sources_ref = ref.fit_transform(mixes)
+        return signals, mixes, mix_mat
 
-    recovered_2, recovered_1 = sources.T
-    recovered_2_ref, recovered_1_ref = sources_ref.T
+    signals, mixes, mix_mat = prepare_mixtures()
 
-    fig, (ax1, ax2, ax3, ax4) = plt.subplots(4, figsize=(10, 10))
+    num_signals = signals.shape[1]
 
-    color_1 = np.array([255, 140, 0], dtype=float) / 255.0
-    color_2 = np.array([0, 140, 255], dtype=float) / 255.0
-
-    ax1.plot(recovered_1, color=(1, 0, 0), label="recovered")
-    ax1.plot(
-        recovered_1_ref, color=(1, 0, 0.8), label="recovered (sklearn)", linestyle="-."
+    model = ICA(
+        learning_rate=1e-2,
+        source_dist="laplace",
+        batch_size=128,
+        max_epochs=1024,
+        threshold=1e-4,
     )
-    ax1.plot(signal_1, color=tuple(color_1), label="original")
-    ax1.set_title("Original signal 1")
-    ax1.legend()
+    ref = sklearn.decomposition.FastICA(max_iter=1024, whiten=False)
 
-    ax2.plot(recovered_2, color=(1, 0, 0), label="recovered")
-    ax2.plot(
-        recovered_2_ref, color=(1, 0, 0.8), label="recovered (sklearn)", linestyle="-."
+    reconstituted = model.fit_transform(mixes)
+    reconstituted_ref = ref.fit_transform(mixes)
+
+    reconstituted = (reconstituted - np.min(reconstituted, axis=0)) / np.ptp(
+        reconstituted, axis=0
     )
-    ax2.plot(signal_2, color=tuple(color_2), label="original")
-    ax2.set_title("Original signal 2")
-    ax2.legend()
+    reconstituted -= np.mean(reconstituted, axis=0)
 
-    ax3.plot(mix_1, color=tuple(0.7 * color_1 + 0.3 * color_2))
-    ax3.set_title("Mixture 1")
+    fig, axes = plt.subplots(3, 2, figsize=(15, 10), sharey=True, sharex=True)
 
-    ax4.plot(mix_2, color=tuple(0.2 * color_1 + 0.8 * color_2))
-    ax4.set_title("Mixture 2")
+    colors = (
+        np.array(
+            [
+                [255, 140, 0],
+                [0, 140, 255],
+                [70, 250, 70],
+            ],
+            dtype=float,
+        )
+        / 255.0
+    )
+
+    colors_mix = colors @ mix_mat
+
+    reconstituted = reconstituted[:, [0, 2, 1]]
+    reconstituted[:, [1]] *= -1.0
+    reconstituted_ref[:, [0, 2]] *= -1.0
+
+    for i in np.arange(num_signals):
+        ax_mix, ax_sig = axes[i]
+
+        ax_mix.plot(mixes[:, i], color=colors_mix[i])
+        ax_mix.set_title(f"Mixture {i + 1}")
+
+        ax_sig.plot(reconstituted[:, i], label="reconstituted", c="purple")
+        ax_sig.plot(signals[:, i], label="original", c=colors[i])
+        ax_sig.plot(reconstituted_ref[:, i], label="reference (sklearn)", c="black")
+        ax_sig.legend()
+        ax_sig.set_title(f"Signal {i + 1}")
 
     plt.show()
 
