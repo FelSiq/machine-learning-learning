@@ -11,7 +11,7 @@ class ICA(sklearn.base.TransformerMixin):
         learning_rate: float = 1e-2,
         max_epochs: int = 512,
         batch_size: int = 32,
-        source_dist: str = "sigmoid",
+        source_dist: str = "laplace",
         threshold: float = 1e-3,
         *args,
         **kwargs,
@@ -34,6 +34,7 @@ class ICA(sklearn.base.TransformerMixin):
         self._source_dist_grad_fun = source_dist
 
         self.unmixing_matrix = np.empty(0)
+        self._training = False
 
     def _run_epoch(self, X, batch_inds):
         n, _ = X.shape
@@ -78,6 +79,7 @@ class ICA(sklearn.base.TransformerMixin):
 
         self.unmixing_matrix = np.random.randn(d, d)
         batch_inds = np.arange(n)
+        self._training = True
 
         for i in np.arange(1, 1 + self.max_epochs):
             np.random.shuffle(batch_inds)
@@ -87,11 +89,20 @@ class ICA(sklearn.base.TransformerMixin):
                 print(f"Early stopping at epoch {i}.")
                 break
 
+        self._training = False
+
         return self
 
     def transform(self, X, y=None):
-        X = (np.asfarray(X) - self.mean) / self.std
-        return X @ self.unmixing_matrix
+        if not self._training:
+            X = np.asfarray(X) - self.mean
+
+        transf = X @ self.unmixing_matrix
+
+        if not self._training:
+            transf += self.mean
+
+        return transf
 
 
 def _test():
@@ -108,7 +119,6 @@ def _test():
 
         signals = X[[9, 2, 7], :].T
         signals = (signals - np.min(signals, axis=0)) / np.ptp(signals, axis=0)
-        signals -= np.mean(signals, axis=0)
 
         mix_mat = np.random.random((3, 3))
         mix_mat /= np.sum(mix_mat, axis=0)
@@ -124,21 +134,16 @@ def _test():
     num_signals = signals.shape[1]
 
     model = ICA(
-        learning_rate=1e-2,
+        learning_rate=5e-2,
         source_dist="laplace",
-        batch_size=128,
+        batch_size=256,
         max_epochs=1024,
         threshold=1e-4,
     )
-    ref = sklearn.decomposition.FastICA(max_iter=1024, whiten=False)
+    ref = sklearn.decomposition.FastICA(max_iter=1024, whiten=False, random_state=16)
 
     reconstituted = model.fit_transform(mixes)
     reconstituted_ref = ref.fit_transform(mixes)
-
-    reconstituted = (reconstituted - np.min(reconstituted, axis=0)) / np.ptp(
-        reconstituted, axis=0
-    )
-    reconstituted -= np.mean(reconstituted, axis=0)
 
     fig, axes = plt.subplots(3, 2, figsize=(15, 10), sharey=True, sharex=True)
 
@@ -156,9 +161,15 @@ def _test():
 
     colors_mix = colors @ mix_mat
 
+    # NOTE: ICA result as ambiguous to mirroring and signal ordering,
+    # so we may need to adjust both.
     reconstituted = reconstituted[:, [0, 2, 1]]
+    mean = np.mean(reconstituted, axis=0)
+    reconstituted -= mean
     reconstituted[:, [1]] *= -1.0
-    reconstituted_ref[:, [0, 2]] *= -1.0
+    reconstituted += mean
+
+    reconstituted_ref = reconstituted_ref[:, [1, 2, 0]]
 
     for i in np.arange(num_signals):
         ax_mix, ax_sig = axes[i]
@@ -166,9 +177,9 @@ def _test():
         ax_mix.plot(mixes[:, i], color=colors_mix[i])
         ax_mix.set_title(f"Mixture {i + 1}")
 
+        ax_sig.plot(reconstituted_ref[:, i], label="reference (sklearn)", c="black")
         ax_sig.plot(reconstituted[:, i], label="reconstituted", c="purple")
         ax_sig.plot(signals[:, i], label="original", c=colors[i])
-        ax_sig.plot(reconstituted_ref[:, i], label="reference (sklearn)", c="black")
         ax_sig.legend()
         ax_sig.set_title(f"Signal {i + 1}")
 
