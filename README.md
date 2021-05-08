@@ -3,7 +3,7 @@ In this repository I keep all my relevant code related to my machine learning an
 
 All code here were made for the sake of practice.
 
-# Useful links that I studied and I think that lead to very good materials
+# Useful material that I used and I think they're good
 Here I will compile several links that lead to free materials available online that I used to study machine learning, data science and some basic pre-requisites such as advanced math-related topics. If a link is in this list, them it is because I believe that it was worth my time taking the course and reading the material.
 
 There are many, many, many more left out here in the wild, but the main purpose of this list is to keep only courses that I truly completed from the start until the end.
@@ -47,7 +47,7 @@ At the end of this Readme I will build a list with links that lead to very inter
 1. [Stanford CS229 Machine Learning](http://cs229.stanford.edu/)
 	- Resources: 
 		- [Video Lectures (2018)](https://www.youtube.com/playlist?list=PLoROMvodv4rMiGQp3WXShtMGgzqpfVfbU), Assignments (no solutions, depends the year offered), Exams (no solutions, and also depends on the year offered), Course Notes
-		- Also check the 2019 summer offering which has extra topics not showed in the 2018 course: [video lectures](https://www.youtube.com/playlist?list=PL4YhK0pT0ZhVf4nIsEjcRT5K47K7WH76P) or [website](http://cs229.stanford.edu/syllabus-summer2020.html).
+		- Also check the 2019 summer offering which has extra topics not covered in the 2018 course: [video lectures](https://www.youtube.com/playlist?list=PL4YhK0pT0ZhVf4nIsEjcRT5K47K7WH76P) or [website](http://cs229.stanford.edu/syllabus-summer2020.html).
 	- Instructor: Andrew Ng (2018), Anand Avati (2019)
 	- Taught in: every year.
 
