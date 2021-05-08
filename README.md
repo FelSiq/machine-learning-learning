@@ -45,8 +45,10 @@ At the end of this Readme I will build a list with links that lead to very inter
 
 ### Machine Learning
 1. [Stanford CS229 Machine Learning](http://cs229.stanford.edu/)
-	- Resources: [Video Lectures (2018)](https://www.youtube.com/playlist?list=PLoROMvodv4rMiGQp3WXShtMGgzqpfVfbU), Assignments (no solutions, depends the year offered), Exams (no solutions, and also depends on the year offered), Course Notes
-	- Instructor: Andrew Ng
+	- Resources: 
+		- [Video Lectures (2018)](https://www.youtube.com/playlist?list=PLoROMvodv4rMiGQp3WXShtMGgzqpfVfbU), Assignments (no solutions, depends the year offered), Exams (no solutions, and also depends on the year offered), Course Notes
+		- Also check the 2019 summer offering which has extra topics not showed in the 2018 course: [video lectures](https://www.youtube.com/playlist?list=PL4YhK0pT0ZhVf4nIsEjcRT5K47K7WH76P) or [website](http://cs229.stanford.edu/syllabus-summer2020.html).
+	- Instructor: Andrew Ng (2018), Anand Avati (2019)
 	- Taught in: every year.
 
 2. [MIT 6.S191 Introduction to Deep Learning](https://www.youtube.com/playlist?list=PLtBw6njQRU-rwp5__7C0oIVt26ZgjG9NI)
