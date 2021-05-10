@@ -59,19 +59,21 @@ class LWLR:
         dist_sqr = scipy.spatial.distance.cdist(X, self.X, metric="sqeuclidean")
 
         if self._scale_dist:
-            max_, min_ = np.quantile(X, (0, 1))
-            dist_sqr = np.square((np.sqrt(dist_sqr) - min_) / (max_ - min_))
+            dist = np.sqrt(dist_sqr)
+            min_, max_ = np.quantile(dist, (0, 1))
+            dist_sqr = np.square((dist - min_) / (max_ - min_))
+            del dist
 
         weights = self._dist_func(dist_sqr)
 
         preds = np.empty(n, dtype=float)
 
         for i in np.arange(n):
-            theta = (
-                np.linalg.inv(self.X.T @ np.diag(weights[i, :]) @ self.X)
-                @ self.X.T
-                @ (weights[i] * self.y)
-            )
+            # NOTE: equivalent of:
+            # X_t_weighted = self.X.T @ np.diag(weights[i, :])
+            X_t_weighted = self.X.T * weights[i, :]
+
+            theta = np.linalg.inv(X_t_weighted @ self.X) @ X_t_weighted @ self.y
             pred = X[i, :] @ theta
             preds[i] = pred
 
@@ -95,7 +97,7 @@ def _test_01():
     def rmse(a, b):
         return sklearn.metrics.mean_squared_error(a, b, squared=False)
 
-    model = LWLR(bandwidth=4)
+    model = LWLR(distance_func="gaussian", bandwidth=4)
 
     rmse_train = rmse_eval = 0.0
 
@@ -127,9 +129,11 @@ def _test_02():
     import sklearn.model_selection
     import sklearn.metrics
 
+    np.random.seed(16)
+
     n = 75
-    X = np.linspace(0, 1, n) + 0.05 * np.random.randn(n)
-    y = 0.5 * X + 2 + 0.01 * np.random.randn(n)
+    X = 2 * (np.linspace(0, 10, n) + 0.5 * np.random.randn(n))
+    y = 0.01 * X ** 3 - 0.1 * X ** 2 - 0.5 * X + 200 + 0.1 * np.random.randn(n)
 
     X = X.reshape(-1, 1)
 
@@ -137,7 +141,7 @@ def _test_02():
         X, y, test_size=0.1, shuffle=True, random_state=16
     )
 
-    model = LWLR(bandwidth=1)
+    model = LWLR(distance_func="gaussian", bandwidth=1)
     model.fit(X_train, y_train)
 
     y_preds_train = model.predict(X_train)
@@ -162,4 +166,4 @@ def _test_02():
 
 if __name__ == "__main__":
     _test_01()
-    # _test_02()
+    _test_02()
