@@ -79,6 +79,7 @@ class LinReg:
                 self.coeffs -= update
 
                 if self.epsilon <= 0:
+                    max_diff = np.inf
                     continue
 
                 inf_norm_diff = np.linalg.norm(update, ord=np.inf)
