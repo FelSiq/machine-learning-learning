@@ -5,7 +5,7 @@ import scipy.spatial
 
 
 class LWLR:
-    DISTANCE_FUNC = {
+    KERNEL_FUNC = {
         "gaussian": lambda d_sqr, bandwidth: np.exp(-0.5 / bandwidth ** 2 * d_sqr),
         "tricube": lambda d_sqr: np.power(1.0 - np.power(d_sqr, 1.5), 3),
     }
@@ -13,23 +13,25 @@ class LWLR:
     def __init__(
         self,
         bandwidth: float = 1.0,
-        distance_func: str = "tricube",
+        distance_kernel: str = "tricube",
         add_intercept: bool = True,
     ):
         assert float(bandwidth) > 0.0
-        assert distance_func in {"gaussian", "tricube"}
+        assert distance_kernel in {"gaussian", "tricube"}
 
         self.X = np.empty(0)
         self.y = np.empty(0)
 
         self.add_intercept = add_intercept
 
-        self.distance_func = distance_func
-        self._dist_func = self.DISTANCE_FUNC[distance_func]
-        self._scale_dist = distance_func == "tricube"
+        self.distance_kernel = distance_kernel
+        self._dist_kernel_fun = self.KERNEL_FUNC[distance_kernel]
+        self._scale_dist = distance_kernel == "tricube"
 
-        if distance_func == "gaussian":
-            self._dist_func = functools.partial(self._dist_func, bandwidth=bandwidth)
+        if distance_kernel == "gaussian":
+            self._dist_kernel_fun = functools.partial(
+                self._dist_kernel_fun, bandwidth=bandwidth
+            )
 
     def fit(self, X, y):
         X = np.array(X, dtype=float)
@@ -64,7 +66,7 @@ class LWLR:
             dist_sqr = np.square((dist - min_) / (max_ - min_))
             del dist
 
-        weights = self._dist_func(dist_sqr)
+        weights = self._dist_kernel_fun(dist_sqr)
 
         preds = np.empty(n, dtype=float)
 
@@ -97,7 +99,7 @@ def _test_01():
     def rmse(a, b):
         return sklearn.metrics.mean_squared_error(a, b, squared=False)
 
-    model = LWLR(distance_func="gaussian", bandwidth=4)
+    model = LWLR(distance_kernel="gaussian", bandwidth=4)
 
     rmse_train = rmse_eval = 0.0
 
@@ -141,7 +143,7 @@ def _test_02():
         X, y, test_size=0.1, shuffle=True, random_state=16
     )
 
-    model = LWLR(distance_func="gaussian", bandwidth=1)
+    model = LWLR(distance_kernel="gaussian", bandwidth=1)
     model.fit(X_train, y_train)
 
     y_preds_train = model.predict(X_train)
