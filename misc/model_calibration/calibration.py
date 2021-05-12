@@ -1,35 +1,41 @@
 import typing as t
 
+import matplotlib.pyplot as plt
 import numpy as np
 import sklearn.model_selection
 import sklearn.linear_model
 import sklearn.isotonic
-import matplotlib.pyplot as plt
+import sklearn.base
 
 
 class _BaseCalibrator:
     def __init__(
         self,
         base_estimator,
-        eval_frac: float = 0.2,
+        n_splits: int = 5,
         shuffle: bool = True,
         random_state: t.Optional[int] = None,
         return_uncalibrated: bool = False,
         predict_method_name: str = "predict",
         uncalibrated_threshold: float = 0.5,
     ):
-        assert 1.0 > float(eval_frac) > 0.0
+        assert int(n_splits) > 0
 
         self.base_estimator = base_estimator
-        self.calibrator = None
-        self.eval_frac = float(eval_frac)
-        self.shuffle = shuffle
-        self.random_state = random_state
+        self.calibrator_base = None
+        self.n_splits = float(n_splits)
         self.return_uncalibrated = return_uncalibrated
         self.uncalibrated_threshold = float(uncalibrated_threshold)
 
         self._predict_method_name = predict_method_name
-        self._pred_method = None
+        self._splitter = sklearn.model_selection.KFold(
+            n_splits=int(n_splits),
+            shuffle=shuffle,
+            random_state=random_state,
+        )
+        self.n_splits = int(n_splits)
+
+        self._models = []
 
     def fit(self, X, y):
         X = np.asfarray(X)
@@ -37,24 +43,28 @@ class _BaseCalibrator:
 
         assert np.unique(y).size == 2
 
-        X_train, X_eval, y_train, y_eval = sklearn.model_selection.train_test_split(
-            X,
-            y,
-            test_size=self.eval_frac,
-            shuffle=self.shuffle,
-            random_state=self.random_state,
-        )
+        self._models = []
 
-        self.base_estimator.fit(X_train, y_train)
+        for inds_train, inds_eval in self._splitter.split(X, y):
+            X_train, X_eval = X[inds_train, :], X[inds_eval, :]
+            y_train, y_eval = y[inds_train], y[inds_eval]
 
-        self._pred_method = getattr(self.base_estimator, self._predict_method_name)
-        y_preds_uncalibrated = self._predict_uncalibrated(X_eval)
-        self.calibrator.fit(y_preds_uncalibrated.reshape(-1, 1), y_eval)
+            estimator = sklearn.base.clone(self.base_estimator)
+            estimator.fit(X_train, y_train)
+
+            y_preds_uncalibrated = self._predict_uncalibrated(X_eval, estimator)
+
+            calibrator = sklearn.base.clone(self.calibrator_base)
+            calibrator.fit(y_preds_uncalibrated.reshape(-1, 1), y_eval)
+
+            self._models.append((estimator, calibrator))
 
         return self
 
-    def _predict_uncalibrated(self, X):
-        y_preds_uncalibrated = self._pred_method(X)
+    def _predict_uncalibrated(self, X, estimator):
+        pred_method = getattr(estimator, self._predict_method_name)
+
+        y_preds_uncalibrated = pred_method(X)
 
         if y_preds_uncalibrated.ndim > 1:
             y_preds_uncalibrated = y_preds_uncalibrated[:, 1]
@@ -62,16 +72,28 @@ class _BaseCalibrator:
         return y_preds_uncalibrated
 
     def predict(self, X):
-        y_preds_uncalibrated = self._predict_uncalibrated(X)
-        y_preds = self.calibrator.predict_proba(y_preds_uncalibrated.reshape(-1, 1))
+        X = np.asfarray(X)
+        n, _ = X.shape
+        y_preds_uncalibrated, y_preds = np.zeros((2, n))
 
-        if y_preds.ndim > 1:
-            y_preds = y_preds[:, 1]
+        for estimator, calibrator in self._models:
+            cur_y_preds_uncalibrated = self._predict_uncalibrated(X, estimator)
+            cur_y_preds = calibrator.predict_proba(y_preds_uncalibrated.reshape(-1, 1))
+
+            if cur_y_preds.ndim > 1:
+                cur_y_preds = cur_y_preds[:, 1]
+
+            y_preds += cur_y_preds
+            y_preds_uncalibrated += cur_y_preds_uncalibrated
+
+        y_preds /= self.n_splits
+        y_preds_uncalibrated /= self.n_splits
 
         if self.return_uncalibrated:
             y_preds_uncalibrated = (
                 y_preds_uncalibrated > self.uncalibrated_threshold
             ).astype(int, copy=False)
+
             return y_preds, y_preds_uncalibrated
 
         return y_preds
@@ -87,7 +109,9 @@ class PlattCalibration(_BaseCalibrator):
     ):
         super(PlattCalibration, self).__init__(base_estimator, *args, **kwargs)
         _calibrator_args = calibrator_args if calibrator_args is not None else {}
-        self.calibrator = sklearn.linear_model.LogisticRegression(**_calibrator_args)
+        self.calibrator_base = sklearn.linear_model.LogisticRegression(
+            **_calibrator_args
+        )
 
 
 class IsotonicCalibration(_BaseCalibrator):
@@ -100,7 +124,7 @@ class IsotonicCalibration(_BaseCalibrator):
     ):
         super(PlattCalibration, self).__init__(base_estimator, *args, **kwargs)
         _calibrator_args = calibrator_args if calibrator_args is not None else {}
-        self.calibrator = sklearn.isotonic.IsotonicRegression(**_calibrator_args)
+        self.calibrator_base = sklearn.isotonic.IsotonicRegression(**_calibrator_args)
 
 
 def calibration_plot(
@@ -167,14 +191,15 @@ def _test():
     import sklearn.svm
     import sklearn.model_selection
     import sklearn.calibration
+    import sklearn.linear_model
 
-    bins = 10
+    bins = 5
 
     X, y = sklearn.datasets.load_breast_cancer(return_X_y=True)
     X_train, X_test, y_train, y_test = sklearn.model_selection.train_test_split(
         X, y, test_size=0.2, shuffle=True, random_state=8
     )
-    svc = sklearn.svm.SVC()
+    svc = sklearn.linear_model.Perceptron()
 
     model_platt = PlattCalibration(
         svc, return_uncalibrated=True, predict_method_name="decision_function"
@@ -192,7 +217,7 @@ def _test():
     ax1.scatter(sk_preds, sk_true, label="(ref) sklearn", color="purple", s=64)
     ax1.legend()
 
-    ref_platt = sklearn.calibration.CalibratedClassifierCV(svc, method="sigmoid", cv=2)
+    ref_platt = sklearn.calibration.CalibratedClassifierCV(svc, method="sigmoid", cv=5)
     ref_platt.fit(X_train, y_train)
     y_preds_ref = ref_platt.predict_proba(X_test)[:, 1]
     sk_true_ref, sk_preds_ref = sklearn.calibration.calibration_curve(
