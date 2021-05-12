@@ -27,7 +27,9 @@ class _BaseCalibrator:
         self.return_uncalibrated = return_uncalibrated
         self.uncalibrated_threshold = float(uncalibrated_threshold)
 
-        self._predict_method_name = predict_method_name
+        self._estimator_predict_method_name = predict_method_name
+        self._calibrator_predict_method_name = None
+
         self._splitter = sklearn.model_selection.KFold(
             n_splits=int(n_splits),
             shuffle=shuffle,
@@ -52,7 +54,9 @@ class _BaseCalibrator:
             estimator = sklearn.base.clone(self.base_estimator)
             estimator.fit(X_train, y_train)
 
-            y_preds_uncalibrated = self._predict_uncalibrated(X_eval, estimator)
+            y_preds_uncalibrated = self._predict(
+                X_eval, estimator, self._estimator_predict_method_name
+            )
 
             calibrator = sklearn.base.clone(self.calibrator_base)
             calibrator.fit(y_preds_uncalibrated.reshape(-1, 1), y_eval)
@@ -61,15 +65,18 @@ class _BaseCalibrator:
 
         return self
 
-    def _predict_uncalibrated(self, X, estimator):
-        pred_method = getattr(estimator, self._predict_method_name)
+    def _predict(self, X, model, method_name):
+        pred_method = getattr(model, method_name)
 
-        y_preds_uncalibrated = pred_method(X)
+        if X.ndim == 1:
+            X = X.reshape(-1, 1)
 
-        if y_preds_uncalibrated.ndim > 1:
-            y_preds_uncalibrated = y_preds_uncalibrated[:, 1]
+        y_preds = pred_method(X)
 
-        return y_preds_uncalibrated
+        if y_preds.ndim > 1:
+            y_preds = y_preds[:, 1]
+
+        return y_preds
 
     def predict(self, X):
         X = np.asfarray(X)
@@ -77,14 +84,18 @@ class _BaseCalibrator:
         y_preds_uncalibrated, y_preds = np.zeros((2, n))
 
         for estimator, calibrator in self._models:
-            cur_y_preds_uncalibrated = self._predict_uncalibrated(X, estimator)
-            cur_y_preds = calibrator.predict_proba(y_preds_uncalibrated.reshape(-1, 1))
+            cur_y_preds_uncalibrated = self._predict(
+                X, estimator, self._estimator_predict_method_name
+            )
 
-            if cur_y_preds.ndim > 1:
-                cur_y_preds = cur_y_preds[:, 1]
+            cur_y_preds = self._predict(
+                cur_y_preds_uncalibrated,
+                calibrator,
+                self._calibrator_predict_method_name,
+            )
 
-            y_preds += cur_y_preds
             y_preds_uncalibrated += cur_y_preds_uncalibrated
+            y_preds += cur_y_preds
 
         y_preds /= self.n_splits
         y_preds_uncalibrated /= self.n_splits
@@ -105,13 +116,14 @@ class PlattCalibration(_BaseCalibrator):
         base_estimator,
         calibrator_args: t.Dict[str, t.Any] = None,
         *args,
-        **kwargs
+        **kwargs,
     ):
         super(PlattCalibration, self).__init__(base_estimator, *args, **kwargs)
         _calibrator_args = calibrator_args if calibrator_args is not None else {}
         self.calibrator_base = sklearn.linear_model.LogisticRegression(
             **_calibrator_args
         )
+        self._calibrator_predict_method_name = "predict_proba"
 
 
 class IsotonicCalibration(_BaseCalibrator):
@@ -120,11 +132,12 @@ class IsotonicCalibration(_BaseCalibrator):
         base_estimator,
         calibrator_args: t.Dict[str, t.Any] = None,
         *args,
-        **kwargs
+        **kwargs,
     ):
-        super(PlattCalibration, self).__init__(base_estimator, *args, **kwargs)
+        super(IsotonicCalibration, self).__init__(base_estimator, *args, **kwargs)
         _calibrator_args = calibrator_args if calibrator_args is not None else {}
         self.calibrator_base = sklearn.isotonic.IsotonicRegression(**_calibrator_args)
+        self._calibrator_predict_method_name = "predict"
 
 
 def calibration_plot(
@@ -185,27 +198,18 @@ def calibration_plot(
     return fig, ax
 
 
-def _test():
-    import sklearn.calibration
+def _test_base(model, ref, name, bins: int = 5):
     import sklearn.datasets
-    import sklearn.svm
     import sklearn.model_selection
     import sklearn.calibration
-    import sklearn.linear_model
-
-    bins = 5
 
     X, y = sklearn.datasets.load_breast_cancer(return_X_y=True)
     X_train, X_test, y_train, y_test = sklearn.model_selection.train_test_split(
         X, y, test_size=0.2, shuffle=True, random_state=8
     )
-    svc = sklearn.linear_model.Perceptron()
 
-    model_platt = PlattCalibration(
-        svc, return_uncalibrated=True, predict_method_name="decision_function"
-    )
-    model_platt.fit(X_train, y_train)
-    y_preds, y_preds_uncalibrated = model_platt.predict(X_test)
+    model.fit(X_train, y_train)
+    y_preds, y_preds_uncalibrated = model.predict(X_test)
     sk_true, sk_preds = sklearn.calibration.calibration_curve(
         y_test, y_preds, n_bins=bins
     )
@@ -213,24 +217,52 @@ def _test():
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(10, 10))
 
     calibration_plot(y_test, y_preds, y_preds_uncalibrated, ax=ax1, bins=bins)
-    ax1.set_title("Platt Scaling (mine)")
+    ax1.set_title(f"{name} (mine)")
     ax1.scatter(sk_preds, sk_true, label="(ref) sklearn", color="purple", s=64)
     ax1.legend()
 
-    ref_platt = sklearn.calibration.CalibratedClassifierCV(svc, method="sigmoid", cv=5)
-    ref_platt.fit(X_train, y_train)
-    y_preds_ref = ref_platt.predict_proba(X_test)[:, 1]
+    ref.fit(X_train, y_train)
+    y_preds_ref = ref.predict_proba(X_test)[:, 1]
     sk_true_ref, sk_preds_ref = sklearn.calibration.calibration_curve(
         y_test, y_preds_ref, n_bins=bins
     )
 
     calibration_plot(y_test, y_preds_ref, ax=ax2, bins=bins)
-    ax2.set_title("Platt Scaling (sklearn)")
+    ax2.set_title(f"{name} (sklearn)")
     ax2.scatter(sk_preds_ref, sk_true_ref, label="(ref) sklearn", color="purple", s=64)
     ax2.legend()
 
     plt.show()
 
 
+def _test_01():
+    import sklearn.svm
+    import sklearn.calibration
+
+    svc = sklearn.svm.SVC()
+    model_platt = PlattCalibration(
+        svc, return_uncalibrated=True, predict_method_name="decision_function"
+    )
+    ref_platt = sklearn.calibration.CalibratedClassifierCV(svc, method="sigmoid", cv=5)
+    name = "Platt Calibration"
+    _test_base(model_platt, ref_platt, name)
+
+
+def _test_02():
+    import sklearn.svm
+    import sklearn.calibration
+
+    svc = sklearn.svm.SVC()
+    model_isotonic = IsotonicCalibration(
+        svc, return_uncalibrated=True, predict_method_name="decision_function"
+    )
+    ref_isotonic = sklearn.calibration.CalibratedClassifierCV(
+        svc, method="isotonic", cv=5
+    )
+    name = "Isotonic Calibration"
+    _test_base(model_isotonic, ref_isotonic, name)
+
+
 if __name__ == "__main__":
-    _test()
+    _test_01()
+    _test_02()
