@@ -47,12 +47,11 @@ class Autoencoder:
         for i, layer in enumerate(reversed(self.layers)):
             layer_id = len(self.layers) - i - 1
             grads = layer.backward(dout)
+            self._clip_grads(*grads)
 
             if not layer.trainable:
                 dout = grads
                 continue
-
-            self._clip_grads(*grads)
 
             dout = grads[0]
             param_grads = grads[1:]
@@ -74,21 +73,32 @@ class Autoencoder:
 def _test():
     import matplotlib.pyplot as plt
     import sklearn.datasets
+    import tqdm.auto
 
-    np.random.seed(16)
+    np.random.seed(32)
 
-    eval_size = 5
+    eval_size = 10
+    train_size = 20000
     batch_size = 128
-    train_epochs = 10
+    train_epochs = 8
     learning_rate = 1e-2
 
-    X, _ = sklearn.datasets.fetch_lfw_people(min_faces_per_person=5, return_X_y=True)
-    print(X.shape)
+    X, _ = sklearn.datasets.fetch_openml(
+        "mnist_784", version=1, return_X_y=True, as_frame=False
+    )
     np.random.shuffle(X)
 
-    layer_dims = [int(ratio * X.shape[1]) for ratio in (1.0, 0.75, 0.5, 0.75, 1.0)]
+    layer_dims = [
+        int(ratio * X.shape[1]) for ratio in (1.0, 0.7, 0.2, 0.1, 0.2, 0.7, 1.0)
+    ]
 
-    X_eval, X_train = X[:eval_size, :], X[eval_size:, :]
+    X_eval, X_train = X[:eval_size, :], X[eval_size : train_size + eval_size, :]
+
+    X_eval /= 255.0
+    X_train /= 255.0
+
+    print("Train shape :", X_train.shape)
+    print("Eval shape  :", X_eval.shape)
 
     n = X_train.shape[0]
     model = Autoencoder(layer_dims, learning_rate)
@@ -98,7 +108,7 @@ def _test():
         total_loss = 0.0
         np.random.shuffle(X)
 
-        for start in np.arange(0, n, batch_size):
+        for start in tqdm.auto.tqdm(np.arange(0, n, batch_size)):
             end = start + batch_size
             X_batch = X_train[start:end, :]
             X_preds = model(X_batch)
@@ -114,13 +124,13 @@ def _test():
     X_preds = model(X_eval).astype(int)
 
     fig, axes = plt.subplots(
-        eval_size, 2, figsize=(10, 10), tight_layout=True, sharex=True, sharey=True
+        2, eval_size, figsize=(15, 10), tight_layout=True, sharex=True, sharey=True
     )
 
     for i in np.arange(eval_size):
-        ax_orig, ax_pred = axes[i]
-        ax_orig.imshow(X_eval[i, :].reshape(62, 47))
-        ax_pred.imshow(X_preds[i, :].reshape(62, 47))
+        ax_orig, ax_pred = axes[:, i]
+        ax_orig.imshow(X_eval[i, :].reshape(28, 28))
+        ax_pred.imshow(X_preds[i, :].reshape(28, 28))
 
     plt.show()
 
