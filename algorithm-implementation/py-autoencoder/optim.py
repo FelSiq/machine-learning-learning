@@ -14,6 +14,16 @@ class _BaseOptim:
 
 
 class Momentum(_BaseOptim):
+    """SGD with Momentum.
+
+    Solves the difficulty of Vanilla SGD with surfaces that are too much
+    steeper on only some directions than others. Since this algorithms adds
+    a moving average to the model state position update, directions with
+    high variability of direction cancel theirs own updates in average, while
+    positions with low variability of direction builds up velocity and, hence,
+    moves faster to the local minima.
+    """
+
     def __init__(
         self, learning_rate: float, momentum: float, bias_correction: bool = True
     ):
@@ -59,6 +69,15 @@ class Momentum(_BaseOptim):
 
 
 class NesterovMomentum(Momentum):
+    """Nesterov Accelerated Gradient (NAG).
+
+    This optimizer modifies the vanilla (SGD+)Momentum algorithm with a
+    'lookahead' of the gradients of the approximated next position
+    considering the current state velocity and, hence, this optimizer
+    builds up momentum in a informed way, and not completely blind like
+    the vanilla Momentum algorithm.
+    """
+
     def update(self, layer_id: int, *grads):
         m = self.momentum
         vels = self.velocity[layer_id]
@@ -97,25 +116,25 @@ class Adagrad(_BaseOptim):
         assert float(eps) > 0.0
 
         self.eps = float(eps)
-        self.mv_avg_second_mom = {}
+        self.cum_sec_momentum = {}
 
     def register_layer(self, layer_id: int, *parameters):
-        mv_avg_second_mom = []
+        cum_sec_momentum = []
 
         for param in parameters:
-            mv_avg_second_mom.append(np.zeros_like(param))
+            cum_sec_momentum.append(np.zeros_like(param))
 
-        self.mv_avg_second_mom[layer_id] = mv_avg_second_mom
+        self.cum_sec_momentum[layer_id] = cum_sec_momentum
 
     def update(self, layer_id: int, *grads):
-        mv_avg_second_mom = self.mv_avg_second_mom[layer_id]
+        cum_sec_momentum = self.cum_sec_momentum[layer_id]
         ret = []
 
         for i, grad in enumerate(grads):
-            cur_mov_avg = mv_avg_second_mom[i]
-            cur_mov_avg += np.square(grad)
+            cur_cum_sec_mom = cum_sec_momentum[i]
+            cur_cum_sec_mom += np.square(grad)
 
-            cur_lr = self.learning_rate / np.sqrt(cur_mov_avg + self.eps)
+            cur_lr = self.learning_rate / np.sqrt(cur_cum_sec_mom + self.eps)
             param_updates = cur_lr * grad
             ret.append(param_updates)
 
@@ -123,6 +142,17 @@ class Adagrad(_BaseOptim):
 
 
 class Adadelta(_BaseOptim):
+    """Adadelta optimization algorithm.
+
+    Solves the problem of the agressiveness of Adagrad, while preserving the
+    adaptive learning rate per parameter.
+
+    It is very similar to RMSProp optimizer, but was invented separately.
+
+    The peculiar characteristic of Adadelta is that it does not depends on the
+    learning rate hyperparameter.
+    """
+
     def __init__(
         self, learning_rate: float = 1.0, momentum: float = 0.9, eps: float = 1e-6
     ):
@@ -175,5 +205,40 @@ class Adadelta(_BaseOptim):
             mv_avg_second_mom_params[i] = cur_mov_avg_params
 
             ret.append(param_updates)
+
+        return ret
+
+
+class RMSProp(Adagrad):
+    """."""
+
+    def __init__(self, learning_rate: float, momentum: float = 0.9, eps: float = 1e-8):
+        assert 1.0 > float(momentum) > 0.0
+        super(RMSProp, self).__init__(learning_rate=learning_rate, eps=eps)
+
+        self.momentum = float(momentum)
+        self.sec_mom_mov_avg = {}
+
+    def register_layer(self, layer_id: int, *parameters):
+        sec_mom_mov_avg = []
+
+        for param in parameters:
+            sec_mom_mov_avg.append(np.zeros_like(param))
+
+        self.sec_mom_mov_avg[layer_id] = sec_mom_mov_avg
+
+    def update(self, layer_id: int, *grads):
+        sec_mom_mov_avg = self.sec_mom_mov_avg[layer_id]
+        ret = []
+        m = self.momentum
+
+        for i, grad in enumerate(grads):
+            cur_sec_mom_mov_avg = sec_mom_mov_avg[i]
+            cur_sec_mom_mov_avg = m * cur_sec_mom_mov_avg + (1.0 - m) * np.square(grad)
+
+            cur_lr = self.learning_rate / np.sqrt(cur_sec_mom_mov_avg + self.eps)
+            param_updates = cur_lr * grad
+            ret.append(param_updates)
+            sec_mom_mov_avg[i] = cur_sec_mom_mov_avg
 
         return ret
