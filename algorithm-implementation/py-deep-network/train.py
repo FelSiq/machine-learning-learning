@@ -136,7 +136,7 @@ def update_parameters(
 def build_minibatch(
     X: np.ndarray, y: np.ndarray, epochs: int, batch_size: int, shuffle: bool = True
 ) -> t.Tuple[np.ndarray, np.ndarray]:
-    num_inst = X.shape[1]
+    num_inst = X.shape[0]
 
     inds = np.arange(num_inst)
 
@@ -276,23 +276,23 @@ def _test():
         X_train,
         y_train,
         model,
-        "ce",
-        activation_out="softmax",
-        batch_size=256,
+        loss_func="softmax_ce",
+        activation_out="identity",
+        batch_size=32,
         optimizer="adam",
         epochs=5000,
         learning_rate=0.01,
         epoch_to_print=500,
-        lambd=0.1,
-        lr_update="inv_sqrt",
-        keep_prob=0.8,
+        # lambd=0.1,
+        # lr_update="inv_sqrt",
+        # keep_prob=0.8,
     )
     y_preds = predict(X_test, model)
 
     print(y_preds)
     print(y_test)
 
-    acc = sklearn.metrics.accuracy_score(y_preds, y_test)
+    acc = sklearn.metrics.accuracy_score(y_preds.argmax(axis=1), y_test.argmax(axis=1))
 
     print(f"Test accuracy: {acc:.4f}")
 

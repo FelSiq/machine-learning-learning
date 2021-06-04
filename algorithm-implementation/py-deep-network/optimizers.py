@@ -45,7 +45,7 @@ def init_momentum(
 
     cache["beta1"] = beta1
     cache["bias_correction"] = bias_correction
-    cache["momentum_it_num"] = 0
+    cache["momentum_it_num"] = 1
 
     issue_unused_args_warnings(kwargs)
 
@@ -71,12 +71,14 @@ def update_momentum(
         cur_vel = cache[name_v_param]
         cur_vel = beta1 * cur_vel + (1.0 - beta1) * cur_grad
 
-        if bias_correction and beta1 ** it_num > 1e-8:
-            cur_vel /= 1.0 + beta1 ** it_num
-
         cache[name_v_param] = cur_vel
-        cache["momentum_it_num"] += 1
+
+        if bias_correction and beta1 ** it_num > 1e-6:
+            cur_vel = cur_vel / (1.0 - beta1 ** it_num)
+
         updates[name_u_param] = cur_vel
+
+    cache["momentum_it_num"] += 1
 
     return updates
 
@@ -99,7 +101,7 @@ def init_rmsprop(
     cache["beta2"] = beta2
     cache["epsilon"] = epsilon
     cache["bias_correction"] = bias_correction
-    cache["rmsprop_it_num"] = 0
+    cache["rmsprop_it_num"] = 1
 
     issue_unused_args_warnings(kwargs)
 
@@ -127,11 +129,14 @@ def update_rmsprop(
         cur_vel_sqr = cache[name_s_param]
         cur_vel_sqr = beta2 * cur_vel_sqr + (1.0 - beta2) * np.square(cur_grad)
 
-        if bias_correction and beta2 ** it_num > 1e-8:
-            cur_vel_sqr /= 1.0 + beta2 ** it_num
-
         cache[name_s_param] = cur_vel_sqr
+
+        if bias_correction and beta2 ** it_num > 1e-6:
+            cur_vel_sqr = cur_vel_sqr / (1.0 - beta2 ** it_num)
+
         updates[name_u_param] = cur_grad / (np.sqrt(cur_vel_sqr) + epsilon)
+
+    cache["rmsprop_it_num"] += 1
 
     return updates
 
