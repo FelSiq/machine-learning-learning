@@ -297,6 +297,7 @@ class Adam(Momentum, RMSProp):
         learning_rate: float,
         first_momentum: float = 0.9,
         second_momentum: float = 0.999,
+        amsgrad: bool = False,
         eps: float = 1e-8,
     ):
         Momentum.__init__(
@@ -313,6 +314,7 @@ class Adam(Momentum, RMSProp):
         )
 
         self.bias_correction = True
+        self.amsgrad = bool(amsgrad)
 
     def register_layer(self, layer_id: int, *parameters):
         Momentum.register_layer(self, layer_id, *parameters)
@@ -332,6 +334,9 @@ class Adam(Momentum, RMSProp):
 
             cur_fst_mma = m1 * prev_fst_mma + (1.0 - m1) * grad
             cur_sec_mma = m2 * prev_sec_mma + (1.0 - m2) * np.square(grad)
+
+            if self.amsgrad:
+                cur_sec_mma = np.maximum(prev_sec_mma, cur_sec_mma)
 
             # Note: do NOT store the unbiased version (calculated below), or else
             # everything will fall apart!
@@ -358,7 +363,23 @@ class Adamax(Adam):
       an infinity norm between the scaled previous second moment and the
       absolute value of the current gradients.
     - Theres no need for bias correction onto the second moment anymore.
+    - I don't know if it makes sense to combine Adamax with AMSgrad.
     """
+
+    def __init__(
+        self,
+        learning_rate: float,
+        first_momentum: float = 0.9,
+        second_momentum: float = 0.999,
+        eps: float = 1e-8,
+    ):
+        super(Adamax, self).__init__(
+            learning_rate=learning_rate,
+            first_momentum=first_momentum,
+            second_momentum=second_momentum,
+            eps=eps,
+            amsgrad=False,
+        )
 
     def update(self, layer_id: int, *grads):
         fst_mom_mov_avg = self.fst_mom_mov_avg[layer_id]
@@ -411,6 +432,9 @@ class Nadam(Adam):
 
             cur_fst_mma = m1 * prev_fst_mma + (1.0 - m1) * grad
             cur_sec_mma = m2 * prev_sec_mma + (1.0 - m2) * np.square(grad)
+
+            if self.amsgrad:
+                cur_sec_mma = np.maximum(prev_sec_mma, cur_sec_mma)
 
             # Note: do NOT store the unbiased version (calculated below), or else
             # everything will fall apart!
