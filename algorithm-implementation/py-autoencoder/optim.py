@@ -1,3 +1,5 @@
+import typing as t
+
 import numpy as np
 
 
@@ -7,7 +9,7 @@ class _BaseOptim:
         self.learning_rate = float(learning_rate)
         self.bias_correction = False
 
-    def register_layer(self, *parameters):
+    def register_layer(self, *params):
         raise NotImplementedError
 
     def update(self, layer_id: int, *grads):
@@ -55,10 +57,10 @@ class Momentum(_BaseOptim):
         self.fst_mom_mov_avg = {}
         self._iterations = {}
 
-    def register_layer(self, layer_id: int, *parameters):
+    def register_layer(self, layer_id: int, *params):
         fst_mom_mov_avg = []
 
-        for param in parameters:
+        for param in params:
             fst_mom_mov_avg.append(np.zeros_like(param))
 
         self.fst_mom_mov_avg[layer_id] = fst_mom_mov_avg
@@ -139,10 +141,10 @@ class Adagrad(_BaseOptim):
         self.eps = float(eps)
         self.cum_sec_momentum = {}
 
-    def register_layer(self, layer_id: int, *parameters):
+    def register_layer(self, layer_id: int, *params):
         cum_sec_momentum = []
 
-        for param in parameters:
+        for param in params:
             cum_sec_momentum.append(np.zeros_like(param))
 
         self.cum_sec_momentum[layer_id] = cum_sec_momentum
@@ -191,11 +193,11 @@ class Adadelta(_BaseOptim):
         self.mv_avg_second_mom_grads = {}
         self.mv_avg_second_mom_params = {}
 
-    def register_layer(self, layer_id: int, *parameters):
+    def register_layer(self, layer_id: int, *params):
         mv_avg_second_mom_grads = []
         mv_avg_second_mom_params = []
 
-        for param in parameters:
+        for param in params:
             weights_grads, weights_params = np.zeros((2, *param.shape), dtype=float)
             mv_avg_second_mom_grads.append(weights_grads)
             mv_avg_second_mom_params.append(weights_params)
@@ -260,10 +262,10 @@ class RMSProp(Adagrad):
         self.second_momentum = float(second_momentum)
         self.sec_mom_mov_avg = {}
 
-    def register_layer(self, layer_id: int, *parameters):
+    def register_layer(self, layer_id: int, *params):
         sec_mom_mov_avg = []
 
-        for param in parameters:
+        for param in params:
             sec_mom_mov_avg.append(np.zeros_like(param))
 
         self.sec_mom_mov_avg[layer_id] = sec_mom_mov_avg
@@ -297,9 +299,13 @@ class Adam(Momentum, RMSProp):
         learning_rate: float,
         first_momentum: float = 0.9,
         second_momentum: float = 0.999,
+        weight_decay: float = 0.0,
         amsgrad: bool = False,
         eps: float = 1e-8,
+        weight_decay_ignore_ndims: t.Tuple[int] = (1,),
     ):
+        assert float(weight_decay) >= 0.0
+
         Momentum.__init__(
             self,
             learning_rate=learning_rate,
@@ -313,16 +319,31 @@ class Adam(Momentum, RMSProp):
             eps=eps,
         )
 
-        self.bias_correction = True
         self.amsgrad = bool(amsgrad)
+        self.weight_decay = float(weight_decay)
+        self.weight_decay_ignore_ndims = frozenset(weight_decay_ignore_ndims)
 
-    def register_layer(self, layer_id: int, *parameters):
-        Momentum.register_layer(self, layer_id, *parameters)
-        RMSProp.register_layer(self, layer_id, *parameters)
+        self.bias_correction = True
+        self.params_ref = {}  # type: t.Dict[int, t.List[np.ndarray]]
+        self.params_should_decay = {}  # type: t.Dict[int, t.List[bool]]
+
+    def register_layer(self, layer_id: int, *params):
+        Momentum.register_layer(self, layer_id, *params)
+        RMSProp.register_layer(self, layer_id, *params)
+
+        cur_param_refs = self.params_ref[layer_id] = []  # type: t.List[np.ndarray]
+        cur_param_decay = self.params_should_decay[layer_id] = []  # type: t.List[bool]
+
+        for param in params:
+            cur_param_refs.append(param)
+            cur_param_decay.append(param.ndim not in self.weight_decay_ignore_ndims)
 
     def update(self, layer_id: int, *grads):
         fst_mom_mov_avg = self.fst_mom_mov_avg[layer_id]
         sec_mom_mov_avg = self.sec_mom_mov_avg[layer_id]
+        cur_param_refs = self.params_ref[layer_id]
+        cur_param_decay = self.params_should_decay[layer_id]
+
         param_updates = []
         m1 = self.first_momentum
         m2 = self.second_momentum
@@ -347,7 +368,9 @@ class Adam(Momentum, RMSProp):
             cur_sec_mma = self._correct_bias(it, m2, cur_sec_mma)
 
             cur_lr = self.learning_rate / np.sqrt(cur_sec_mma + self.eps)
-            cur_updates = cur_lr * cur_fst_mma
+
+            decay_factor = self.weight_decay if cur_param_decay[i] else 0.0
+            cur_updates = cur_lr * (cur_fst_mma + decay_factor * cur_param_refs[i])
             param_updates.append(cur_updates)
 
         self._iterations[layer_id] += 1
@@ -384,6 +407,9 @@ class Adamax(Adam):
     def update(self, layer_id: int, *grads):
         fst_mom_mov_avg = self.fst_mom_mov_avg[layer_id]
         sec_mom_mov_avg = self.sec_mom_mov_avg[layer_id]
+        cur_param_refs = self.params_ref[layer_id]
+        cur_param_decay = self.params_should_decay[layer_id]
+
         param_updates = []
         m1 = self.first_momentum
         m2 = self.second_momentum
@@ -404,7 +430,8 @@ class Adamax(Adam):
             cur_fst_mma = self._correct_bias(it, m1, cur_fst_mma)
 
             cur_lr = self.learning_rate / (cur_sec_mma + self.eps)
-            cur_updates = cur_lr * cur_fst_mma
+            decay_factor = self.weight_decay if cur_param_decay[i] else 0.0
+            cur_updates = cur_lr * (cur_fst_mma + decay_factor * cur_param_refs[i])
             param_updates.append(cur_updates)
 
         self._iterations[layer_id] += 1
@@ -421,6 +448,9 @@ class Nadam(Adam):
     def update(self, layer_id: int, *grads):
         fst_mom_mov_avg = self.fst_mom_mov_avg[layer_id]
         sec_mom_mov_avg = self.sec_mom_mov_avg[layer_id]
+        cur_param_refs = self.params_ref[layer_id]
+        cur_param_decay = self.params_should_decay[layer_id]
+
         param_updates = []
         m1 = self.first_momentum
         m2 = self.second_momentum
@@ -447,7 +477,12 @@ class Nadam(Adam):
             cur_sec_mma = self._correct_bias(it, m2, cur_sec_mma)
 
             cur_lr = self.learning_rate / np.sqrt(cur_sec_mma + self.eps)
-            cur_updates = cur_lr * ((1.0 + m1) * cur_fst_mma - m1 * prev_fst_mma)
+            decay_factor = self.weight_decay if cur_param_decay[i] else 0.0
+            cur_updates = cur_lr * (
+                (1.0 + m1) * cur_fst_mma
+                - m1 * prev_fst_mma
+                + decay_factor * cur_param_refs[i]
+            )
             param_updates.append(cur_updates)
 
         self._iterations[layer_id] += 1
