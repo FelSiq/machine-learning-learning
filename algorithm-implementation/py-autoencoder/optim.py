@@ -56,6 +56,8 @@ class Momentum(_BaseOptim):
             cur_vel = fst_mom_mov_avg[i]
             new_vel = m * cur_vel + (1.0 - m) * grad
 
+            # Note: do NOT store the unbiased version (calculated below), or else
+            # everything will fall apart!
             fst_mom_mov_avg[i] = new_vel
 
             mom_it = m ** it
@@ -91,6 +93,8 @@ class NesterovMomentum(Momentum):
             cur_vel = fst_mom_mov_avg[i]
             new_vel = m * cur_vel + (1 - m) * grad
 
+            # Note: do NOT store the unbiased version (calculated below), or else
+            # everything will fall apart!
             fst_mom_mov_avg[i] = new_vel
 
             mom_it = m ** it
@@ -309,18 +313,23 @@ class Adam(Momentum, RMSProp):
             cur_fst_mma = m1 * cur_fst_mma + (1.0 - m1) * grad
             cur_sec_mma = m2 * cur_sec_mma + (1.0 - m2) * np.square(grad)
 
+            # Note: do NOT store the unbiased version (calculated below), or else
+            # everything will fall apart!
+            fst_mom_mov_avg[i] = cur_fst_mma
+            sec_mom_mov_avg[i] = cur_sec_mma
+
             m1_it = m1 ** it
             m2_it = m2 ** it
 
-            unbiased_cur_fst_mma = cur_fst_mma / (1.0 - m1_it)
-            unbiased_cur_sec_mma = cur_sec_mma / (1.0 - m2_it)
+            if m1_it > 1e-4:
+                cur_fst_mma = cur_fst_mma / (1.0 - m1_it)
 
-            cur_lr = self.learning_rate / np.sqrt(unbiased_cur_sec_mma + self.eps)
-            param_updates = cur_lr * unbiased_cur_fst_mma
+            if m2_it > 1e-4:
+                cur_sec_mma = cur_sec_mma / (1.0 - m2_it)
+
+            cur_lr = self.learning_rate / np.sqrt(cur_sec_mma + self.eps)
+            param_updates = cur_lr * cur_fst_mma
             ret.append(param_updates)
-
-            fst_mom_mov_avg[i] = cur_fst_mma
-            sec_mom_mov_avg[i] = cur_sec_mma
 
         self._iterations[layer_id] += 1
 
