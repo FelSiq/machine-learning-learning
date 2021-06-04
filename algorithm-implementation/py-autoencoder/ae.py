@@ -23,9 +23,10 @@ class Autoencoder:
 
         self.layers = []
         l_rel = modules.ReLU()
-        self.optim = optim.Adam(
+        self.optim = optim.Nadam(
             learning_rate=learning_rate,
-            second_momentum=first_momentum,
+            first_momentum=first_momentum,
+            second_momentum=second_momentum,
         )
         self.clip_grad_norm = float(clip_grad_norm)
 
@@ -85,7 +86,7 @@ def _test():
     train_size = 20000
     batch_size = 32
     train_epochs = 60
-    learning_rate = 1e-2
+    learning_rate = 1e-3
 
     """
     X, _ = sklearn.datasets.fetch_openml(
