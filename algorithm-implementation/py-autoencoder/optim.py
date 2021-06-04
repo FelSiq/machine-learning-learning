@@ -71,15 +71,15 @@ class Momentum(_BaseOptim):
         param_updates = []
 
         for i, grad in enumerate(grads):
-            cur_vel = fst_mom_mov_avg[i]
-            new_vel = m * cur_vel + (1.0 - m) * grad
+            prev_fst_mma = fst_mom_mov_avg[i]
+            cur_fst_mma = m * prev_fst_mma + (1.0 - m) * grad
 
             # Note: do NOT store the unbiased version (calculated below), or else
             # everything will fall apart!
-            fst_mom_mov_avg[i] = new_vel
+            fst_mom_mov_avg[i] = cur_fst_mma
 
-            new_vel = self._correct_bias(it, m, new_vel)
-            cur_updates = self.learning_rate * new_vel
+            cur_fst_mma = self._correct_bias(it, m, cur_fst_mma)
+            cur_updates = self.learning_rate * cur_fst_mma
             param_updates.append(cur_updates)
 
         self._iterations[layer_id] += 1
@@ -104,15 +104,19 @@ class NesterovMomentum(Momentum):
         param_updates = []
 
         for i, grad in enumerate(grads):
-            cur_vel = fst_mom_mov_avg[i]
-            new_vel = m * cur_vel + (1 - m) * grad
+            prev_fst_mma = fst_mom_mov_avg[i]
+            cur_fst_mma = m * prev_fst_mma + (1 - m) * grad
 
             # Note: do NOT store the unbiased version (calculated below), or else
             # everything will fall apart!
-            fst_mom_mov_avg[i] = new_vel
+            fst_mom_mov_avg[i] = cur_fst_mma
 
-            new_vel, cur_vel = self._correct_bias(it, m, new_vel, cur_vel)
-            cur_updates = self.learning_rate * ((1.0 + m) * new_vel - m * cur_vel)
+            cur_fst_mma, prev_fst_mma = self._correct_bias(
+                it, m, cur_fst_mma, prev_fst_mma
+            )
+            cur_updates = self.learning_rate * (
+                (1.0 + m) * cur_fst_mma - m * prev_fst_mma
+            )
             param_updates.append(cur_updates)
 
         self._iterations[layer_id] += 1
@@ -148,8 +152,10 @@ class Adagrad(_BaseOptim):
         param_updates = []
 
         for i, grad in enumerate(grads):
-            cur_cum_sec_mom = cum_sec_momentum[i]
-            cur_cum_sec_mom += np.square(grad)
+            prev_cum_sec_mom = cum_sec_momentum[i]
+            cur_cum_sec_mom = prev_cum_sec_mom + np.square(grad)
+
+            cum_sec_momentum[i] = cur_cum_sec_mom
 
             cur_lr = self.learning_rate / np.sqrt(cur_cum_sec_mom + self.eps)
             cur_updates = cur_lr * grad
@@ -205,19 +211,20 @@ class Adadelta(_BaseOptim):
         eps = self.eps
 
         for i, grad in enumerate(grads):
-            cur_mov_avg_grads = mv_avg_second_mom_grads[i]
-            cur_mov_avg_params = mv_avg_second_mom_params[i]
+            prev_mov_avg_grads = mv_avg_second_mom_grads[i]
+            prev_mov_avg_params = mv_avg_second_mom_params[i]
 
-            cur_mov_avg_grads = m * cur_mov_avg_grads + (1 - m) * np.square(grad)
+            cur_mov_avg_grads = m * prev_mov_avg_grads + (1 - m) * np.square(grad)
 
-            # Note: weirdly enough, the 'eps' on the denominator prevents division
+            # Note: both 'eps', in the numerator and denominator, are fundamental to
+            # the algorithm works properly. The 'eps' on the denominator prevents division
             # by zero, while the 'eps' on the numerator starts the recursive moving
             # average as the value of the first gradient instead of just zeros,
             # which is necessary to actually start the model training.
-            cur_lr = np.sqrt((cur_mov_avg_params + eps) / (cur_mov_avg_grads + eps))
+            cur_lr = np.sqrt((prev_mov_avg_params + eps) / (cur_mov_avg_grads + eps))
             cur_updates = cur_lr * grad
 
-            cur_mov_avg_params = m * cur_mov_avg_params + (1 - m) * np.square(
+            cur_mov_avg_params = m * prev_mov_avg_params + (1 - m) * np.square(
                 cur_updates
             )
 
@@ -267,13 +274,14 @@ class RMSProp(Adagrad):
         m = self.second_momentum
 
         for i, grad in enumerate(grads):
-            cur_sec_mom_mov_avg = sec_mom_mov_avg[i]
-            cur_sec_mom_mov_avg = m * cur_sec_mom_mov_avg + (1.0 - m) * np.square(grad)
+            prev_sec_mom_mov_avg = sec_mom_mov_avg[i]
+            cur_sec_mom_mov_avg = m * prev_sec_mom_mov_avg + (1.0 - m) * np.square(grad)
+
+            sec_mom_mov_avg[i] = cur_sec_mom_mov_avg
 
             cur_lr = self.learning_rate / np.sqrt(cur_sec_mom_mov_avg + self.eps)
             cur_updates = cur_lr * grad
             param_updates.append(cur_updates)
-            sec_mom_mov_avg[i] = cur_sec_mom_mov_avg
 
         return param_updates
 
@@ -319,11 +327,11 @@ class Adam(Momentum, RMSProp):
         it = self._iterations[layer_id]
 
         for i, grad in enumerate(grads):
-            cur_fst_mma = fst_mom_mov_avg[i]
-            cur_sec_mma = sec_mom_mov_avg[i]
+            prev_fst_mma = fst_mom_mov_avg[i]
+            prev_sec_mma = sec_mom_mov_avg[i]
 
-            cur_fst_mma = m1 * cur_fst_mma + (1.0 - m1) * grad
-            cur_sec_mma = m2 * cur_sec_mma + (1.0 - m2) * np.square(grad)
+            cur_fst_mma = m1 * prev_fst_mma + (1.0 - m1) * grad
+            cur_sec_mma = m2 * prev_sec_mma + (1.0 - m2) * np.square(grad)
 
             # Note: do NOT store the unbiased version (calculated below), or else
             # everything will fall apart!
@@ -361,11 +369,11 @@ class Adamax(Adam):
         it = self._iterations[layer_id]
 
         for i, grad in enumerate(grads):
-            cur_fst_mma = fst_mom_mov_avg[i]
-            cur_sec_mma = sec_mom_mov_avg[i]
+            prev_fst_mma = fst_mom_mov_avg[i]
+            prev_sec_mma = sec_mom_mov_avg[i]
 
-            cur_fst_mma = m1 * cur_fst_mma + (1.0 - m1) * grad
-            cur_sec_mma = np.maximum(m2 * cur_sec_mma, np.abs(grad))
+            cur_fst_mma = m1 * prev_fst_mma + (1.0 - m1) * grad
+            cur_sec_mma = np.maximum(m2 * prev_sec_mma, np.abs(grad))
 
             # Note: do NOT store the unbiased version (calculated below), or else
             # everything will fall apart!
@@ -399,10 +407,10 @@ class Nadam(Adam):
 
         for i, grad in enumerate(grads):
             prev_fst_mma = fst_mom_mov_avg[i]
-            cur_sec_mma = sec_mom_mov_avg[i]
+            prev_sec_mma = sec_mom_mov_avg[i]
 
             cur_fst_mma = m1 * prev_fst_mma + (1.0 - m1) * grad
-            cur_sec_mma = m2 * cur_sec_mma + (1.0 - m2) * np.square(grad)
+            cur_sec_mma = m2 * prev_sec_mma + (1.0 - m2) * np.square(grad)
 
             # Note: do NOT store the unbiased version (calculated below), or else
             # everything will fall apart!
