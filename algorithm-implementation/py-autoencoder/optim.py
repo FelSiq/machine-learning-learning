@@ -50,7 +50,7 @@ class Momentum(_BaseOptim):
         m = self.first_momentum
         fst_mom_mov_avg = self.fst_mom_mov_avg[layer_id]
         it = self._iterations[layer_id]
-        ret = []
+        param_updates = []
 
         for i, grad in enumerate(grads):
             cur_vel = fst_mom_mov_avg[i]
@@ -65,12 +65,12 @@ class Momentum(_BaseOptim):
             if self.bias_correction and mom_it > 5e-2:
                 new_vel = new_vel / (1.0 - mom_it)
 
-            param_updates = self.learning_rate * new_vel
-            ret.append(param_updates)
+            cur_updates = self.learning_rate * new_vel
+            param_updates.append(cur_updates)
 
         self._iterations[layer_id] += 1
 
-        return ret
+        return param_updates
 
 
 class NesterovMomentum(Momentum):
@@ -87,7 +87,7 @@ class NesterovMomentum(Momentum):
         m = self.first_momentum
         fst_mom_mov_avg = self.fst_mom_mov_avg[layer_id]
         it = self._iterations[layer_id]
-        ret = []
+        param_updates = []
 
         for i, grad in enumerate(grads):
             cur_vel = fst_mom_mov_avg[i]
@@ -101,13 +101,14 @@ class NesterovMomentum(Momentum):
 
             if self.bias_correction and mom_it > 5e-2:
                 new_vel = new_vel / (1.0 - mom_it)
+                cur_vel = cur_vel / (1.0 - mom_it)
 
-            param_updates = self.learning_rate * (m * cur_vel + (1 + m) * new_vel)
-            ret.append(param_updates)
+            cur_updates = self.learning_rate * ((1.0 + m) * new_vel - m * cur_vel)
+            param_updates.append(cur_updates)
 
         self._iterations[layer_id] += 1
 
-        return ret
+        return param_updates
 
 
 class Adagrad(_BaseOptim):
@@ -135,17 +136,17 @@ class Adagrad(_BaseOptim):
 
     def update(self, layer_id: int, *grads):
         cum_sec_momentum = self.cum_sec_momentum[layer_id]
-        ret = []
+        param_updates = []
 
         for i, grad in enumerate(grads):
             cur_cum_sec_mom = cum_sec_momentum[i]
             cur_cum_sec_mom += np.square(grad)
 
             cur_lr = self.learning_rate / np.sqrt(cur_cum_sec_mom + self.eps)
-            param_updates = cur_lr * grad
-            ret.append(param_updates)
+            cur_updates = cur_lr * grad
+            param_updates.append(cur_updates)
 
-        return ret
+        return param_updates
 
 
 class Adadelta(_BaseOptim):
@@ -190,7 +191,7 @@ class Adadelta(_BaseOptim):
     def update(self, layer_id: int, *grads):
         mv_avg_second_mom_grads = self.mv_avg_second_mom_grads[layer_id]
         mv_avg_second_mom_params = self.mv_avg_second_mom_params[layer_id]
-        ret = []
+        param_updates = []
         m = self.second_momentum
         eps = self.eps
 
@@ -205,18 +206,18 @@ class Adadelta(_BaseOptim):
             # average as the value of the first gradient instead of just zeros,
             # which is necessary to actually start the model training.
             cur_lr = np.sqrt((cur_mov_avg_params + eps) / (cur_mov_avg_grads + eps))
-            param_updates = cur_lr * grad
+            cur_updates = cur_lr * grad
 
             cur_mov_avg_params = m * cur_mov_avg_params + (1 - m) * np.square(
-                param_updates
+                cur_updates
             )
 
             mv_avg_second_mom_grads[i] = cur_mov_avg_grads
             mv_avg_second_mom_params[i] = cur_mov_avg_params
 
-            ret.append(param_updates)
+            param_updates.append(cur_updates)
 
-        return ret
+        return param_updates
 
 
 class RMSProp(Adagrad):
@@ -253,7 +254,7 @@ class RMSProp(Adagrad):
 
     def update(self, layer_id: int, *grads):
         sec_mom_mov_avg = self.sec_mom_mov_avg[layer_id]
-        ret = []
+        param_updates = []
         m = self.second_momentum
 
         for i, grad in enumerate(grads):
@@ -261,11 +262,11 @@ class RMSProp(Adagrad):
             cur_sec_mom_mov_avg = m * cur_sec_mom_mov_avg + (1.0 - m) * np.square(grad)
 
             cur_lr = self.learning_rate / np.sqrt(cur_sec_mom_mov_avg + self.eps)
-            param_updates = cur_lr * grad
-            ret.append(param_updates)
+            cur_updates = cur_lr * grad
+            param_updates.append(cur_updates)
             sec_mom_mov_avg[i] = cur_sec_mom_mov_avg
 
-        return ret
+        return param_updates
 
 
 class Adam(Momentum, RMSProp):
@@ -301,7 +302,7 @@ class Adam(Momentum, RMSProp):
     def update(self, layer_id: int, *grads):
         fst_mom_mov_avg = self.fst_mom_mov_avg[layer_id]
         sec_mom_mov_avg = self.sec_mom_mov_avg[layer_id]
-        ret = []
+        param_updates = []
         m1 = self.first_momentum
         m2 = self.second_momentum
         it = self._iterations[layer_id]
@@ -328,9 +329,9 @@ class Adam(Momentum, RMSProp):
                 cur_sec_mma = cur_sec_mma / (1.0 - m2_it)
 
             cur_lr = self.learning_rate / np.sqrt(cur_sec_mma + self.eps)
-            param_updates = cur_lr * cur_fst_mma
-            ret.append(param_updates)
+            cur_updates = cur_lr * cur_fst_mma
+            param_updates.append(cur_updates)
 
         self._iterations[layer_id] += 1
 
-        return ret
+        return param_updates
