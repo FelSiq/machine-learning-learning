@@ -25,40 +25,43 @@ class Momentum(_BaseOptim):
     """
 
     def __init__(
-        self, learning_rate: float, momentum: float, bias_correction: bool = True
+        self,
+        learning_rate: float,
+        first_momentum: float,
+        bias_correction: bool = True,
     ):
         super(Momentum, self).__init__(learning_rate)
-        assert 1.0 > float(momentum) > 0.0
-        self.momentum = float(momentum)
+        assert 1.0 > float(first_momentum) > 0.0
+        self.first_momentum = float(first_momentum)
         self.bias_correction = bias_correction
-        self.velocity = {}
+        self.fst_mom_mov_avg = {}
         self._iterations = {}
 
     def register_layer(self, layer_id: int, *parameters):
-        vels = []
+        fst_mom_mov_avg = []
 
         for param in parameters:
-            vels.append(np.zeros_like(param))
+            fst_mom_mov_avg.append(np.zeros_like(param))
 
-        self.velocity[layer_id] = vels
-        self._iterations[layer_id] = 0
+        self.fst_mom_mov_avg[layer_id] = fst_mom_mov_avg
+        self._iterations[layer_id] = 1
 
     def update(self, layer_id: int, *grads):
-        m = self.momentum
-        vels = self.velocity[layer_id]
+        m = self.first_momentum
+        fst_mom_mov_avg = self.fst_mom_mov_avg[layer_id]
         it = self._iterations[layer_id]
         ret = []
 
         for i, grad in enumerate(grads):
-            cur_vel = vels[i]
+            cur_vel = fst_mom_mov_avg[i]
             new_vel = m * cur_vel + (1.0 - m) * grad
+
+            fst_mom_mov_avg[i] = new_vel
 
             mom_it = m ** it
 
             if self.bias_correction and mom_it > 5e-2:
-                new_vel /= 1.0 + mom_it
-
-            vels[i] = new_vel
+                new_vel = new_vel / (1.0 - mom_it)
 
             param_updates = self.learning_rate * new_vel
             ret.append(param_updates)
@@ -79,21 +82,21 @@ class NesterovMomentum(Momentum):
     """
 
     def update(self, layer_id: int, *grads):
-        m = self.momentum
-        vels = self.velocity[layer_id]
+        m = self.first_momentum
+        fst_mom_mov_avg = self.fst_mom_mov_avg[layer_id]
         it = self._iterations[layer_id]
         ret = []
 
         for i, grad in enumerate(grads):
-            cur_vel = vels[i]
+            cur_vel = fst_mom_mov_avg[i]
             new_vel = m * cur_vel + (1 - m) * grad
+
+            fst_mom_mov_avg[i] = new_vel
 
             mom_it = m ** it
 
             if self.bias_correction and mom_it > 5e-2:
-                new_vel /= 1.0 + mom_it
-
-            vels[i] = new_vel
+                new_vel = new_vel / (1.0 - mom_it)
 
             param_updates = self.learning_rate * (m * cur_vel + (1 + m) * new_vel)
             ret.append(param_updates)
@@ -106,7 +109,7 @@ class NesterovMomentum(Momentum):
 class Adagrad(_BaseOptim):
     """Adagrad learning rate.
 
-    Not recommended since it is too agressive while reducing the learning
+    Not recommended since it is too aggressive while reducing the learning
     rates; the reduction is monotonic decreasing, and this may cause the
     learning to stop way too soon.
     """
@@ -144,7 +147,7 @@ class Adagrad(_BaseOptim):
 class Adadelta(_BaseOptim):
     """Adadelta optimization algorithm.
 
-    Solves the problem of the agressiveness of Adagrad, while preserving the
+    Solves the problem of the aggressiveness of Adagrad, while preserving the
     adaptive learning rate per parameter.
 
     It is very similar to RMSProp optimizer, but was invented separately.
@@ -154,14 +157,17 @@ class Adadelta(_BaseOptim):
     """
 
     def __init__(
-        self, learning_rate: float = 1.0, momentum: float = 0.9, eps: float = 1e-6
+        self,
+        learning_rate: float = 1.0,
+        second_momentum: float = 0.9,
+        eps: float = 1e-6,
     ):
         super(Adadelta, self).__init__(learning_rate=learning_rate)
         assert float(eps) > 0.0
-        assert 1.0 > float(momentum) > 0.0
+        assert 1.0 > float(second_momentum) > 0.0
 
         self.eps = float(eps)
-        self.momentum = float(momentum)
+        self.second_momentum = float(second_momentum)
         self.mv_avg_second_mom_grads = {}
         self.mv_avg_second_mom_params = {}
 
@@ -170,7 +176,7 @@ class Adadelta(_BaseOptim):
         mv_avg_second_mom_params = []
 
         for param in parameters:
-            weights_grads, weights_params = np.zeros((2, *param.shape))
+            weights_grads, weights_params = np.zeros((2, *param.shape), dtype=float)
             mv_avg_second_mom_grads.append(weights_grads)
             mv_avg_second_mom_params.append(weights_params)
 
@@ -181,7 +187,7 @@ class Adadelta(_BaseOptim):
         mv_avg_second_mom_grads = self.mv_avg_second_mom_grads[layer_id]
         mv_avg_second_mom_params = self.mv_avg_second_mom_params[layer_id]
         ret = []
-        m = self.momentum
+        m = self.second_momentum
         eps = self.eps
 
         for i, grad in enumerate(grads):
@@ -210,13 +216,27 @@ class Adadelta(_BaseOptim):
 
 
 class RMSProp(Adagrad):
-    """."""
+    """RMSProp optimization algorithm.
 
-    def __init__(self, learning_rate: float, momentum: float = 0.9, eps: float = 1e-8):
-        assert 1.0 > float(momentum) > 0.0
+    Like Adadelta, it was invented to mitigate the aggressiveness of the
+    Adagrad algorithm. Although they were invented separately, RMSProp
+    actually uses the same strategy from Adadelta: instead of keeping the
+    sum of squares of all gradients, RMSProp (and Adadelta) uses a moving
+    average to store the square of the gradients; in fact, Adadelta is
+    just RMSProp with one step further of modification in the parameter
+    update rule.
+    """
+
+    def __init__(
+        self,
+        learning_rate: float,
+        second_momentum: float = 0.9,
+        eps: float = 1e-8,
+    ):
+        assert 1.0 > float(second_momentum) > 0.0
         super(RMSProp, self).__init__(learning_rate=learning_rate, eps=eps)
 
-        self.momentum = float(momentum)
+        self.second_momentum = float(second_momentum)
         self.sec_mom_mov_avg = {}
 
     def register_layer(self, layer_id: int, *parameters):
@@ -230,7 +250,7 @@ class RMSProp(Adagrad):
     def update(self, layer_id: int, *grads):
         sec_mom_mov_avg = self.sec_mom_mov_avg[layer_id]
         ret = []
-        m = self.momentum
+        m = self.second_momentum
 
         for i, grad in enumerate(grads):
             cur_sec_mom_mov_avg = sec_mom_mov_avg[i]
@@ -240,5 +260,68 @@ class RMSProp(Adagrad):
             param_updates = cur_lr * grad
             ret.append(param_updates)
             sec_mom_mov_avg[i] = cur_sec_mom_mov_avg
+
+        return ret
+
+
+class Adam(Momentum, RMSProp):
+    """Adam optimization algorithm.
+
+    Combines RMSProp with Momentum.
+    """
+
+    def __init__(
+        self,
+        learning_rate: float,
+        first_momentum: float = 0.9,
+        second_momentum: float = 0.999,
+        eps: float = 1e-8,
+    ):
+        Momentum.__init__(
+            self,
+            learning_rate=learning_rate,
+            first_momentum=first_momentum,
+        )
+
+        RMSProp.__init__(
+            self,
+            learning_rate=learning_rate,
+            second_momentum=second_momentum,
+            eps=eps,
+        )
+
+    def register_layer(self, layer_id: int, *parameters):
+        Momentum.register_layer(self, layer_id, *parameters)
+        RMSProp.register_layer(self, layer_id, *parameters)
+
+    def update(self, layer_id: int, *grads):
+        fst_mom_mov_avg = self.fst_mom_mov_avg[layer_id]
+        sec_mom_mov_avg = self.sec_mom_mov_avg[layer_id]
+        ret = []
+        m1 = self.first_momentum
+        m2 = self.second_momentum
+        it = self._iterations[layer_id]
+
+        for i, grad in enumerate(grads):
+            cur_fst_mma = fst_mom_mov_avg[i]
+            cur_sec_mma = sec_mom_mov_avg[i]
+
+            cur_fst_mma = m1 * cur_fst_mma + (1.0 - m1) * grad
+            cur_sec_mma = m2 * cur_sec_mma + (1.0 - m2) * np.square(grad)
+
+            m1_it = m1 ** it
+            m2_it = m2 ** it
+
+            unbiased_cur_fst_mma = cur_fst_mma / (1.0 - m1_it)
+            unbiased_cur_sec_mma = cur_sec_mma / (1.0 - m2_it)
+
+            cur_lr = self.learning_rate / np.sqrt(unbiased_cur_sec_mma + self.eps)
+            param_updates = cur_lr * unbiased_cur_fst_mma
+            ret.append(param_updates)
+
+            fst_mom_mov_avg[i] = cur_fst_mma
+            sec_mom_mov_avg[i] = cur_sec_mma
+
+        self._iterations[layer_id] += 1
 
         return ret
