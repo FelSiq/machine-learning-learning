@@ -5,12 +5,30 @@ class _BaseOptim:
     def __init__(self, learning_rate: float):
         assert float(learning_rate) > 0.0
         self.learning_rate = float(learning_rate)
+        self.bias_correction = False
 
     def register_layer(self, *parameters):
         raise NotImplementedError
 
     def update(self, layer_id: int, *grads):
         raise NotImplementedError
+
+    @staticmethod
+    def _unpack(vals):
+        return vals[0] if len(vals) == 1 else vals
+
+    def _correct_bias(self, it: int, m: float, *updates):
+        mom_it = m ** it
+
+        if not self.bias_correction or mom_it < 1e-3:
+            return self._unpack(updates)
+
+        unbiased = []
+
+        for update in updates:
+            unbiased.append(update / (1.0 - mom_it))
+
+        return self._unpack(unbiased)
 
 
 class Momentum(_BaseOptim):
@@ -60,11 +78,7 @@ class Momentum(_BaseOptim):
             # everything will fall apart!
             fst_mom_mov_avg[i] = new_vel
 
-            mom_it = m ** it
-
-            if self.bias_correction and mom_it > 5e-2:
-                new_vel = new_vel / (1.0 - mom_it)
-
+            new_vel = self._correct_bias(it, m, new_vel)
             cur_updates = self.learning_rate * new_vel
             param_updates.append(cur_updates)
 
@@ -97,12 +111,7 @@ class NesterovMomentum(Momentum):
             # everything will fall apart!
             fst_mom_mov_avg[i] = new_vel
 
-            mom_it = m ** it
-
-            if self.bias_correction and mom_it > 5e-2:
-                new_vel = new_vel / (1.0 - mom_it)
-                cur_vel = cur_vel / (1.0 - mom_it)
-
+            new_vel, cur_vel = self._correct_bias(it, m, new_vel, cur_vel)
             cur_updates = self.learning_rate * ((1.0 + m) * new_vel - m * cur_vel)
             param_updates.append(cur_updates)
 
@@ -295,6 +304,8 @@ class Adam(Momentum, RMSProp):
             eps=eps,
         )
 
+        self.bias_correction = True
+
     def register_layer(self, layer_id: int, *parameters):
         Momentum.register_layer(self, layer_id, *parameters)
         RMSProp.register_layer(self, layer_id, *parameters)
@@ -319,14 +330,8 @@ class Adam(Momentum, RMSProp):
             fst_mom_mov_avg[i] = cur_fst_mma
             sec_mom_mov_avg[i] = cur_sec_mma
 
-            m1_it = m1 ** it
-            m2_it = m2 ** it
-
-            if m1_it > 1e-4:
-                cur_fst_mma = cur_fst_mma / (1.0 - m1_it)
-
-            if m2_it > 1e-4:
-                cur_sec_mma = cur_sec_mma / (1.0 - m2_it)
+            cur_fst_mma = self._correct_bias(it, m1, cur_fst_mma)
+            cur_sec_mma = self._correct_bias(it, m2, cur_sec_mma)
 
             cur_lr = self.learning_rate / np.sqrt(cur_sec_mma + self.eps)
             cur_updates = cur_lr * cur_fst_mma
