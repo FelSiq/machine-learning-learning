@@ -340,3 +340,44 @@ class Adam(Momentum, RMSProp):
         self._iterations[layer_id] += 1
 
         return param_updates
+
+
+class Adamax(Adam):
+    """Adam with second moment generalized to infinity norm.
+
+    The main changes are listed below:
+    - The second moment is not an moving average anymore; instead, it is
+      an infinity norm between the scaled previous second moment and the
+      absolute value of the current gradients.
+    - Theres no need for bias correction onto the second moment anymore.
+    """
+
+    def update(self, layer_id: int, *grads):
+        fst_mom_mov_avg = self.fst_mom_mov_avg[layer_id]
+        sec_mom_mov_avg = self.sec_mom_mov_avg[layer_id]
+        param_updates = []
+        m1 = self.first_momentum
+        m2 = self.second_momentum
+        it = self._iterations[layer_id]
+
+        for i, grad in enumerate(grads):
+            cur_fst_mma = fst_mom_mov_avg[i]
+            cur_sec_mma = sec_mom_mov_avg[i]
+
+            cur_fst_mma = m1 * cur_fst_mma + (1.0 - m1) * grad
+            cur_sec_mma = np.maximum(m2 * cur_sec_mma, np.abs(grad))
+
+            # Note: do NOT store the unbiased version (calculated below), or else
+            # everything will fall apart!
+            fst_mom_mov_avg[i] = cur_fst_mma
+            sec_mom_mov_avg[i] = cur_sec_mma
+
+            cur_fst_mma = self._correct_bias(it, m1, cur_fst_mma)
+
+            cur_lr = self.learning_rate / (cur_sec_mma + self.eps)
+            cur_updates = cur_lr * cur_fst_mma
+            param_updates.append(cur_updates)
+
+        self._iterations[layer_id] += 1
+
+        return param_updates
