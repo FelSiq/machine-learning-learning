@@ -121,7 +121,7 @@ class NesterovMomentum(Momentum):
 
 
 class Adagrad(_BaseOptim):
-    """Adagrad learning rate.
+    """Adagrad: Adaptive Gradient Optimizer.
 
     Not recommended since it is too aggressive while reducing the learning
     rates; the reduction is monotonic decreasing, and this may cause the
@@ -230,7 +230,7 @@ class Adadelta(_BaseOptim):
 
 
 class RMSProp(Adagrad):
-    """RMSProp optimization algorithm.
+    """RMSProp: Root Mean Square Propagation.
 
     Like Adadelta, it was invented to mitigate the aggressiveness of the
     Adagrad algorithm. Although they were invented separately, RMSProp
@@ -279,7 +279,7 @@ class RMSProp(Adagrad):
 
 
 class Adam(Momentum, RMSProp):
-    """Adam optimization algorithm.
+    """Adam: Adaptive Moment Estimation.
 
     Combines RMSProp with Momentum.
     """
@@ -376,6 +376,46 @@ class Adamax(Adam):
 
             cur_lr = self.learning_rate / (cur_sec_mma + self.eps)
             cur_updates = cur_lr * cur_fst_mma
+            param_updates.append(cur_updates)
+
+        self._iterations[layer_id] += 1
+
+        return param_updates
+
+
+class Nadam(Adam):
+    """Nadam: Nesterov Accelerated Adam.
+
+    Combines Nesterov Momentum with RMSProp.
+    """
+
+    def update(self, layer_id: int, *grads):
+        fst_mom_mov_avg = self.fst_mom_mov_avg[layer_id]
+        sec_mom_mov_avg = self.sec_mom_mov_avg[layer_id]
+        param_updates = []
+        m1 = self.first_momentum
+        m2 = self.second_momentum
+        it = self._iterations[layer_id]
+
+        for i, grad in enumerate(grads):
+            prev_fst_mma = fst_mom_mov_avg[i]
+            cur_sec_mma = sec_mom_mov_avg[i]
+
+            cur_fst_mma = m1 * prev_fst_mma + (1.0 - m1) * grad
+            cur_sec_mma = m2 * cur_sec_mma + (1.0 - m2) * np.square(grad)
+
+            # Note: do NOT store the unbiased version (calculated below), or else
+            # everything will fall apart!
+            fst_mom_mov_avg[i] = cur_fst_mma
+            sec_mom_mov_avg[i] = cur_sec_mma
+
+            cur_fst_mma, prev_fst_mma = self._correct_bias(
+                it, m1, cur_fst_mma, prev_fst_mma
+            )
+            cur_sec_mma = self._correct_bias(it, m2, cur_sec_mma)
+
+            cur_lr = self.learning_rate / np.sqrt(cur_sec_mma + self.eps)
+            cur_updates = cur_lr * ((1.0 + m1) * cur_fst_mma - m1 * prev_fst_mma)
             param_updates.append(cur_updates)
 
         self._iterations[layer_id] += 1
