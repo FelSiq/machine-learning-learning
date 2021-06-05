@@ -32,7 +32,7 @@ class GaussianNaiveBayes:
             X_slice = X[self._classes[cls_ind] == y, :]
 
             means = np.mean(X_slice, axis=0)
-            stds = np.std(X_slice, axis=0, ddof=1)
+            stds = np.std(X_slice, axis=0)
 
             dist = tuple(scipy.stats.norm(loc=m, scale=s) for m, s in zip(means, stds))
             self._dists.append(dist)
@@ -75,6 +75,7 @@ def _test():
     import sklearn.model_selection
     import sklearn.preprocessing
     import sklearn.datasets
+    import sklearn.naive_bayes
 
     X, y = sklearn.datasets.load_wine(return_X_y=True)
 
@@ -83,19 +84,29 @@ def _test():
         n_splits=n_splits, shuffle=True, random_state=16
     )
 
-    avg_acc = 0.0
+    avg_acc = avg_acc_ref = 0.0
 
-    for train_inds, test_inds in splitter.split(X, y):
-        X_train, X_test = X[train_inds, ...], X[test_inds, ...]
-        y_train, y_test = y[train_inds], y[test_inds]
+    model = GaussianNaiveBayes()
+    ref = sklearn.naive_bayes.GaussianNB()
 
-        model = GaussianNaiveBayes()
+    for train_inds, eval_inds in splitter.split(X, y):
+        X_train, X_eval = X[train_inds, ...], X[eval_inds, ...]
+        y_train, y_eval = y[train_inds], y[eval_inds]
+
         model.fit(X_train, y_train)
-        preds = model.predict(X_test)
-        avg_acc += sklearn.metrics.accuracy_score(preds, y_test)
+        ref.fit(X_train, y_train)
+
+        y_preds = model.predict(X_eval)
+        y_preds_ref = ref.predict(X_eval)
+
+        avg_acc += sklearn.metrics.accuracy_score(y_eval, y_preds)
+        avg_acc_ref += sklearn.metrics.accuracy_score(y_eval, y_preds_ref)
 
     avg_acc /= n_splits
-    print("10-fold avg accuracy:", avg_acc)
+    avg_acc_ref /= n_splits
+
+    print(f"(mine)    10-fold avg accuracy: {avg_acc:.3f}")
+    print(f"(sklearn) 10-fold avg accuracy: {avg_acc_ref:.3f}")
 
 
 if __name__ == "__main__":
