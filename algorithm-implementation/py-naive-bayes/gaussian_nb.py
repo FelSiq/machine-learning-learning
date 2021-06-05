@@ -34,6 +34,13 @@ class GaussianNaiveBayes:
             means = np.mean(X_slice, axis=0)
             stds = np.std(X_slice, axis=0)
 
+            # Note: we could actually implement this using a single
+            # multivariate Gaussian per class, constraining it to have
+            # a diagonal covariance matrix. Although this would seem to
+            # be a more concise and clear implementation, that would
+            # take O(m ** 2) space instead of O(m), where m is the number
+            # of features in X, so I opt for 'm' distinct univariate
+            # Gaussians instead.
             dist = tuple(scipy.stats.norm(loc=m, scale=s) for m, s in zip(means, stds))
             self._dists.append(dist)
 
