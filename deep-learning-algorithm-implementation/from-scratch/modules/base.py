@@ -1,3 +1,5 @@
+import typing as t
+
 import numpy as np
 
 
@@ -19,11 +21,18 @@ class _BaseLayer:
     def forward(self, X):
         raise NotImplementedError
 
+    def __call__(self, X):
+        return self.forward(X)
+
     def backward(self, dout):
         raise NotImplementedError
 
     def update(self, *args):
         raise NotImplementedError
+
+    @property
+    def has_stored_grads(self):
+        return len(self._cache) > 0
 
 
 class Linear(_BaseLayer):
@@ -119,14 +128,25 @@ class Sigmoid(_BaseLayer):
         return sig_X * (1.0 - sig_X)
 
 
-class Flatten(_BaseLayer):
-    def __init__(self):
+class Reshape(_BaseLayer):
+    def __init__(self, out_shape: t.Tuple[int, ...]):
+        assert len(out_shape)
         super(Flatten, self).__init__()
+        self.out_shape = tuple(out_shape)
 
     def forward(self, X):
         self._store_in_cache(X.shape)
-        return X.ravel()
+        return X.reshape()
 
     def backward(self, dout):
         (shape,) = self._pop_from_cache()
         return dout.reshape(shape)
+
+
+class Flatten(Reshape):
+    def __init__(self):
+        super(Flatten, self).__init__(out_shape=(-1,))
+
+    def forward(self, X):
+        self._store_in_cache(X.shape)
+        return X.ravel()
