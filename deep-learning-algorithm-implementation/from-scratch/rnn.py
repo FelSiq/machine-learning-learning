@@ -1,11 +1,12 @@
 import numpy as np
 
+import base
 import losses
 import modules
 import optim
 
 
-class RNN:
+class RNN(base.BaseModel):
     def __init__(
         self,
         dim_in: int,
@@ -26,15 +27,9 @@ class RNN:
             self.rnn_cell.lin_hidden.weights,
             self.rnn_cell.lin_input.weights,
             self.rnn_cell.lin_input.bias,
-            self.rnn_cell.lin_outut.weights,
-            self.rnn_cell.lin_outut.bias,
         )
 
         self.total_timesteps = 0
-
-    def _clip_grads(self, *grads):
-        for grad in grads:
-            np.clip(grad, -self.clip_grad_norm, self.clip_grad_norm, out=grad)
 
     def forward(self, X):
         # X.shape = (time, batch, dim)
@@ -65,17 +60,6 @@ class RNN:
             layer.update(*grads)
 
             self.total_timesteps -= 1
-
-    def __call__(self, X):
-        return self.forward(X)
-
-    def train(self):
-        for layer in self.layers:
-            layer.frozen = False
-
-    def eval(self):
-        for layer in self.layers:
-            layer.frozen = True
 
 
 def _test():

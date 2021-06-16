@@ -2,12 +2,13 @@ import typing as t
 
 import numpy as np
 
+import base
 import modules
 import optim
 import losses
 
 
-class Autoencoder:
+class Autoencoder(base.BaseModel):
     def __init__(
         self,
         dims: t.Sequence[int],
@@ -36,10 +37,6 @@ class Autoencoder:
             self.layers.append(l_rel)
             self.optim.register_layer(2 * (i - 1), l_lin.weights, l_lin.bias)
 
-    def _clip_grads(self, *grads):
-        for grad in grads:
-            np.clip(grad, -self.clip_grad_norm, self.clip_grad_norm, out=grad)
-
     def forward(self, X):
         out = X
 
@@ -62,17 +59,6 @@ class Autoencoder:
             param_grads = grads[1:]
             grads = self.optim.update(layer_id, *param_grads)
             layer.update(*grads)
-
-    def __call__(self, X):
-        return self.forward(X)
-
-    def train(self):
-        for layer in self.layers:
-            layer.frozen = False
-
-    def eval(self):
-        for layer in self.layers:
-            layer.frozen = True
 
 
 def _test():
