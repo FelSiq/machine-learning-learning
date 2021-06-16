@@ -1,6 +1,6 @@
 import numpy as np
 
-import base
+from . import base
 
 
 class RNNCell(base._BaseLayer):
