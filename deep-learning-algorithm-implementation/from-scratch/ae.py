@@ -35,7 +35,7 @@ class Autoencoder(base.BaseModel):
             l_lin = modules.Linear(dims[i - 1], dims[i])
             self.layers.append(l_lin)
             self.layers.append(l_rel)
-            self.optim.register_layer(2 * (i - 1), l_lin.weights, l_lin.bias)
+            self.optim.register_layer(2 * (i - 1), *l_lin.parameters)
 
     def forward(self, X):
         out = X

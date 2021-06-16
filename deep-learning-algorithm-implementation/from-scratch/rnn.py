@@ -9,62 +9,75 @@ import optim
 class RNN(base.BaseModel):
     def __init__(
         self,
-        dim_in: int,
+        num_embed_tokens: int,
+        dim_embed: int,
         dim_hidden: int,
         dim_out: int,
         learning_rate: float,
         clip_grad_norm: float = 1.0,
     ):
         assert float(clip_grad_norm) > 0.0
-        self.rnn_cell = modules.RNNCell(dim_in, dim_hidden, dim_out)
+
+        self.embed_layer = modules.Embedding(num_embed_tokens, dim_embed)
+        self.rnn_cell = modules.RNNCell(dim_embed, dim_hidden, dim_out)
         self.optim = optim.Nadam(learning_rate)
         self.clip_grad_norm = float(clip_grad_norm)
 
-        self.dim_hidden = dim_hidden
+        self.dim_hidden = int(dim_hidden)
 
-        self.optim.register_layer(
-            0,
-            self.rnn_cell.lin_hidden.weights,
-            self.rnn_cell.lin_input.weights,
-            self.rnn_cell.lin_input.bias,
-        )
-
-        self.total_timesteps = 0
+        self.optim.register_layer(0, *self.embed_layer.parameters)
+        self.optim.register_layer(1, *self.rnn_cell.parameters)
 
     def forward(self, X):
-        # X.shape = (time, batch, dim)
+        # X.shape = (time, batch)
         outputs = np.empty((X.shape[0], X.shape[1], dim_out), dtype=float)
 
-        for t, timestep in enumerate(X):
-            outputs[t, :] = self.rnn_cell.forward(out)
-            self.total_timesteps += 1
+        X_embedded = self.embed_layer(X)
+
+        for t, X_t in enumerate(X_embedded):
+            outputs[t, :] = self.rnn_cell.forward(X_t)
 
         return outputs
 
     def backward(self, dout_y):
-        # Fix this.
-        dout_y = dout
-        dout_h = np.zeros(self.dim_hidden, dtype=float)
+        # if n_dim = 3: dout_y (time, batch, dim_out)
+        # if n_dim = 2: dout_y (batch, dim_out) (only the last timestep)
 
-        while self.total_timesteps > 0:
-            grads = layer.backward(dout_y, dout_h)
+        batch_size = dout_y.shape[1] if dout_y.ndim == 3 else dout_y.shape[0]
+        cur_dout_y = dout_y
+        dout_h = np.zeros((batch_size, self.dim_hidden), dtype=float)
+        douts_X = []  # type: t.List[np.ndarray]
+        i = 0
+
+        while self.rnn_cel.has_stored_grads:
+            grads = layer.backward(dout_h, cur_dout_y)
             self._clip_grads(*grads)
 
-            if not layer.trainable:
-                dout = grads[0]
-                continue
+            dout_h, dout_X = grads[:2]
+            param_grads = grads[2:]
 
-            dout = grads[0]
-            param_grads = grads[1:]
-            grads = self.optim.update(0, *param_grads)
+            douts_X.insert(0, dout_X)
+
+            if dout_y.ndim == 3:
+                cur_dout_y = dout_y[-i - 1]
+
+            elif i == 0:
+                cur_dout_y = np.zeros((batch_size, self.dim_hidden), dtype=float)
+
+            grads = self.optim.update(1, *param_grads)
             layer.update(*grads)
+            i += 1
 
-            self.total_timesteps -= 1
+        douts_X = np.asfarray(douts_X)
+        # shape: (time, batch, emb_dim)
+
+        return douts_X
 
 
 def _test():
     import pandas as pd
     import tqdm.auto
+    import tweets_utils
 
     np.random.seed(32)
 
@@ -74,7 +87,9 @@ def _test():
     train_epochs = 60
     learning_rate = 1e-3
 
-    X = np.linspace(-2, 2, 100).reshape(100, 1, 1)
+    X_train, y_train, X_test, y_test, _, _ = tweets_utils.get_data(1000)
+    print(X_train[:3])
+    exit(0)
 
     np.random.shuffle(X)
 
@@ -84,7 +99,7 @@ def _test():
     print("Eval shape  :", X_eval.shape)
 
     n = X_train.shape[0]
-    model = RNN(, learning_rate)
+    model = None  # RNN(, learning_rate)
     criterion = losses.MSELoss()
 
     for epoch in np.arange(1, 1 + train_epochs):
