@@ -94,3 +94,26 @@ class Tanh(_BaseLayer):
     def backward(self, dout):
         (tanh_X,) = self._pop_from_cache()
         return (1.0 - np.square(tanh_X)) * dout
+
+
+class Sigmoid(_BaseLayer):
+    def __init__(self):
+        super(Sigmoid, seld).__init__()
+
+    def forward(self, X):
+        inds_pos = x >= 0
+        inds_neg = ~inds_pos
+
+        exp_neg = np.exp(x[inds_neg])
+
+        out = np.zeros_like(x, dtype=float)
+        out[inds_pos] = 1.0 / (1.0 + np.exp(-x[inds_pos]))
+        out[inds_neg] = exp_neg / (1.0 + exp_neg)
+
+        self._store_in_cache(out)
+
+        return out
+
+    def backward(self, dout):
+        (sig_X,) = self._pop_from_cache()
+        return sig_X * (1.0 - sig_X)
