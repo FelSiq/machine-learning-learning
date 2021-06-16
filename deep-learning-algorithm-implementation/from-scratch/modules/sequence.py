@@ -8,12 +8,12 @@ class Embedding(base._BaseLayer):
         assert int(num_tokens) > 0
         assert int(dim_embedding) > 0
 
-        super(Embedding, self).__init__()
+        super(Embedding, self).__init__(trainable=True)
 
         # TODO: how to initialize an embedding layer properly?
         self.embedding = np.random.randn(num_tokens, dim_embedding)
 
-        self.trainable = True
+        self.parameters = (self.embedding,)
 
     def forward(self, X):
         embedded_tokens = self.embedding[X, :]
@@ -40,7 +40,7 @@ class RNNCell(base._BaseLayer):
         assert int(dim_hidden) > 0
         assert int(dim_out) > 0
 
-        super(RNNCell, self).__init__()
+        super(RNNCell, self).__init__(trainable=True)
 
         self.lin_hidden = base.Linear(dim_hidden, dim_hidden, include_bias=False)
         self.lin_input = base.Linear(dim_in, dim_hidden, include_bias=True)
@@ -48,7 +48,10 @@ class RNNCell(base._BaseLayer):
 
         self.cell_state = np.zeros(dim_hidden, dtype=float)
 
-        self.trainable = True
+        self.parameters = (
+            *self.lin_hidden.parameters,
+            *self.lin_input.parameters,
+        )
 
     def forward(self, X):
         aux_cell_state = self.lin_hidden(self.cell_state)

@@ -4,10 +4,11 @@ import numpy as np
 
 
 class _BaseLayer:
-    def __init__(self):
+    def __init__(self, trainable: bool = False):
         self._cache = []
-        self.trainable = False
+        self.trainable = trainable
         self.frozen = False
+        self.parameters = tuple()
 
     def _store_in_cache(self, *args):
         if self.frozen:
@@ -37,17 +38,18 @@ class _BaseLayer:
 
 class Linear(_BaseLayer):
     def __init__(self, dim_in: int, dim_out: int, include_bias: bool = True):
-        super(Linear, self).__init__()
+        super(Linear, self).__init__(trainable=True)
 
         he_init_coef = np.sqrt(2.0 / dim_in)
         self.weights = he_init_coef * np.random.randn(dim_in, dim_out)
-
         self.bias = np.empty(0, dtype=float)
 
         if include_bias:
             self.bias = np.zeros(dim_out, dtype=float)
+            self.parameters = (self.weights, self.bias)
 
-        self.trainable = True
+        else:
+            self.parameters = (self.weights,)
 
     def forward(self, X):
         out = X @ self.weights + self.bias
