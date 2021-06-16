@@ -98,7 +98,7 @@ class Tanh(_BaseLayer):
 
 class Sigmoid(_BaseLayer):
     def __init__(self):
-        super(Sigmoid, seld).__init__()
+        super(Sigmoid, self).__init__()
 
     def forward(self, X):
         inds_pos = x >= 0
@@ -117,3 +117,16 @@ class Sigmoid(_BaseLayer):
     def backward(self, dout):
         (sig_X,) = self._pop_from_cache()
         return sig_X * (1.0 - sig_X)
+
+
+class Flatten(_BaseLayer):
+    def __init__(self):
+        super(Flatten, self).__init__()
+
+    def forward(self, X):
+        self._store_in_cache(X.shape)
+        return X.ravel()
+
+    def backward(self, dout):
+        (shape,) = self._pop_from_cache()
+        return dout.reshape(shape)
