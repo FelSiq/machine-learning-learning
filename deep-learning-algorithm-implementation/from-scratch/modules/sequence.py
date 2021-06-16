@@ -25,20 +25,18 @@ class Embedding(base._BaseLayer):
         return self.embedding[orig_inds, :] * dout
 
     def update(self, *args):
-        (orig_inds,) = self._pop_from_cache()
-
         if self.frozen:
             return
 
+        (orig_inds,) = self._pop_from_cache()
         (demb,) = args
         np.subtract.at(self.embedding, orig_inds, demb)
 
 
 class RNNCell(base._BaseLayer):
-    def __init__(self, dim_in: int, dim_hidden: int, dim_out: int):
+    def __init__(self, dim_in: int, dim_hidden: int):
         assert int(dim_in) > 0
         assert int(dim_hidden) > 0
-        assert int(dim_out) > 0
 
         super(RNNCell, self).__init__(trainable=True)
 
