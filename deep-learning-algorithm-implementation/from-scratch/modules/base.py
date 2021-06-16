@@ -27,12 +27,16 @@ class _BaseLayer:
 
 
 class Linear(_BaseLayer):
-    def __init__(self, dim_in: int, dim_out: int):
+    def __init__(self, dim_in: int, dim_out: int, include_bias: bool = True):
         super(Linear, self).__init__()
 
         he_init_coef = np.sqrt(2.0 / dim_in)
         self.weights = he_init_coef * np.random.randn(dim_in, dim_out)
-        self.bias = np.zeros(dim_out, dtype=float)
+
+        self.bias = np.empty(0, dtype=float)
+
+        if include_bias:
+            self.bias = np.zeros(dim_out, dtype=float)
 
         self.trainable = True
 
@@ -46,7 +50,10 @@ class Linear(_BaseLayer):
 
         dW = X.T @ dout
         dX = dout @ self.weights.T
-        db = np.sum(dout, axis=0)
+
+        db = np.empty(0, dtype=float)
+        if self.bias.size:
+            db = np.sum(dout, axis=0)
 
         return dX, dW, db
 
@@ -56,7 +63,9 @@ class Linear(_BaseLayer):
 
         dW, db = args
         self.weights -= dW
-        self.bias -= db
+
+        if self.bias.size:
+            self.bias -= db
 
 
 class ReLU(_BaseLayer):
@@ -71,3 +80,17 @@ class ReLU(_BaseLayer):
     def backward(self, dout):
         (X,) = self._pop_from_cache()
         return (X > 0.0) * dout
+
+
+class Tanh(_BaseLayer):
+    def __init__(self):
+        super(Tanh, self).__init__()
+
+    def forward(self, X):
+        out = np.tanh(X)
+        self._store_in_cache(out)
+        return out
+
+    def backward(self, dout):
+        (tanh_X,) = self._pop_from_cache()
+        return (1.0 - np.square(tanh_X)) * dout
