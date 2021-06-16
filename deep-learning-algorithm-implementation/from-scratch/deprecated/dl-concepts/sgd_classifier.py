@@ -41,11 +41,12 @@ class SGDClassifier:
     meet.
     """
 
-    def __init__(self,
-                 func_loss: t.Callable,
-                 func_loss_grad: t.Callable,
-                 check_data_func: t.Optional[
-                     t.Callable[[np.ndarray, np.ndarray], None]] = None):
+    def __init__(
+        self,
+        func_loss: t.Callable,
+        func_loss_grad: t.Callable,
+        check_data_func: t.Optional[t.Callable[[np.ndarray, np.ndarray], None]] = None,
+    ):
         """Init SGD model.
 
         Arguments
@@ -101,53 +102,54 @@ class SGDClassifier:
         """Concatenate a full column of 1's as the last ``X`` column."""
         return np.hstack((X, np.ones((X.shape[0], 1), dtype=X.dtype)))
 
-    def _calc_loss_total(self,
-                         X: np.ndarray,
-                         y: np.ndarray,
-                         scores: t.Optional[np.ndarray] = None) -> np.ndarray:
+    def _calc_loss_total(
+        self, X: np.ndarray, y: np.ndarray, scores: t.Optional[np.ndarray] = None
+    ) -> np.ndarray:
         """Calculate the total loss (data + regularization loss) of data."""
         if scores is None:
             scores = self._predict(X=X, center_data=False, add_bias=False)
 
         loss_reg = self._func_reg(
-            W=self.weights, lambda_=self.reg_rate, exclude_bias=True)
+            W=self.weights, lambda_=self.reg_rate, exclude_bias=True
+        )
 
-        loss_data = self._func_loss(
-            X=X, y_inds=y, W=self.weights, scores=scores)
+        loss_data = self._func_loss(X=X, y_inds=y, W=self.weights, scores=scores)
 
         return loss_data + loss_reg
 
-    def _calc_grad_total(self,
-                         X: np.ndarray,
-                         y: np.ndarray,
-                         scores: t.Optional[np.ndarray] = None) -> np.ndarray:
+    def _calc_grad_total(
+        self, X: np.ndarray, y: np.ndarray, scores: t.Optional[np.ndarray] = None
+    ) -> np.ndarray:
         """Calculate the total gradient (data + regularization) on data."""
         if scores is None:
             scores = self._predict(X=X, center_data=False, add_bias=False)
 
         grad_loss_reg = self._func_reg_grad(
-            W=self.weights, lambda_=self.reg_rate, exclude_bias=True)
+            W=self.weights, lambda_=self.reg_rate, exclude_bias=True
+        )
 
         grad_loss_data = self._func_loss_grad(
-            X=X, y_inds=y, scores=scores, add_bias=False)
+            X=X, y_inds=y, scores=scores, add_bias=False
+        )
 
         return grad_loss_data + grad_loss_reg
 
-    def _perform_epoch_end_calcs(self,
-                                 X_val: t.Optional[np.ndarray],
-                                 err_train_cumulative: float,
-                                 err_val_cumulative: float,
-                                 err_val_best: float,
-                                 err_val_prev: float,
-                                 verbose: int = 0) -> t.Tuple[float, float]:
+    def _perform_epoch_end_calcs(
+        self,
+        X_val: t.Optional[np.ndarray],
+        err_train_cumulative: float,
+        err_val_cumulative: float,
+        err_val_best: float,
+        err_val_prev: float,
+        verbose: int = 0,
+    ) -> t.Tuple[float, float]:
         """Calculate statistics at the end of each epoch."""
         err_train_epoch_mean = err_train_cumulative / self._num_inst
 
         if X_val is not None:
             err_val_epoch_mean = err_val_cumulative / self._num_inst
 
-            if err_val_epoch_mean >= (
-                    1.0 - self.patience_margin) * err_val_best:
+            if err_val_epoch_mean >= (1.0 - self.patience_margin) * err_val_best:
                 self._patience_ticks += 1
 
             else:
@@ -158,20 +160,26 @@ class SGDClassifier:
                     self._best_weights = np.copy(self.weights)
 
         if self.errors is not None and self.errors.size:
-            self.errors[:, self.epochs] = (err_train_epoch_mean,
-                                           err_val_epoch_mean)
+            self.errors[:, self.epochs] = (err_train_epoch_mean, err_val_epoch_mean)
 
         self.epochs += 1
 
         if verbose:
             print(
                 "Epoch: {} out of {} - Avg. epoch loss: [train] {:.6f}".format(
-                    self.epochs, self.max_epochs, err_train_epoch_mean),
-                ("[val.] {:.6f} (best: {:.6f}, rel. change of {:.2f}%)".format(
-                    err_val_epoch_mean, err_val_best,
-                    100 * (err_val_epoch_mean - err_val_prev) / err_val_prev)
-                 if X_val is not None else ""),
-                sep=" ")
+                    self.epochs, self.max_epochs, err_train_epoch_mean
+                ),
+                (
+                    "[val.] {:.6f} (best: {:.6f}, rel. change of {:.2f}%)".format(
+                        err_val_epoch_mean,
+                        err_val_best,
+                        100 * (err_val_epoch_mean - err_val_prev) / err_val_prev,
+                    )
+                    if X_val is not None
+                    else ""
+                ),
+                sep=" ",
+            )
 
         return err_val_epoch_mean, err_val_best
 
@@ -179,28 +187,29 @@ class SGDClassifier:
         """Verbose messages related to early stopping."""
         if self.epochs < self.max_epochs:
             if self._patience_ticks == self.patience:
-                _early_stop_message = "patience ({}) ran out".format(
-                    self.patience)
+                _early_stop_message = "patience ({}) ran out".format(self.patience)
 
             elif err_val_epoch_mean <= self.epsilon:
                 _early_stop_message = (
                     "epoch average validation loss ({:.4f}) smaller "
-                    "than 'epsilon' ({:.4f})".format(err_val_epoch_mean,
-                                                     self.epsilon))
+                    "than 'epsilon' ({:.4f})".format(err_val_epoch_mean, self.epsilon)
+                )
 
             else:
                 _early_stop_message = "unknown reason"
 
             print("Early stopped due to {}.".format(_early_stop_message))
 
-    def _optimize(self,
-                  X_train: np.ndarray,
-                  y_train: np.ndarray,
-                  X_val: t.Optional[np.ndarray] = None,
-                  y_val: t.Optional[np.ndarray] = None,
-                  verbose: int = 0,
-                  store_errors: bool = False,
-                  store_lr: bool = False) -> None:
+    def _optimize(
+        self,
+        X_train: np.ndarray,
+        y_train: np.ndarray,
+        X_val: t.Optional[np.ndarray] = None,
+        y_val: t.Optional[np.ndarray] = None,
+        verbose: int = 0,
+        store_errors: bool = False,
+        store_lr: bool = False,
+    ) -> None:
         """Optimize the weights using SGD strategy."""
         epoch_inst_count = 0
         self._patience_ticks = 0
@@ -228,22 +237,22 @@ class SGDClassifier:
         moment_first = np.zeros(self.weights.shape, dtype=float)
         moment_second = np.zeros(self.weights.shape, dtype=float)
 
-        while (self.epochs < self.max_epochs
-               and err_val_epoch_mean > self.epsilon
-               and self._patience_ticks < self.patience):
+        while (
+            self.epochs < self.max_epochs
+            and err_val_epoch_mean > self.epsilon
+            and self._patience_ticks < self.patience
+        ):
             sample_inds = np.random.choice(
-                y_train.size, size=self.batch_size, replace=False)
+                y_train.size, size=self.batch_size, replace=False
+            )
 
             X_sample = X_train[sample_inds, :]
             y_sample = y_train[sample_inds]
 
-            scores = self._predict(
-                X=X_sample, center_data=False, add_bias=False)
+            scores = self._predict(X=X_sample, center_data=False, add_bias=False)
 
-            loss_total = self._calc_loss_total(
-                X=X_sample, y=y_sample, scores=scores)
-            grad_total = self._calc_grad_total(
-                X=X_sample, y=y_sample, scores=scores)
+            loss_total = self._calc_loss_total(X=X_sample, y=y_sample, scores=scores)
+            grad_total = self._calc_grad_total(X=X_sample, y=y_sample, scores=scores)
 
             total_change = optimizers.opt_adam(
                 moment_first=moment_first,
@@ -252,7 +261,8 @@ class SGDClassifier:
                 learning_rate=self.learning_rate,
                 epoch_num=self.epochs,
                 beta1=self.adam_beta1,
-                beta2=self.adam_beta2)
+                beta2=self.adam_beta2,
+            )
 
             self.weights -= total_change
 
@@ -270,14 +280,16 @@ class SGDClassifier:
                     err_val_cumulative=err_val_cumulative,
                     err_val_best=err_val_best,
                     err_val_prev=err_val_prev,
-                    verbose=verbose)
+                    verbose=verbose,
+                )
 
                 self.learning_rate = lr_decay.val_step(
                     learning_rate=self.learning_rate,
                     decay_rate=self.lr_decay_rate,
                     loss_val_cur=err_val_epoch_mean,
                     loss_val_prev=err_val_prev,
-                    min_diff_frac=self.patience_margin)
+                    min_diff_frac=self.patience_margin,
+                )
 
                 if store_lr:
                     self.lr_hist[self.epochs - 1] = self.learning_rate
@@ -297,40 +309,44 @@ class SGDClassifier:
                     "Recovered best weights with validation loss of {:.6f} "
                     "(current validation loss was {:.6f}, relative change of "
                     "{:.2f}%)".format(
-                        err_val_best, err_val_epoch_mean,
-                        100 * (err_val_best - err_val_epoch_mean) /
-                        err_val_epoch_mean))
+                        err_val_best,
+                        err_val_epoch_mean,
+                        100 * (err_val_best - err_val_epoch_mean) / err_val_epoch_mean,
+                    )
+                )
 
         if store_errors:
             if X_val is not None:
-                self.errors = self.errors[:, :self.epochs]
+                self.errors = self.errors[:, : self.epochs]
 
             else:
-                self.errors = self.errors[0, :self.epochs]
+                self.errors = self.errors[0, : self.epochs]
 
         if store_lr:
-            self.lr_hist = self.lr_hist[:self.epochs]
+            self.lr_hist = self.lr_hist[: self.epochs]
 
-    def fit(self,
-            X: np.ndarray,
-            y: np.ndarray,
-            batch_size: int = 256,
-            max_epochs: int = 128,
-            learning_rate: float = 0.0001,
-            lr_decay_rate: float = 0.95,
-            validation_frac: float = 0.1,
-            reg_rate: float = 0.01,
-            adam_beta1: float = 0.9,
-            adam_beta2: float = 0.999,
-            epsilon: float = 1e-5,
-            patience: int = 10,
-            patience_margin: float = 0.01,
-            recover_best_weight: bool = True,
-            add_bias: bool = True,
-            store_errors: bool = False,
-            store_lr: bool = False,
-            verbose: int = 0,
-            random_state: t.Optional[int] = None) -> "SGDClassifier":
+    def fit(
+        self,
+        X: np.ndarray,
+        y: np.ndarray,
+        batch_size: int = 256,
+        max_epochs: int = 128,
+        learning_rate: float = 0.0001,
+        lr_decay_rate: float = 0.95,
+        validation_frac: float = 0.1,
+        reg_rate: float = 0.01,
+        adam_beta1: float = 0.9,
+        adam_beta2: float = 0.999,
+        epsilon: float = 1e-5,
+        patience: int = 10,
+        patience_margin: float = 0.01,
+        recover_best_weight: bool = True,
+        add_bias: bool = True,
+        store_errors: bool = False,
+        store_lr: bool = False,
+        verbose: int = 0,
+        random_state: t.Optional[int] = None,
+    ) -> "SGDClassifier":
         """Use the given train data to optimize the classifier parameters.
 
         Arguments
@@ -430,40 +446,46 @@ class SGDClassifier:
             batch_size = y.size
 
         if lr_decay_rate < 0:
-            raise ValueError("'lr_decay_rate' must be non-negative (got {}.)".
-                             format(lr_decay_rate))
+            raise ValueError(
+                "'lr_decay_rate' must be non-negative (got {}.)".format(lr_decay_rate)
+            )
 
         if validation_frac > 0.0 and int(y.size * validation_frac) == 0:
             validation_frac = 0.0
             warnings.warn("validation set has 0 instances.", UserWarning)
 
         if not 0 <= validation_frac < 1:
-            raise ValueError("'validation_frac must be in [0, 1) (got "
-                             "{}.)".format(validation_frac))
+            raise ValueError(
+                "'validation_frac must be in [0, 1) (got "
+                "{}.)".format(validation_frac)
+            )
 
         if X.ndim == 1:
             X = X.reshape(-1, 1)
 
         if X.shape[0] != y.size:
-            raise ValueError("'X' ({} instances) and 'y' ({} instances) "
-                             "dimensions does not match!".format(
-                                 X.shape[0], y.size))
+            raise ValueError(
+                "'X' ({} instances) and 'y' ({} instances) "
+                "dimensions does not match!".format(X.shape[0], y.size)
+            )
 
         if learning_rate <= 0:
-            raise ValueError("'learning_rate' must be positive (got {}.)".
-                             format(learning_rate))
+            raise ValueError(
+                "'learning_rate' must be positive (got {}.)".format(learning_rate)
+            )
 
         if not 0 <= adam_beta1 < 1:
             raise ValueError(
-                "'adam_beta1' must be in [0, 1) (got {}.)".format(adam_beta1))
+                "'adam_beta1' must be in [0, 1) (got {}.)".format(adam_beta1)
+            )
 
         if not 0 <= adam_beta2 < 1:
             raise ValueError(
-                "'adam_beta2' must be in [0, 1) (got {}.)".format(adam_beta2))
+                "'adam_beta2' must be in [0, 1) (got {}.)".format(adam_beta2)
+            )
 
         if epsilon < 0:
-            raise ValueError(
-                "'epsilon' must be non-negative (got {}.)".format(epsilon))
+            raise ValueError("'epsilon' must be non-negative (got {}.)".format(epsilon))
 
         if self._check_data_func is not None:
             self._check_data_func(X, y)
@@ -476,14 +498,14 @@ class SGDClassifier:
         X_train, X_val, y_train, y_val = X, None, y, None
 
         if validation_frac > 0.0:
-            X_train, X_val, y_train, y_val = (
-                sklearn.model_selection.train_test_split(
-                    X,
-                    y,
-                    shuffle=True,
-                    stratify=y,
-                    test_size=validation_frac,
-                    random_state=random_state))
+            X_train, X_val, y_train, y_val = sklearn.model_selection.train_test_split(
+                X,
+                y,
+                shuffle=True,
+                stratify=y,
+                test_size=validation_frac,
+                random_state=random_state,
+            )
 
         self._num_inst, self._num_attr = X_train.shape
         self._train_data_mean = np.mean(X_train, axis=0)
@@ -521,7 +543,8 @@ class SGDClassifier:
             np.random.seed(random_state)
 
         self.weights = np.random.uniform(
-            low=-1.0, high=1.0, size=(self._num_classes, 1 + self._num_attr))
+            low=-1.0, high=1.0, size=(self._num_classes, 1 + self._num_attr)
+        )
 
         self._optimize(
             X_train=X_train,
@@ -530,14 +553,14 @@ class SGDClassifier:
             y_val=y_val,
             verbose=verbose,
             store_errors=store_errors,
-            store_lr=store_lr)
+            store_lr=store_lr,
+        )
 
         return self
 
-    def _predict(self,
-                 X: np.ndarray,
-                 center_data: bool = True,
-                 add_bias: bool = True) -> np.ndarray:
+    def _predict(
+        self, X: np.ndarray, center_data: bool = True, add_bias: bool = True
+    ) -> np.ndarray:
         """Calculate the linear scores based on fitted weights."""
         if X.ndim == 1:
             X = X.reshape(-1, 1)
@@ -568,12 +591,11 @@ class SoftmaxClassifier(SGDClassifier):
     def __init__(self):
         """Init a SGD classifier model with cross entropy loss."""
         super().__init__(
-            func_loss=losses.cross_ent_loss,
-            func_loss_grad=self.cross_ent_grad)
+            func_loss=losses.cross_ent_loss, func_loss_grad=self.cross_ent_grad
+        )
 
     @classmethod
-    def softmax(cls, scores: np.ndarray,
-                axis: t.Optional[int] = None) -> np.ndarray:
+    def softmax(cls, scores: np.ndarray, axis: t.Optional[int] = None) -> np.ndarray:
         """Compute the Softmax function."""
         # Note: subtract the maximum for numeric stability
         _scores_exp = np.exp(scores - np.max(scores, axis=axis))
@@ -585,15 +607,16 @@ class SoftmaxClassifier(SGDClassifier):
         scores_norm = self.softmax(scores, axis=0)
         return np.argmax(scores_norm, axis=0)
 
-    def cross_ent_grad(self,
-                       X: np.ndarray,
-                       y_inds: np.ndarray,
-                       scores: t.Optional[np.ndarray] = None,
-                       add_bias: bool = True) -> np.ndarray:
+    def cross_ent_grad(
+        self,
+        X: np.ndarray,
+        y_inds: np.ndarray,
+        scores: t.Optional[np.ndarray] = None,
+        add_bias: bool = True,
+    ) -> np.ndarray:
         """Cross entropy loss function gradient."""
         if scores is None:
-            scores = super()._predict(
-                X=X, center_data=False, add_bias=add_bias)
+            scores = super()._predict(X=X, center_data=False, add_bias=add_bias)
 
         _scores = self.softmax(scores=scores, axis=0)
 
@@ -611,22 +634,24 @@ class SupportVectorClassifier(SGDClassifier):
     def __init__(self):
         """Init a SGD classifier with Hinge loss function."""
         super().__init__(
-            func_loss=losses.hinge_loss, func_loss_grad=self.hinge_loss_grad)
+            func_loss=losses.hinge_loss, func_loss_grad=self.hinge_loss_grad
+        )
 
     def predict(self, X: np.ndarray, add_bias: bool = True) -> np.ndarray:
         """Predict the class of new instances."""
         return np.argmax(super()._predict(X=X, add_bias=add_bias), axis=0)
 
-    def hinge_loss_grad(self,
-                        X: np.ndarray,
-                        y_inds: np.ndarray,
-                        scores: t.Optional[np.ndarray] = None,
-                        add_bias: bool = True,
-                        delta: float = 1.0) -> np.ndarray:
+    def hinge_loss_grad(
+        self,
+        X: np.ndarray,
+        y_inds: np.ndarray,
+        scores: t.Optional[np.ndarray] = None,
+        add_bias: bool = True,
+        delta: float = 1.0,
+    ) -> np.ndarray:
         """Gradient of the Hinge loss function."""
         if scores is None:
-            scores = super()._predict(
-                X=X, center_data=False, add_bias=add_bias)
+            scores = super()._predict(X=X, center_data=False, add_bias=add_bias)
 
         _inst_inds = np.arange(y_inds.size)
 
@@ -652,19 +677,23 @@ class LogisticRegressionClassifier(SGDClassifier):
         super().__init__(
             func_loss=losses.log_likelihood,
             func_loss_grad=self.log_likelihood_grad,
-            check_data_func=self._check_binary_problem)
+            check_data_func=self._check_binary_problem,
+        )
 
     @staticmethod
     def _check_binary_problem(X: np.ndarray, y: np.ndarray) -> None:
         y_unique = np.unique(y)
 
         if y_unique.size != 2:
-            raise ValueError("'y' must be binary (got {} classes.)".format(
-                y_unique.size))
+            raise ValueError(
+                "'y' must be binary (got {} classes.)".format(y_unique.size)
+            )
 
         if not np.all(np.isin(y_unique, [0, 1])):
-            raise ValueError("'y' classes must be '0' and '1' "
-                             "(got '{}' and '{}'.)".format(*y_unique))
+            raise ValueError(
+                "'y' classes must be '0' and '1' "
+                "(got '{}' and '{}'.)".format(*y_unique)
+            )
 
     @classmethod
     def sigmoid(cls, X: np.ndarray) -> np.ndarray:
@@ -682,10 +711,9 @@ class LogisticRegressionClassifier(SGDClassifier):
 
         return sig_vals
 
-    def predict(self,
-                X: np.ndarray,
-                add_bias: bool = True,
-                return_scores: bool = False) -> np.ndarray:
+    def predict(
+        self, X: np.ndarray, add_bias: bool = True, return_scores: bool = False
+    ) -> np.ndarray:
         """Linear predictions with Logistic normalization."""
         scores = super()._predict(X=X, add_bias=add_bias)
 
@@ -696,42 +724,51 @@ class LogisticRegressionClassifier(SGDClassifier):
         # self.sigmoid(x) > 0.5 iff x > 0.
         return scores.ravel() > 0.0
 
-    def log_likelihood_grad(self,
-                            X: np.ndarray,
-                            y_inds: np.ndarray,
-                            scores: t.Optional[np.ndarray] = None,
-                            add_bias: bool = True) -> np.ndarray:
+    def log_likelihood_grad(
+        self,
+        X: np.ndarray,
+        y_inds: np.ndarray,
+        scores: t.Optional[np.ndarray] = None,
+        add_bias: bool = True,
+    ) -> np.ndarray:
         """Gradient of the (negative) Log-likelihood loss function."""
         if scores is None:
-            scores = super()._predict(
-                X=X, center_data=False, add_bias=add_bias)
+            scores = super()._predict(X=X, center_data=False, add_bias=add_bias)
 
         return -np.dot(y_inds - self.sigmoid(scores), X) / y_inds.size
 
 
 def _gen_data(inst_per_class: int = 200) -> t.Tuple[np.ndarray, np.ndarray]:
     """Generate multimodal data."""
-    X = 0.85 * np.vstack((
-        np.random.multivariate_normal(
-            mean=(2, 2), cov=np.eye(2), size=inst_per_class),
-        np.random.multivariate_normal(
-            mean=(-3, -3), cov=np.eye(2), size=inst_per_class),
-        np.random.multivariate_normal(
-            mean=(0, 6), cov=np.eye(2), size=inst_per_class),
-    )) + 0.15 * np.random.multivariate_normal(
-        mean=(0, 0), cov=np.eye(2), size=3 * inst_per_class)
+    X = 0.85 * np.vstack(
+        (
+            np.random.multivariate_normal(
+                mean=(2, 2), cov=np.eye(2), size=inst_per_class
+            ),
+            np.random.multivariate_normal(
+                mean=(-3, -3), cov=np.eye(2), size=inst_per_class
+            ),
+            np.random.multivariate_normal(
+                mean=(0, 6), cov=np.eye(2), size=inst_per_class
+            ),
+        )
+    ) + 0.15 * np.random.multivariate_normal(
+        mean=(0, 0), cov=np.eye(2), size=3 * inst_per_class
+    )
 
     y = np.repeat(np.arange(3), inst_per_class).astype(int)
 
     return X, y
 
 
-def _plot(X_train: np.ndarray,
-          X_test: np.ndarray,
-          y_train: np.ndarray,
-          y_test: np.ndarray,
-          model: SGDClassifier,
-          num_bg_inst: int = 75) -> None:
+def _plot(
+    X_train: np.ndarray,
+    X_test: np.ndarray,
+    y_train: np.ndarray,
+    y_test: np.ndarray,
+    model: SGDClassifier,
+    num_bg_inst: int = 75,
+) -> None:
     import matplotlib.pyplot as plt
 
     null_model_accuracy = np.max(np.bincount(y_train)) / y_train.size
@@ -741,36 +778,32 @@ def _plot(X_train: np.ndarray,
     lims = np.quantile(np.vstack((X_train, X_test)), (0, 1), axis=0)
 
     A, B = np.meshgrid(
-        np.linspace(*lims[:, 0], num_bg_inst),
-        np.linspace(*lims[:, 1], num_bg_inst))
+        np.linspace(*lims[:, 0], num_bg_inst), np.linspace(*lims[:, 1], num_bg_inst)
+    )
     C = model.predict(np.hstack((A.reshape(-1, 1), B.reshape(-1, 1)))).reshape(
-        num_bg_inst, num_bg_inst)
+        num_bg_inst, num_bg_inst
+    )
 
     plt.suptitle(
-        "Step size: {:.6f} - Accuracy: {:.3f} - Null model accuracy: {:.3f}".
-        format(model.learning_rate, accuracy, null_model_accuracy))
+        "Step size: {:.6f} - Accuracy: {:.3f} - Null model accuracy: {:.3f}".format(
+            model.learning_rate, accuracy, null_model_accuracy
+        )
+    )
 
     plt.subplot(1, 2, 1)
     plt.title("Instances Scatter plot")
     plt.xlabel("X1")
     plt.ylabel("X2")
     plt.scatter(A, B, c=C, marker="s")
-    plt.scatter(
-        X_train[:, 0],
-        X_train[:, 1],
-        c=y_train,
-        edgecolors="black",
-        marker=".")
+    plt.scatter(X_train[:, 0], X_train[:, 1], c=y_train, edgecolors="black", marker=".")
 
     edge_colors = np.array(
-        ["green" if cor_cls else "red" for cor_cls in correctly_classified])
+        ["green" if cor_cls else "red" for cor_cls in correctly_classified]
+    )
 
     plt.scatter(
-        X_test[:, 0],
-        X_test[:, 1],
-        c=y_test,
-        edgecolors=edge_colors,
-        marker="X")
+        X_test[:, 0], X_test[:, 1], c=y_test, edgecolors=edge_colors, marker="X"
+    )
 
     plt.subplot(1, 2, 2)
     plt.title("Loss per epochs")
@@ -779,11 +812,7 @@ def _plot(X_train: np.ndarray,
 
     if model.errors.ndim > 1:
         plt.plot(model.errors[0, :], linestyle="-", color="red", label="Train")
-        plt.plot(
-            model.errors[1, :],
-            linestyle="-.",
-            color="blue",
-            label="Validation")
+        plt.plot(model.errors[1, :], linestyle="-.", color="blue", label="Validation")
 
     else:
         plt.plot(model.errors, linestyle="-", color="red", label="Train")
@@ -794,18 +823,21 @@ def _plot(X_train: np.ndarray,
     plt.show()
 
 
-def _test_classifier(X: np.ndarray,
-                     y: np.ndarray,
-                     model: SGDClassifier,
-                     learning_rate: t.Optional[float] = None,
-                     max_epochs: int = 128,
-                     train_patience: int = 5,
-                     batch_size: int = 32,
-                     reg_rate: float = 0.01,
-                     plot: bool = True) -> None:
+def _test_classifier(
+    X: np.ndarray,
+    y: np.ndarray,
+    model: SGDClassifier,
+    learning_rate: t.Optional[float] = None,
+    max_epochs: int = 128,
+    train_patience: int = 5,
+    batch_size: int = 32,
+    reg_rate: float = 0.01,
+    plot: bool = True,
+) -> None:
     """Full experiment with the implemented SoftmaxClassifier."""
     X_train, X_test, y_train, y_test = sklearn.model_selection.train_test_split(
-        X, y, test_size=0.2, random_state=32)
+        X, y, test_size=0.2, random_state=32
+    )
 
     if learning_rate is None:
         folds = sklearn.model_selection.StratifiedKFold(n_splits=5)
@@ -814,10 +846,14 @@ def _test_classifier(X: np.ndarray,
         learning_rate_acc = np.zeros(learning_rate_candidates.size)
 
         for l_ind, learning_rate in enumerate(learning_rate_candidates, 1):
-            print("Checking {} out of {} learning rates: {}...".format(
-                l_ind, learning_rate_candidates.size, learning_rate))
+            print(
+                "Checking {} out of {} learning rates: {}...".format(
+                    l_ind, learning_rate_candidates.size, learning_rate
+                )
+            )
             for ind, (inds_train, inds_test) in enumerate(
-                    folds.split(X_train, y_train)):
+                folds.split(X_train, y_train)
+            ):
                 model.fit(
                     X_train[inds_train, :],
                     y_train[inds_train],
@@ -825,11 +861,13 @@ def _test_classifier(X: np.ndarray,
                     max_epochs=max_epochs,
                     patience=train_patience,
                     reg_rate=reg_rate,
-                    learning_rate=learning_rate)
+                    learning_rate=learning_rate,
+                )
 
                 preds = model.predict(X_train[inds_test, :])
-                learning_rate_acc[ind] += np.sum(
-                    preds == y_train[inds_test]) / inds_test.size
+                learning_rate_acc[ind] += (
+                    np.sum(preds == y_train[inds_test]) / inds_test.size
+                )
 
         learning_rate = learning_rate_candidates[np.argmax(learning_rate_acc)]
         print("Best learning rate:", learning_rate)
@@ -845,17 +883,15 @@ def _test_classifier(X: np.ndarray,
         store_lr=plot,
         reg_rate=reg_rate,
         epsilon=0,
-        learning_rate=learning_rate)  # type: ignore
+        learning_rate=learning_rate,
+    )  # type: ignore
 
     print("Accuracy:", np.sum(model.predict(X_test) == y_test) / y_test.size)
 
     if plot:
         _plot(
-            X_train=X_train,
-            X_test=X_test,
-            y_train=y_train,
-            y_test=y_test,
-            model=model)
+            X_train=X_train, X_test=X_test, y_train=y_train, y_test=y_test, model=model
+        )
 
 
 def _test_softmax_classifier_01() -> None:
@@ -869,6 +905,7 @@ def _test_softmax_classifier_01() -> None:
 
 def _test_softmax_classifier_02() -> None:
     from sklearn.datasets import load_iris
+
     iris = load_iris()
     _test_classifier(
         model=SoftmaxClassifier(),
@@ -876,11 +913,13 @@ def _test_softmax_classifier_02() -> None:
         batch_size=50,
         X=iris.data[:, [0, 1]],
         y=iris.target,
-        train_patience=5)
+        train_patience=5,
+    )
 
 
 def _test_softmax_classifier_03() -> None:
     from sklearn.datasets import load_iris
+
     iris = load_iris()
     _test_classifier(
         model=SoftmaxClassifier(),
@@ -890,7 +929,8 @@ def _test_softmax_classifier_03() -> None:
         batch_size=50,
         train_patience=20,
         reg_rate=0.1,
-        plot=False)
+        plot=False,
+    )
 
 
 def _test_softmax_grad() -> None:
@@ -903,10 +943,7 @@ def _test_softmax_grad() -> None:
 
     X = np.hstack((X, np.ones((y.size, 1))))
 
-    func = lambda W: losses.cross_ent_loss(
-        X=X,
-        y_inds=y,
-        W=W.reshape((3, 2 + 1)))
+    func = lambda W: losses.cross_ent_loss(X=X, y_inds=y, W=W.reshape((3, 2 + 1)))
 
     model = SoftmaxClassifier()
     model.fit(X, y, max_epochs=0, add_bias=False)
@@ -921,7 +958,8 @@ def _test_softmax_grad() -> None:
         x_limits=np.array([-5, 5] * 9).reshape(-1, 2),
         num_it=2000,
         random_state=32,
-        verbose=1)
+        verbose=1,
+    )
 
 
 def _test_hinge_grad() -> None:
@@ -949,7 +987,8 @@ def _test_hinge_grad() -> None:
         x_limits=np.array([-5, 5] * 9).reshape(-1, 2),
         num_it=2000,
         random_state=32,
-        verbose=1)
+        verbose=1,
+    )
 
 
 def _test_log_likelihood_grad() -> None:
@@ -981,7 +1020,8 @@ def _test_log_likelihood_grad() -> None:
         x_limits=np.array([-1, 1] * 3).reshape(-1, 2),
         num_it=3000,
         random_state=32,
-        verbose=1)
+        verbose=1,
+    )
 
 
 def _test_svc_01() -> None:
@@ -996,11 +1036,13 @@ def _test_svc_01() -> None:
         batch_size=128,
         train_patience=5,
         X=X,
-        y=y)
+        y=y,
+    )
 
 
 def _test_svc_02() -> None:
     from sklearn.datasets import load_iris
+
     iris = load_iris()
     _test_classifier(
         model=SupportVectorClassifier(),
@@ -1008,11 +1050,13 @@ def _test_svc_02() -> None:
         y=iris.target,
         batch_size=75,
         learning_rate=0.1,
-        train_patience=10)
+        train_patience=10,
+    )
 
 
 def _test_svc_03() -> None:
     from sklearn.datasets import load_iris
+
     iris = load_iris()
     _test_classifier(
         model=SupportVectorClassifier(),
@@ -1021,7 +1065,8 @@ def _test_svc_03() -> None:
         reg_rate=0.05,
         learning_rate=0.02,
         train_patience=10,
-        plot=False)
+        plot=False,
+    )
 
 
 def _test_logistic_classifier_01() -> None:
@@ -1038,7 +1083,8 @@ def _test_logistic_classifier_01() -> None:
         X=X,
         y=y,
         train_patience=5,
-        learning_rate=0.01)
+        learning_rate=0.01,
+    )
 
 
 if __name__ == "__main__":

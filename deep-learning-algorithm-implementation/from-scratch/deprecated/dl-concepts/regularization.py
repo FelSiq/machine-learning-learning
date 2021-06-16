@@ -2,8 +2,7 @@
 import numpy as np
 
 
-def l2(W: np.ndarray, lambda_: float = 0.01,
-       exclude_bias: bool = False) -> float:
+def l2(W: np.ndarray, lambda_: float = 0.01, exclude_bias: bool = False) -> float:
     """Ridge (L2) regularization.
 
     It is defined as the sum of element-wise squared weights.
@@ -43,8 +42,9 @@ def l2(W: np.ndarray, lambda_: float = 0.01,
     return reg_factor
 
 
-def l2_grad(W: np.ndarray, lambda_: float = 0.01,
-            exclude_bias: bool = False) -> np.ndarray:
+def l2_grad(
+    W: np.ndarray, lambda_: float = 0.01, exclude_bias: bool = False
+) -> np.ndarray:
     """Gradient of the Ridge (L2) regularization."""
     if exclude_bias:
         W = np.hstack((W[:, :-1], np.zeros((W.shape[0], 1))))

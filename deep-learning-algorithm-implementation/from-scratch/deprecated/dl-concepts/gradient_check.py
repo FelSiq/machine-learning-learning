@@ -6,9 +6,9 @@ import numpy as np
 TypeVectorizedFunc = t.Callable[[t.Union[np.ndarray, float]], float]
 
 
-def numerical_grad(func: TypeVectorizedFunc,
-                   inst: t.Union[np.ndarray, float],
-                   delta: float = 1.0e-5) -> np.float64:
+def numerical_grad(
+    func: TypeVectorizedFunc, inst: t.Union[np.ndarray, float], delta: float = 1.0e-5
+) -> np.float64:
     r"""Approximate the gradient of ``func`` evaluated on ``inst``.
 
     The strategy used is the centered formula:
@@ -43,9 +43,11 @@ def numerical_grad(func: TypeVectorizedFunc,
     return grad
 
 
-def _gen_random_data(x_limits: t.Sequence[t.Tuple[int, int]],
-                     num_it: int = 20000,
-                     random_state: t.Optional[int] = None) -> np.ndarray:
+def _gen_random_data(
+    x_limits: t.Sequence[t.Tuple[int, int]],
+    num_it: int = 20000,
+    random_state: t.Optional[int] = None,
+) -> np.ndarray:
     """Generate random data for gradient checking."""
     if random_state is not None:
         np.random.seed(random_state)
@@ -55,23 +57,27 @@ def _gen_random_data(x_limits: t.Sequence[t.Tuple[int, int]],
         x_rand = np.random.uniform(lim_low, lim_upper, size=num_it)
 
     else:
-        x_rand = np.hstack([
-            np.random.uniform(lim_low, lim_upper, size=(num_it, 1))
-            for lim_low, lim_upper in x_limits
-        ])
+        x_rand = np.hstack(
+            [
+                np.random.uniform(lim_low, lim_upper, size=(num_it, 1))
+                for lim_low, lim_upper in x_limits
+            ]
+        )
 
     return x_rand.astype(np.float64)
 
 
-def gradient_check(func: TypeVectorizedFunc,
-                   analytic_grad: t.Optional[TypeVectorizedFunc] = None,
-                   analytic_grad_vals: t.Optional[np.ndarray] = None,
-                   X: t.Optional[np.ndarray] = None,
-                   x_limits: t.Sequence[t.Tuple[int, int]] = None,
-                   delta: float = 1.0e-5,
-                   num_it: int = 20000,
-                   verbose: int = 0,
-                   random_state: t.Optional[int] = None) -> float:
+def gradient_check(
+    func: TypeVectorizedFunc,
+    analytic_grad: t.Optional[TypeVectorizedFunc] = None,
+    analytic_grad_vals: t.Optional[np.ndarray] = None,
+    X: t.Optional[np.ndarray] = None,
+    x_limits: t.Sequence[t.Tuple[int, int]] = None,
+    delta: float = 1.0e-5,
+    num_it: int = 20000,
+    verbose: int = 0,
+    random_state: t.Optional[int] = None,
+) -> float:
     """Check if the analytical gradient matches with the numerical.
 
     This is a debugging tool to check if the analitical gradient
@@ -145,14 +151,14 @@ def gradient_check(func: TypeVectorizedFunc,
         strategies.
     """
     if analytic_grad is None and analytic_grad_vals is None:
-        raise TypeError("'analytic_grad' and 'analytic_grad_vals' are "
-                        "both None.")
+        raise TypeError("'analytic_grad' and 'analytic_grad_vals' are " "both None.")
     if X is None:
         if x_limits is None:
             raise TypeError("'X' and 'x_limits' are both None.")
 
         X = _gen_random_data(
-            x_limits=x_limits, num_it=num_it, random_state=random_state)
+            x_limits=x_limits, num_it=num_it, random_state=random_state
+        )
 
     rel_total_err = np.float64(0.0)
 
@@ -166,23 +172,24 @@ def gradient_check(func: TypeVectorizedFunc,
             val_ana_grad = analytic_grad_vals[cur_it]
 
         abs_diff = np.asarray(
-            np.abs(
-                val_num_grad.astype(np.float64) -
-                val_ana_grad.astype(np.float64)))
+            np.abs(val_num_grad.astype(np.float64) - val_ana_grad.astype(np.float64))
+        )
 
         max_el_wise = np.maximum(np.abs(val_num_grad), np.abs(val_ana_grad))
 
         _non_zero_inds = np.logical_and(abs_diff > 1e-9, max_el_wise > 1e-8)
 
         abs_diff[_non_zero_inds] /= np.maximum(
-            np.abs(val_num_grad[_non_zero_inds]),
-            np.abs(val_ana_grad[_non_zero_inds]))
+            np.abs(val_num_grad[_non_zero_inds]), np.abs(val_ana_grad[_non_zero_inds])
+        )
 
         rel_total_err += abs_diff
 
         if verbose >= 2:
-            print("Current iteration: {} - Current total relative error "
-                  "maximum norm: {}".format(cur_it, np.max(rel_total_err)))
+            print(
+                "Current iteration: {} - Current total relative error "
+                "maximum norm: {}".format(cur_it, np.max(rel_total_err))
+            )
 
     avg_max_norm_err = np.max(rel_total_err) / num_it
 
@@ -194,14 +201,15 @@ def gradient_check(func: TypeVectorizedFunc,
             _err_msg = "Something may be wrong with the analytical gradient"
 
         elif 1e-4 >= avg_max_norm_err > 1e-7:
-            _err_msg = ("If the function is simple, then error is too "
-                        "high. Otherwise, it is ok")
+            _err_msg = (
+                "If the function is simple, then error is too "
+                "high. Otherwise, it is ok"
+            )
 
         else:
             _err_msg = "Gradient is ok"
 
-        print("Average relative error maximum norm: {:.10f}".format(
-            avg_max_norm_err))
+        print("Average relative error maximum norm: {:.10f}".format(avg_max_norm_err))
 
         print("Conclusion: {}.".format(_err_msg))
 
@@ -210,21 +218,22 @@ def gradient_check(func: TypeVectorizedFunc,
 
 def _test_01() -> None:
     error = gradient_check(
-        func=lambda x: 5 * x**3 - 3 * x + 1,
-        analytic_grad=lambda x: 15 * x**2 - 3,
+        func=lambda x: 5 * x ** 3 - 3 * x + 1,
+        analytic_grad=lambda x: 15 * x ** 2 - 3,
         x_limits=[(-5, 5)],
-        random_state=16)
+        random_state=16,
+    )
 
     print(error)
 
 
 def _test_02() -> None:
     error = gradient_check(
-        func=lambda x: 5 * x[0]**3 - 3 * x[1]**2 + 1,  # type: ignore
-        analytic_grad=
-        lambda x: np.array([15 * x[0]**2, -6 * x[1]]),  # type: ignore
+        func=lambda x: 5 * x[0] ** 3 - 3 * x[1] ** 2 + 1,  # type: ignore
+        analytic_grad=lambda x: np.array([15 * x[0] ** 2, -6 * x[1]]),  # type: ignore
         x_limits=[(-5, 5), (-10, 10)],
-        random_state=32)
+        random_state=32,
+    )
 
     print(error)
 

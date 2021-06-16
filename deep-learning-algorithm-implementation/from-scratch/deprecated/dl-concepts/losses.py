@@ -8,11 +8,13 @@ import numpy as np
 import scipy.special
 
 
-def cross_ent_loss(X: np.ndarray,
-                   y_inds: np.ndarray,
-                   W: np.ndarray,
-                   b: t.Optional[np.ndarray] = None,
-                   scores: t.Optional[np.ndarray] = None) -> float:
+def cross_ent_loss(
+    X: np.ndarray,
+    y_inds: np.ndarray,
+    W: np.ndarray,
+    b: t.Optional[np.ndarray] = None,
+    scores: t.Optional[np.ndarray] = None,
+) -> float:
     """Calculates the Cross Entropy loss.
 
     Source: http://cs231n.github.io/linear-classify/
@@ -68,12 +70,14 @@ def cross_ent_loss(X: np.ndarray,
     return np.mean(loss)
 
 
-def hinge_loss(X: np.ndarray,
-               y_inds: np.ndarray,
-               W: np.ndarray,
-               b: t.Optional[np.ndarray] = None,
-               scores: t.Optional[np.ndarray] = None,
-               delta: float = 1.0) -> float:
+def hinge_loss(
+    X: np.ndarray,
+    y_inds: np.ndarray,
+    W: np.ndarray,
+    b: t.Optional[np.ndarray] = None,
+    scores: t.Optional[np.ndarray] = None,
+    delta: float = 1.0,
+) -> float:
     """Calculates the SVM loss for all instances in ``X``.
 
     The `SVM loss` is called `Multiclass Support Vector Machine loss`
@@ -135,11 +139,13 @@ def hinge_loss(X: np.ndarray,
     return np.mean(el_wise_loss)
 
 
-def log_likelihood(X: np.ndarray,
-                   y_inds: np.ndarray,
-                   W: np.ndarray,
-                   b: t.Optional[np.ndarray] = None,
-                   scores: t.Optional[np.ndarray] = None) -> float:
+def log_likelihood(
+    X: np.ndarray,
+    y_inds: np.ndarray,
+    W: np.ndarray,
+    b: t.Optional[np.ndarray] = None,
+    scores: t.Optional[np.ndarray] = None,
+) -> float:
     """Log-likelihood loss function."""
     # Note: each row in 'X' is an instance
     # Note: each row in 'W' represents a distinct class
@@ -151,8 +157,7 @@ def log_likelihood(X: np.ndarray,
 
     sig_out = 1.0 / (1.0 + np.exp(-scores))
 
-    el_wise_loss = (
-        y_inds * np.log(sig_out) + (1 - y_inds) * np.log(1 - sig_out))
+    el_wise_loss = y_inds * np.log(sig_out) + (1 - y_inds) * np.log(1 - sig_out)
 
     return -np.mean(el_wise_loss)
 
@@ -168,11 +173,13 @@ def _test_hinge_01() -> None:
 
 
 def _test_hinge_02() -> None:
-    W = np.array([
-        [0.01, -0.05, 0.1, 0.05, 0],
-        [0.7, 0.2, 0.05, 0.16, 0.2],
-        [0.0, -0.45, -0.2, 0.03, -0.3],
-    ])
+    W = np.array(
+        [
+            [0.01, -0.05, 0.1, 0.05, 0],
+            [0.7, 0.2, 0.05, 0.16, 0.2],
+            [0.0, -0.45, -0.2, 0.03, -0.3],
+        ]
+    )
 
     x = np.array([-15, 22, -44, 56, 1]).reshape(1, -1)
 
@@ -189,8 +196,8 @@ def _test_hinge_03() -> None:
     W = np.full((NUM_CLASSES, IMG_DIM + 1), 1)
     y = np.random.randint(NUM_CLASSES, size=NUM_INST)
     X = np.round(
-        np.hstack((np.random.random((NUM_INST, IMG_DIM)), np.ones((NUM_INST,
-                                                                   1)))))
+        np.hstack((np.random.random((NUM_INST, IMG_DIM)), np.ones((NUM_INST, 1))))
+    )
 
     print("Loss:", hinge_loss(X=X, y_inds=y, W=W))
     print("Expected:", NUM_CLASSES - 1)
@@ -206,8 +213,9 @@ def _test_cross_ent_01() -> None:
     loss_val = cross_ent_loss(X=X, y_inds=y, W=W)
     print("Loss:", loss_val)
 
-    _aux_loss = np.mean(-np.log(
-        scipy.special.softmax(np.dot(W, X.T), axis=0)[y, np.arange(y.size)]))
+    _aux_loss = np.mean(
+        -np.log(scipy.special.softmax(np.dot(W, X.T), axis=0)[y, np.arange(y.size)])
+    )
     _aux_reg = 0.0001 * np.sum(np.square(W))
     _total_loss = _aux_loss + _aux_reg
 
@@ -215,11 +223,13 @@ def _test_cross_ent_01() -> None:
 
 
 def _test_cross_ent_02() -> None:
-    W = np.array([
-        [0.01, -0.05, 0.1, 0.05, 0],
-        [0.7, 0.2, 0.05, 0.16, 0.2],
-        [0.0, -0.45, -0.2, 0.03, -0.3],
-    ])
+    W = np.array(
+        [
+            [0.01, -0.05, 0.1, 0.05, 0],
+            [0.7, 0.2, 0.05, 0.16, 0.2],
+            [0.0, -0.45, -0.2, 0.03, -0.3],
+        ]
+    )
 
     x = np.array([-15, 22, -44, 56, 1]).reshape(1, -1)
 
@@ -236,9 +246,14 @@ def _test_cross_ent_03() -> None:
     W = 0.002 * np.random.random(size=(NUM_CLASSES, IMG_DIM + 1)) - 0.001
     y = np.random.randint(NUM_CLASSES, size=NUM_INST)
     X = np.round(
-        np.hstack((np.ones(
-            (NUM_INST, IMG_DIM)) * y.reshape(-1, 1) + np.random.random(
-                (NUM_INST, IMG_DIM)), np.ones((NUM_INST, 1)))))
+        np.hstack(
+            (
+                np.ones((NUM_INST, IMG_DIM)) * y.reshape(-1, 1)
+                + np.random.random((NUM_INST, IMG_DIM)),
+                np.ones((NUM_INST, 1)),
+            )
+        )
+    )
 
     print("Loss:", cross_ent_loss(X=X, y_inds=y, W=W))
     print("Expected:", np.log(NUM_CLASSES))

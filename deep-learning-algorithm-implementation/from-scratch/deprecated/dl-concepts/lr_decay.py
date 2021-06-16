@@ -6,9 +6,9 @@ import numpy as np
 _LRType = t.Union[float, np.ndarray]
 
 
-def identity(learning_rate: _LRType,
-             decay_rate: float = 0.0,
-             epoch_num: int = 0) -> _LRType:
+def identity(
+    learning_rate: _LRType, decay_rate: float = 0.0, epoch_num: int = 0
+) -> _LRType:
     """Do not change the learning rate.
 
     Arguments
@@ -32,10 +32,9 @@ def identity(learning_rate: _LRType,
     return learning_rate
 
 
-def step(learning_rate: _LRType,
-         decay_rate: float,
-         epoch_num: int,
-         step_delay: int = 10) -> _LRType:
+def step(
+    learning_rate: _LRType, decay_rate: float, epoch_num: int, step_delay: int = 10
+) -> _LRType:
     """Reduce learning rate after every ``step_delay`` epochs.
 
     Arguments
@@ -63,11 +62,13 @@ def step(learning_rate: _LRType,
     return learning_rate
 
 
-def val_step(learning_rate: _LRType,
-             decay_rate: float,
-             loss_val_cur: float,
-             loss_val_prev: float,
-             min_diff_frac: float = 0.01) -> _LRType:
+def val_step(
+    learning_rate: _LRType,
+    decay_rate: float,
+    loss_val_cur: float,
+    loss_val_prev: float,
+    min_diff_frac: float = 0.01,
+) -> _LRType:
     r"""Decay the learning rate based on validation loss.
 
     If \frac{loss_val_cur}{loss_val_prev} < (1 - min_diff_frac),
