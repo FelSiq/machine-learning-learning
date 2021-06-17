@@ -22,6 +22,8 @@ class Autoencoder(base.BaseModel):
         assert dims[0] == dims[-1]
         assert float(clip_grad_norm) > 0.0
 
+        super(Autoencoder, self).__init__()
+
         self.layers = []
         l_rel = modules.ReLU()
         self.optim = optim.Nadam(
@@ -46,6 +48,9 @@ class Autoencoder(base.BaseModel):
         return out
 
     def backward(self, dout):
+        if self.frozen:
+            return
+
         for i, layer in enumerate(reversed(self.layers)):
             layer_id = len(self.layers) - i - 1
             grads = layer.backward(dout)
@@ -103,6 +108,7 @@ def _test():
 
     for epoch in np.arange(1, 1 + train_epochs):
         total_loss = 0.0
+        it = 0
         np.random.shuffle(X)
 
         for start in tqdm.auto.tqdm(np.arange(0, n, batch_size)):
@@ -113,8 +119,9 @@ def _test():
             model.backward(loss_grad)
 
             total_loss += loss
+            it += 1
 
-        total_loss /= batch_size
+        total_loss /= it
         print(f"Total loss: {total_loss:.3f}")
 
     model.eval()
