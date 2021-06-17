@@ -57,7 +57,8 @@ class RNNCell(base._BaseLayer):
 
     def forward(self, X):
         if self.cell_state.size == 0:
-            self.cell_state = np.zeros((X.shape[0], self.dim_hidden), dtype=float)
+            batch_size = X.shape[0]
+            self.cell_state = np.zeros((batch_size, self.dim_hidden), dtype=float)
 
         aux_cell_state = self.lin_hidden(self.cell_state)
         aux_X = self.lin_input(X)

@@ -98,7 +98,7 @@ class ReLU(_BaseLayer):
 
     def backward(self, dout):
         (X,) = self._pop_from_cache()
-        return (X > 0.0) * dout
+        return (X > 0.0).astype(float, copy=False) * dout
 
 
 class Tanh(_BaseLayer):
@@ -135,7 +135,7 @@ class Sigmoid(_BaseLayer):
 
     def backward(self, dout):
         (sig_X,) = self._pop_from_cache()
-        return sig_X * (1.0 - sig_X)
+        return sig_X * (1.0 - sig_X) * dout
 
 
 class Reshape(_BaseLayer):
