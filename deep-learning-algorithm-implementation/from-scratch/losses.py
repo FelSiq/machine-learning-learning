@@ -13,6 +13,8 @@ class _BaseLoss:
 
 class MSELoss(_BaseLoss):
     def __call__(self, y, y_preds):
+        assert y.shape == y_preds.shape
+
         diff = y_preds - y
 
         mse = float(np.sum(diff * diff))
@@ -31,6 +33,8 @@ class BCELoss(_BaseLoss):
         self.sigmoid = modules.Sigmoid() if bool(with_logits) else None
 
     def __call__(self, y, y_preds):
+        assert y.shape == y_preds.shape
+
         pos_inds = y >= 0.999
 
         if self.sigmoid is not None:
