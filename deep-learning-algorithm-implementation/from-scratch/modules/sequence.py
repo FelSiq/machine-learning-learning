@@ -3,36 +3,6 @@ import numpy as np
 from . import base
 
 
-class Embedding(base._BaseLayer):
-    def __init__(self, num_tokens: int, dim_embedding: int):
-        assert int(num_tokens) > 0
-        assert int(dim_embedding) > 0
-
-        super(Embedding, self).__init__(trainable=True)
-
-        # TODO: how to initialize an embedding layer properly?
-        self.embedding = np.random.randn(num_tokens, dim_embedding)
-
-        self.parameters = (self.embedding,)
-
-    def forward(self, X):
-        embedded_tokens = self.embedding[X, :]
-        self._store_in_cache(X, X)
-        return embedded_tokens
-
-    def backward(self, dout):
-        (orig_inds,) = self._pop_from_cache()
-        return self.embedding[orig_inds, :] * dout
-
-    def update(self, *args):
-        if self.frozen:
-            return
-
-        (orig_inds,) = self._pop_from_cache()
-        (demb,) = args
-        np.subtract.at(self.embedding, orig_inds, demb)
-
-
 class RNNCell(base._BaseLayer):
     def __init__(self, dim_in: int, dim_hidden: int):
         assert int(dim_in) > 0
@@ -46,6 +16,12 @@ class RNNCell(base._BaseLayer):
 
         self.dim_hidden = int(dim_hidden)
         self.reset()
+
+        self.layers = (
+            self.lin_hidden,
+            self.lin_input,
+            self.tanh_layer,
+        )
 
         self.parameters = (
             *self.lin_hidden.parameters,
@@ -69,7 +45,7 @@ class RNNCell(base._BaseLayer):
         dout = self.tanh_layer.backward(dout_h + dout_y)
         (dh, dWh, dbh) = self.lin_hidden.backward(dout)
         (dX, dWX, dbX) = self.lin_input.backward(dout)
-        return (dh, dX, dWh, dbh, dWX, dbX)
+        return (dh, dX), (dWh, dbh, dWX, dbX)
 
     def update(self, *args):
         if self.frozen:
@@ -79,3 +55,33 @@ class RNNCell(base._BaseLayer):
 
         self.lin_hidden.update(dWh, dbh)
         self.lin_input.update(dWX, dbX)
+
+
+class Embedding(base._BaseLayer):
+    def __init__(self, num_tokens: int, dim_embedding: int):
+        assert int(num_tokens) > 0
+        assert int(dim_embedding) > 0
+
+        super(Embedding, self).__init__(trainable=True)
+
+        self.embedding = np.random.random((num_tokens, dim_embedding))
+        self.parameters = (self.embedding,)
+
+    def forward(self, X):
+        embedded_tokens = self.embedding[X, :]
+        self._store_in_cache(X)
+        return embedded_tokens
+
+    def backward(self, dout):
+        (orig_inds,) = self._pop_from_cache()
+        # dout = self.embedding[orig_inds, :] * dout
+        dout_b = np.zeros_like(self.embedding)
+        np.add.at(dout_b, orig_inds, dout)
+        return tuple(), (dout_b,)
+
+    def update(self, *args):
+        if self.frozen:
+            return
+
+        (demb,) = args
+        self.embedding -= demb

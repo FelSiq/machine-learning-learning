@@ -54,14 +54,14 @@ class Autoencoder(base.BaseModel):
         for i, layer in enumerate(reversed(self.layers)):
             layer_id = len(self.layers) - i - 1
             grads = layer.backward(dout)
-            self._clip_grads(*grads)
+            self._clip_grads(grads)
 
             if not layer.trainable:
                 dout = grads
                 continue
 
-            dout = grads[0]
-            param_grads = grads[1:]
+            (dout,) = grads[0]
+            param_grads = grads[1]
             grads = self.optim.update(layer_id, *param_grads)
             layer.update(*grads)
 

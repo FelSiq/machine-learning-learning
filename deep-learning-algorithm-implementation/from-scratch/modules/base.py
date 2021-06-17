@@ -9,6 +9,7 @@ class _BaseLayer:
         self.trainable = trainable
         self.frozen = False
         self.parameters = tuple()
+        self.layers = tuple()
 
     def _store_in_cache(self, *args):
         if self.frozen:
@@ -32,11 +33,21 @@ class _BaseLayer:
         raise NotImplementedError
 
     def clean_grad_cache(self):
-        self._cache = []
+        self._cache.clear()
 
     @property
     def has_stored_grads(self):
-        return len(self._cache) > 0
+        return len(self._cache) > 0 or any(l.has_stored_grads for l in self.layers)
+
+    def train(self):
+        self.frozen = False
+        for layer in self.layers:
+            layer.train()
+
+    def eval(self):
+        self.frozen = False
+        for layer in self.layers:
+            layer.eval()
 
 
 class Linear(_BaseLayer):
@@ -74,7 +85,7 @@ class Linear(_BaseLayer):
         if self.bias.size:
             db = np.sum(dout, axis=0)
 
-        return dX, dW, db
+        return (dX,), (dW, db)
 
     def update(self, *args):
         if self.frozen:
@@ -98,7 +109,8 @@ class ReLU(_BaseLayer):
 
     def backward(self, dout):
         (X,) = self._pop_from_cache()
-        return (X > 0.0).astype(float, copy=False) * dout
+        dout = (X > 0.0).astype(float, copy=False) * dout
+        return dout
 
 
 class Tanh(_BaseLayer):
@@ -112,7 +124,8 @@ class Tanh(_BaseLayer):
 
     def backward(self, dout):
         (tanh_X,) = self._pop_from_cache()
-        return (1.0 - np.square(tanh_X)) * dout
+        dout = (1.0 - np.square(tanh_X)) * dout
+        return dout
 
 
 class Sigmoid(_BaseLayer):
@@ -135,7 +148,8 @@ class Sigmoid(_BaseLayer):
 
     def backward(self, dout):
         (sig_X,) = self._pop_from_cache()
-        return sig_X * (1.0 - sig_X) * dout
+        dout = sig_X * (1.0 - sig_X) * dout
+        return dout
 
 
 class Reshape(_BaseLayer):
@@ -150,7 +164,8 @@ class Reshape(_BaseLayer):
 
     def backward(self, dout):
         (shape,) = self._pop_from_cache()
-        return dout.reshape(shape)
+        dout = dout.reshape(shape)
+        return dout
 
 
 class Flatten(Reshape):
