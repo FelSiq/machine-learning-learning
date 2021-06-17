@@ -44,14 +44,21 @@ class RNNCell(base._BaseLayer):
         self.lin_input = base.Linear(dim_in, dim_hidden, include_bias=True)
         self.tanh_layer = base.Tanh()
 
-        self.cell_state = np.zeros(dim_hidden, dtype=float)
+        self.dim_hidden = int(dim_hidden)
+        self.reset()
 
         self.parameters = (
             *self.lin_hidden.parameters,
             *self.lin_input.parameters,
         )
 
+    def reset(self):
+        self.cell_state = np.empty(0, dtype=float)
+
     def forward(self, X):
+        if self.cell_state.size == 0:
+            self.cell_state = np.zeros((X.shape[0], self.dim_hidden), dtype=float)
+
         aux_cell_state = self.lin_hidden(self.cell_state)
         aux_X = self.lin_input(X)
         self.cell_state = self.tanh_layer(aux_cell_state + aux_X)
