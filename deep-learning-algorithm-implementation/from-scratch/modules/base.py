@@ -146,7 +146,7 @@ class Reshape(_BaseLayer):
 
     def forward(self, X):
         self._store_in_cache(X.shape)
-        return X.reshape()
+        return X.reshape(self.out_shape)
 
     def backward(self, dout):
         (shape,) = self._pop_from_cache()

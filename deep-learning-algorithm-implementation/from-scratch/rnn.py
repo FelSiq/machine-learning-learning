@@ -22,7 +22,7 @@ class RNN(base.BaseModel):
         self.rnn_cell = modules.RNNCell(dim_embed, dim_hidden)
         self.lin_out_layer = modules.Linear(dim_hidden, dim_out)
 
-        self.optim = optim.Nadam(learning_rate)
+        self.optim = optim.Adam(learning_rate)
         self.clip_grad_norm = float(clip_grad_norm)
 
         self.dim_embed = int(dim_embed)
@@ -97,7 +97,7 @@ class RNN(base.BaseModel):
                 dout_y = douts_y[-i]
 
             elif i == 1:
-                dout_y = np.zeros((batch_size, self.dim_hidden), dtype=float)
+                dout_y = np.zeros_like(dout_y)
 
             grads = self.optim.update(1, *param_grads)
             self.rnn_cell.update(*grads)
@@ -129,7 +129,7 @@ def _test():
     np.random.seed(32)
 
     batch_size = 32
-    train_epochs = 5
+    train_epochs = 20
 
     X_train, y_train, X_test, y_test, word_count = tweets_utils.get_data()
 
@@ -138,7 +138,7 @@ def _test():
     tweets_utils.encode_tweets(X_test, token_dictionary)
 
     model = RNN(
-        num_embed_tokens=len(token_dictionary) + 1,
+        num_embed_tokens=1 + len(token_dictionary),
         dim_embed=16,
         dim_hidden=64,
         dim_out=1,
@@ -148,7 +148,8 @@ def _test():
     criterion = losses.BCELoss(with_logits=True)
 
     def pad_batch(X):
-        batch_max_seq_len = int(max(map(len, X)))
+        lens = np.fromiter(map(len, X), count=len(X), dtype=int)
+        batch_max_seq_len = int(max(lens))
 
         X_padded = np.array(
             [
