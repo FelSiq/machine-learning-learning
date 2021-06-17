@@ -33,6 +33,28 @@ class _BaseOptim:
         return self._unpack(unbiased)
 
 
+class SGD(_BaseOptim):
+    """Vanilla SGD.
+
+    All parameters have the same learning rate.
+    """
+
+    def __init__(self, learning_rate: float):
+        super(SGD, self).__init__(learning_rate)
+
+    def register_layer(self, layer_id: int, *params):
+        pass
+
+    def update(self, layer_id: int, *grads):
+        param_updates = []
+
+        for i, grad in enumerate(grads):
+            cur_updates = self.learning_rate * grad
+            param_updates.append(cur_updates)
+
+        return param_updates
+
+
 class Momentum(_BaseOptim):
     """SGD with Momentum.
 
@@ -51,7 +73,9 @@ class Momentum(_BaseOptim):
         bias_correction: bool = True,
     ):
         super(Momentum, self).__init__(learning_rate)
+
         assert 1.0 > float(first_momentum) > 0.0
+
         self.first_momentum = float(first_momentum)
         self.bias_correction = bias_correction
         self.fst_mom_mov_avg = {}
