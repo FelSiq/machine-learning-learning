@@ -26,7 +26,7 @@ class Autoencoder(base.BaseModel):
 
         self.layers = []
         l_rel = modules.ReLU()
-        self.optim = optim.Nadam(
+        self.optim = optim.Adam(
             learning_rate=learning_rate,
             first_momentum=first_momentum,
             second_momentum=second_momentum,

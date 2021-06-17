@@ -161,23 +161,27 @@ def _test():
 
     np.random.seed(32)
 
-    batch_size = 64
-    train_epochs = 10
+    batch_size = 32
+    train_epochs = 25
 
     X_train, y_train, X_test, y_test, word_count = tweets_utils.get_data()
+    X_eval, X_test = X_test[:50], X_test[50:]
+    y_eval, y_test = y_test[:50], y_test[50:]
 
     token_dictionary = tweets_utils.build_dictionary(word_count, max_token_num=2048)
     tweets_utils.encode_tweets(X_train, token_dictionary)
     tweets_utils.encode_tweets(X_test, token_dictionary)
+    tweets_utils.encode_tweets(X_eval, token_dictionary)
 
     X_test = pad_batch(X_test)
+    X_eval = pad_batch(X_eval)
 
     model = RNN(
         num_embed_tokens=1 + len(token_dictionary),
-        dim_embed=32,
+        dim_embed=16,
         dim_hidden=64,
         dim_out=1,
-        learning_rate=1e-3,
+        learning_rate=5e-5,
     )
 
     criterion = losses.BCELoss(with_logits=True)
@@ -207,9 +211,9 @@ def _test():
             total_loss_train += loss
 
             model.eval()
-            y_logits = model(X_test.T)
+            y_logits = model(X_eval.T)
             y_logits = y_logits[-1]
-            loss, loss_grad = criterion(y_test, y_logits)
+            loss, loss_grad = criterion(y_eval, y_logits)
             total_loss_eval += loss
 
             it += 1
@@ -223,7 +227,7 @@ def _test():
     model.eval()
     y_preds_logits = model(X_test.T)
     test_acc = float(np.mean((y_preds_logits > 0.0) == y_test))
-    print(f"Eval acc: {test_acc:.3f}")
+    print(f"Test acc: {test_acc:.3f}")
 
 
 if __name__ == "__main__":
