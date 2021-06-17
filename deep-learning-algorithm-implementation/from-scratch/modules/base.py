@@ -31,6 +31,9 @@ class _BaseLayer:
     def update(self, *args):
         raise NotImplementedError
 
+    def clean_grad_cache(self):
+        self._cache = []
+
     @property
     def has_stored_grads(self):
         return len(self._cache) > 0
@@ -52,8 +55,13 @@ class Linear(_BaseLayer):
             self.parameters = (self.weights,)
 
     def forward(self, X):
-        out = X @ self.weights + self.bias
+        out = X @ self.weights
+
+        if self.bias.size:
+            out += self.bias
+
         self._store_in_cache(X)
+
         return out
 
     def backward(self, dout):
@@ -112,13 +120,13 @@ class Sigmoid(_BaseLayer):
         super(Sigmoid, self).__init__()
 
     def forward(self, X):
-        inds_pos = x >= 0
+        inds_pos = X >= 0
         inds_neg = ~inds_pos
 
-        exp_neg = np.exp(x[inds_neg])
+        exp_neg = np.exp(X[inds_neg])
 
-        out = np.zeros_like(x, dtype=float)
-        out[inds_pos] = 1.0 / (1.0 + np.exp(-x[inds_pos]))
+        out = np.zeros_like(X, dtype=float)
+        out[inds_pos] = 1.0 / (1.0 + np.exp(-X[inds_pos]))
         out[inds_neg] = exp_neg / (1.0 + exp_neg)
 
         self._store_in_cache(out)
