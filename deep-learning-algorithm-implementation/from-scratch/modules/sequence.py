@@ -43,17 +43,17 @@ class RNNCell(base._BaseLayer):
 
     def backward(self, dout_h, dout_y):
         dout = self.tanh_layer.backward(dout_h + dout_y)
-        (dh, dWh, dbh) = self.lin_hidden.backward(dout)
-        (dX, dWX, dbX) = self.lin_input.backward(dout)
-        return (dh, dX), (dWh, dbh, dWX, dbX)
+        ((dh,), (dWh,)) = self.lin_hidden.backward(dout)
+        ((dX,), (dWX, dbX)) = self.lin_input.backward(dout)
+        return (dh, dX), (dWh, dWX, dbX)
 
     def update(self, *args):
         if self.frozen:
             return
 
-        (dWh, dbh, dWX, dbX) = args
+        (dWh, dWX, dbX) = args
 
-        self.lin_hidden.update(dWh, dbh)
+        self.lin_hidden.update(dWh)
         self.lin_input.update(dWX, dbX)
 
 
@@ -74,7 +74,7 @@ class Embedding(base._BaseLayer):
 
     def backward(self, dout):
         (orig_inds,) = self._pop_from_cache()
-        # dout = self.embedding[orig_inds, :] * dout
+        dout = self.embedding[orig_inds, :] * dout
         dout_b = np.zeros_like(self.embedding)
         np.add.at(dout_b, orig_inds, dout)
         return tuple(), (dout_b,)

@@ -45,7 +45,7 @@ class _BaseLayer:
             layer.train()
 
     def eval(self):
-        self.frozen = False
+        self.frozen = True
         for layer in self.layers:
             layer.eval()
 
@@ -81,21 +81,23 @@ class Linear(_BaseLayer):
         dW = X.T @ dout
         dX = dout @ self.weights.T
 
-        db = np.empty(0, dtype=float)
         if self.bias.size:
             db = np.sum(dout, axis=0)
+            return (dX,), (dW, db)
 
-        return (dX,), (dW, db)
+        return (dX,), (dW,)
 
     def update(self, *args):
         if self.frozen:
             return
 
-        dW, db = args
-        self.weights -= dW
-
         if self.bias.size:
+            (dW, db) = args
             self.bias -= db
+            return
+
+        (dW,) = args
+        self.weights -= dW
 
 
 class ReLU(_BaseLayer):

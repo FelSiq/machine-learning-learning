@@ -1,4 +1,3 @@
-import gc
 import numpy as np
 
 import base
@@ -49,8 +48,8 @@ class RNN(base.BaseModel):
         X_embedded = self.embed_layer(X)
 
         for t, X_t in enumerate(X_embedded):
-            cur_out = self.rnn_cell.forward(X_t)
-            cur_out = self.lin_out_layer.forward(cur_out)
+            cur_out = self.rnn_cell(X_t)
+            cur_out = self.lin_out_layer(cur_out)
             outputs[t, ...] = cur_out
 
         self.rnn_cell.reset()
@@ -74,17 +73,17 @@ class RNN(base.BaseModel):
 
         for dout in reversed(douts):
             grads = self.lin_out_layer.backward(dout)
-            self._clip_grads(*grads)
+            self._clip_grads(grads)
 
-            dout_y = grads[0]
-            param_grads = grads[1:]
+            (dout_y,) = grads[0]
+            param_grads = grads[1]
             douts_y.insert(0, dout_y)
 
             grads = self.optim.update(2, *param_grads)
             self.lin_out_layer.update(*grads)
 
         self.lin_out_layer.clean_grad_cache()
-        douts_y = np.asfarray(douts_y)
+        douts_y = np.squeeze(np.asfarray(douts_y))
 
         # if n_dim = 3: douts_y (time, batch, dim_hidden)
         # if n_dim = 2: douts_y (batch, dim_hidden) (only the last timestep)
@@ -94,15 +93,15 @@ class RNN(base.BaseModel):
 
         while self.rnn_cell.has_stored_grads:
             grads = self.rnn_cell.backward(dout_h, dout_y)
-            self._clip_grads(*grads)
+            self._clip_grads(grads)
 
-            dout_h, dout_X = grads[:2]
-            param_grads = grads[2:]
+            (dout_h, dout_X) = grads[0]
+            param_grads = grads[1]
 
             douts_X.insert(0, dout_X)
 
             if dout_y.ndim == 3:
-                dout_y = douts_y[-i]
+                dout_y = douts_y[-i - 1]
 
             elif i == 1:
                 dout_y = np.zeros_like(dout_y)
@@ -115,18 +114,25 @@ class RNN(base.BaseModel):
         douts_X = np.asfarray(douts_X)
         # shape: (time, batch, emb_dim)
 
+        """
         for dout_X in reversed(douts_X):
             grads = self.embed_layer.backward(dout_X)
-            self._clip_grads(*grads)
+            self._clip_grads(grads)
 
-            dout = grads[0]
-            param_grads = grads[1:]
+            param_grads = grads[1]
 
             grads = self.optim.update(0, *param_grads)
             self.embed_layer.update(*grads)
+        """
+        grads = self.embed_layer.backward(douts_X)
+        self._clip_grads(grads)
+
+        param_grads = grads[1]
+
+        grads = self.optim.update(0, *param_grads)
+        self.embed_layer.update(*grads)
 
         self.embed_layer.clean_grad_cache()
-        gc.collect()
 
 
 def _test():
@@ -168,10 +174,10 @@ def _test():
 
     model = RNN(
         num_embed_tokens=1 + len(token_dictionary),
-        dim_embed=64,
+        dim_embed=32,
         dim_hidden=64,
         dim_out=1,
-        learning_rate=1e-2,
+        learning_rate=1e-3,
     )
 
     criterion = losses.BCELoss(with_logits=True)
@@ -200,11 +206,11 @@ def _test():
             model.backward(loss_grad)
             total_loss_train += loss
 
-            # model.eval()
-            # y_logits = model(X_test.T)
-            # y_logits = y_logits[-1]
-            # loss, loss_grad = criterion(y_test, y_logits)
-            # total_loss_eval += loss
+            model.eval()
+            y_logits = model(X_test.T)
+            y_logits = y_logits[-1]
+            loss, loss_grad = criterion(y_test, y_logits)
+            total_loss_eval += loss
 
             it += 1
 
