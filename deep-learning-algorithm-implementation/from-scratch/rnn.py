@@ -9,10 +9,8 @@ import optim
 class RNN(base.BaseModel):
     def __init__(
         self,
-        num_embed_tokens: int,
-        dim_embed: int,
+        dim_in: int,
         dim_hidden: int,
-        dim_out: int,
         learning_rate: float,
         clip_grad_norm: float = 1.0,
     ):
@@ -20,70 +18,40 @@ class RNN(base.BaseModel):
 
         super(RNN, self).__init__()
 
-        self.embed_layer = modules.Embedding(num_embed_tokens, dim_embed)
-        self.rnn_cell = modules.RNNCell(dim_embed, dim_hidden)
-        self.lin_out_layer = modules.Linear(dim_hidden, dim_out)
+        self.rnn_cell = modules.RNNCell(dim_in, dim_hidden)
 
         self.optim = optim.Nadam(learning_rate)
         self.clip_grad_norm = float(clip_grad_norm)
 
-        self.dim_embed = int(dim_embed)
+        self.dim_in = int(dim_in)
         self.dim_hidden = int(dim_hidden)
-        self.dim_out = int(dim_out)
 
-        self.layers = (
-            self.embed_layer,
-            self.rnn_cell,
-            self.lin_out_layer,
-        )
+        self.layers = (self.rnn_cell,)
 
-        self.optim.register_layer(0, *self.embed_layer.parameters)
-        self.optim.register_layer(1, *self.rnn_cell.parameters)
-        self.optim.register_layer(2, *self.lin_out_layer.parameters)
+        self.optim.register_layer(0, *self.rnn_cell.parameters)
 
     def forward(self, X):
         # X.shape = (time, batch)
-        outputs = np.empty((X.shape[0], X.shape[1], self.dim_out), dtype=float)
+        outputs = np.empty((X.shape[0], X.shape[1], self.dim_hidden), dtype=float)
 
-        X_embedded = self.embed_layer(X)
-
-        for t, X_t in enumerate(X_embedded):
-            cur_out = self.rnn_cell(X_t)
-            cur_out = self.lin_out_layer(cur_out)
-            outputs[t, ...] = cur_out
+        for t, X_t in enumerate(X):
+            outputs[t, ...] = self.rnn_cell(X_t)
 
         self.rnn_cell.reset()
 
         return outputs
 
-    def backward(self, douts):
+    def backward(self, douts_y):
         if self.frozen:
             return
 
-        # if n_dim = 3: dout_y (time, batch, dim_out)
-        # if n_dim = 2: dout_y (batch, dim_out) (only the last timestep)
+        if douts_y.ndim == 2:
+            douts_y = np.expand_dims(douts_y, 0)
 
-        if douts.ndim == 2:
-            douts = np.expand_dims(douts, 0)
-
-        batch_size = douts.shape[1]
+        batch_size = douts_y.shape[1]
 
         douts_X = []  # type: t.List[np.ndarray]
-        douts_y = []  # type: t.List[np.ndarray]
-
-        for dout in reversed(douts):
-            grads = self.lin_out_layer.backward(dout)
-            self._clip_grads(grads)
-
-            (dout_y,) = grads[0]
-            param_grads = grads[1]
-            douts_y.insert(0, dout_y)
-
-            grads = self.optim.update(2, *param_grads)
-            self.lin_out_layer.update(*grads)
-
-        self.lin_out_layer.clean_grad_cache()
-        douts_y = np.squeeze(np.asfarray(douts_y))
+        douts_y = np.squeeze(douts_y)
 
         # if n_dim = 3: douts_y (time, batch, dim_hidden)
         # if n_dim = 2: douts_y (batch, dim_hidden) (only the last timestep)
@@ -106,24 +74,96 @@ class RNN(base.BaseModel):
             elif i == 1:
                 dout_y = np.zeros_like(dout_y)
 
-            grads = self.optim.update(1, *param_grads)
+            grads = self.optim.update(0, *param_grads)
             self.rnn_cell.update(*grads)
             i += 1
 
         self.rnn_cell.clean_grad_cache()
         douts_X = np.asfarray(douts_X)
-        # shape: (time, batch, emb_dim)
+        # shape: (time, batch, dim_in)
 
-        """
-        for dout_X in reversed(douts_X):
-            grads = self.embed_layer.backward(dout_X)
+        return douts_X
+
+
+class NLPProcessor(base.BaseModel):
+    def __init__(
+        self,
+        num_embed_tokens: int,
+        dim_embed: int,
+        dim_hidden: int,
+        dim_out: int,
+        learning_rate: float,
+        clip_grad_norm: float = 1.0,
+    ):
+        assert float(clip_grad_norm) > 0.0
+
+        super(NLPProcessor, self).__init__()
+
+        self.embed_layer = modules.Embedding(num_embed_tokens, dim_embed)
+        self.rnn = RNN(
+            dim_embed, dim_hidden, learning_rate, clip_grad_norm=clip_grad_norm
+        )
+        self.lin_out_layer = modules.Linear(dim_hidden, dim_out)
+
+        self.optim = optim.Nadam(learning_rate)
+        self.clip_grad_norm = float(clip_grad_norm)
+
+        self.dim_embed = int(dim_embed)
+        self.dim_hidden = int(dim_hidden)
+        self.dim_out = int(dim_out)
+
+        self.layers = (
+            self.embed_layer,
+            self.rnn,
+            self.lin_out_layer,
+        )
+
+        self.optim.register_layer(0, *self.embed_layer.parameters)
+        self.optim.register_layer(1, *self.lin_out_layer.parameters)
+
+    def forward(self, X):
+        # X.shape = (time, batch)
+        X_embedded = self.embed_layer(X)
+        outputs = self.rnn(X_embedded)
+
+        outputs_b = np.empty((X.shape[0], X.shape[1], self.dim_out), dtype=float)
+
+        for t, out_t in enumerate(outputs):
+            outputs_b[t, ...] = self.lin_out_layer(out_t)
+
+        return outputs_b
+
+    def backward(self, douts):
+        if self.frozen:
+            return
+
+        # if n_dim = 3: dout_y (time, batch, dim_out)
+        # if n_dim = 2: dout_y (batch, dim_out) (only the last timestep)
+
+        if douts.ndim == 2:
+            douts = np.expand_dims(douts, 0)
+
+        batch_size = douts.shape[1]
+
+        douts_y = []  # type: t.List[np.ndarray]
+
+        for dout in reversed(douts):
+            grads = self.lin_out_layer.backward(dout)
             self._clip_grads(grads)
 
+            (dout_y,) = grads[0]
             param_grads = grads[1]
+            douts_y.insert(0, dout_y)
 
-            grads = self.optim.update(0, *param_grads)
-            self.embed_layer.update(*grads)
-        """
+            grads = self.optim.update(1, *param_grads)
+            self.lin_out_layer.update(*grads)
+
+        self.lin_out_layer.clean_grad_cache()
+        douts_y = np.squeeze(np.asfarray(douts_y))
+
+        douts_X = self.rnn.backward(douts_y)
+        # shape: (time, batch, emb_dim)
+
         grads = self.embed_layer.backward(douts_X)
         self._clip_grads(grads)
 
@@ -176,7 +216,7 @@ def _test():
     X_test = pad_batch(X_test)
     X_eval = pad_batch(X_eval)
 
-    model = RNN(
+    model = NLPProcessor(
         num_embed_tokens=1 + len(token_dictionary),
         dim_embed=16,
         dim_hidden=64,
