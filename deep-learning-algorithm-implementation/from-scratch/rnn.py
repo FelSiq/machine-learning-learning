@@ -1,3 +1,4 @@
+import gc
 import numpy as np
 
 import base
@@ -18,11 +19,13 @@ class RNN(base.BaseModel):
     ):
         assert float(clip_grad_norm) > 0.0
 
+        super(RNN, self).__init__()
+
         self.embed_layer = modules.Embedding(num_embed_tokens, dim_embed)
         self.rnn_cell = modules.RNNCell(dim_embed, dim_hidden)
         self.lin_out_layer = modules.Linear(dim_hidden, dim_out)
 
-        self.optim = optim.Adam(learning_rate)
+        self.optim = optim.Nadam(learning_rate)
         self.clip_grad_norm = float(clip_grad_norm)
 
         self.dim_embed = int(dim_embed)
@@ -50,9 +53,14 @@ class RNN(base.BaseModel):
             cur_out = self.lin_out_layer.forward(cur_out)
             outputs[t, ...] = cur_out
 
+        self.rnn_cell.reset()
+
         return outputs
 
     def backward(self, douts):
+        if self.frozen:
+            return
+
         # if n_dim = 3: dout_y (time, batch, dim_out)
         # if n_dim = 2: dout_y (batch, dim_out) (only the last timestep)
 
@@ -103,7 +111,6 @@ class RNN(base.BaseModel):
             self.rnn_cell.update(*grads)
             i += 1
 
-        self.rnn_cell.reset()
         self.rnn_cell.clean_grad_cache()
         douts_X = np.asfarray(douts_X)
         # shape: (time, batch, emb_dim)
@@ -119,33 +126,13 @@ class RNN(base.BaseModel):
             self.embed_layer.update(*grads)
 
         self.embed_layer.clean_grad_cache()
+        gc.collect()
 
 
 def _test():
     import pandas as pd
     import tqdm.auto
     import tweets_utils
-
-    np.random.seed(32)
-
-    batch_size = 32
-    train_epochs = 20
-
-    X_train, y_train, X_test, y_test, word_count = tweets_utils.get_data()
-
-    token_dictionary = tweets_utils.build_dictionary(word_count, max_token_num=512)
-    tweets_utils.encode_tweets(X_train, token_dictionary)
-    tweets_utils.encode_tweets(X_test, token_dictionary)
-
-    model = RNN(
-        num_embed_tokens=1 + len(token_dictionary),
-        dim_embed=16,
-        dim_hidden=64,
-        dim_out=1,
-        learning_rate=1e-2,
-    )
-
-    criterion = losses.BCELoss(with_logits=True)
 
     def pad_batch(X):
         lens = np.fromiter(map(len, X), count=len(X), dtype=int)
@@ -166,10 +153,35 @@ def _test():
 
         return X_padded
 
+    np.random.seed(32)
+
+    batch_size = 64
+    train_epochs = 10
+
+    X_train, y_train, X_test, y_test, word_count = tweets_utils.get_data()
+
+    token_dictionary = tweets_utils.build_dictionary(word_count, max_token_num=2048)
+    tweets_utils.encode_tweets(X_train, token_dictionary)
+    tweets_utils.encode_tweets(X_test, token_dictionary)
+
+    X_test = pad_batch(X_test)
+
+    model = RNN(
+        num_embed_tokens=1 + len(token_dictionary),
+        dim_embed=64,
+        dim_hidden=64,
+        dim_out=1,
+        learning_rate=1e-2,
+    )
+
+    criterion = losses.BCELoss(with_logits=True)
+
     batch_inds = np.arange(len(X_train))
 
     for epoch in np.arange(1, 1 + train_epochs):
-        total_loss = 0.0
+        total_loss_train = total_loss_eval = 0.0
+        it = 0
+
         np.random.shuffle(batch_inds)
         X_train = [X_train[i] for i in batch_inds]
         y_train = y_train[batch_inds]
@@ -181,19 +193,28 @@ def _test():
 
             X_batch = pad_batch(X_batch)
 
+            model.train()
             y_logits = model(X_batch.T)
             y_logits = y_logits[-1]
-
             loss, loss_grad = criterion(y_batch, y_logits)
             model.backward(loss_grad)
+            total_loss_train += loss
 
-            total_loss += loss
+            # model.eval()
+            # y_logits = model(X_test.T)
+            # y_logits = y_logits[-1]
+            # loss, loss_grad = criterion(y_test, y_logits)
+            # total_loss_eval += loss
 
-        total_loss /= batch_size
-        print(f"Total loss: {total_loss:.3f}")
+            it += 1
+
+        total_loss_train /= it
+        total_loss_eval /= it
+
+        print(f"Total loss (train) : {total_loss_train:.3f}")
+        print(f"Total loss (eval)  : {total_loss_eval:.3f}")
 
     model.eval()
-    X_test = pad_batch(X_test)
     y_preds_logits = model(X_test.T)
     test_acc = float(np.mean((y_preds_logits > 0.0) == y_test))
     print(f"Eval acc: {test_acc:.3f}")
