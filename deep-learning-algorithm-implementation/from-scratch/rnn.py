@@ -274,6 +274,10 @@ def _test():
     train_epochs = 20
 
     X_train, y_train, X_test, y_test, word_count = tweets_utils.get_data()
+
+    y_train = y_train.ravel().astype(int, copy=False)
+    y_test = y_test.ravel().astype(int, copy=False)
+
     X_eval, X_test = X_test[:50], X_test[50:]
     y_eval, y_test = y_test[:50], y_test[50:]
 
@@ -336,7 +340,9 @@ def _test():
 
     model.eval()
     y_preds_logits = model(X_test.T)
-    test_acc = float(np.mean((y_preds_logits > 0.0) == y_test))
+    y_preds_logits = np.squeeze(y_preds_logits[-1])
+    y_preds_logits = (y_preds_logits > 0.0).astype(int, copy=False)
+    test_acc = float(np.mean(y_preds_logits == y_test))
     print(f"Test acc: {test_acc:.3f}")
 
 
