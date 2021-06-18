@@ -74,9 +74,27 @@ class CrossEntropyLoss(_BaseLoss):
         grads[np.arange(y.size), y.ravel()] -= 1.0
 
         log_probs = y_logits - scipy.special.logsumexp(y_logits, axis=-1, keepdims=True)
-        ce_loss = -np.mean(np.take_along_axis(log_probs, y, axis=-1))
+        ce_loss = -float(np.sum(np.take_along_axis(log_probs, y, axis=-1)))
 
         if self.average:
             ce_loss /= y.size
 
         return ce_loss, grads
+
+
+class HingeLoss(_BaseLoss):
+    def __call__(self, y, y_preds):
+        y = y.reshape(-1, 1)
+        y_preds = y_preds.reshape(-1, 1)
+
+        assert y.size == y_preds.size
+
+        aux = 1.0 - y * y_preds
+        grads = (aux > 0.0).astype(float, copy=False) * -y
+
+        hinge_loss = float(np.sum(np.maximum(0.0, aux)))
+
+        if self.average:
+            hinge_loss /= y.size
+
+        return hinge_loss, grads
