@@ -1,6 +1,7 @@
 import numpy as np
 
 from . import base
+from . import activation
 
 
 class RNNCell(base._BaseLayer):
@@ -12,7 +13,7 @@ class RNNCell(base._BaseLayer):
 
         self.lin_hidden = base.Linear(dim_hidden, dim_hidden, include_bias=False)
         self.lin_input = base.Linear(dim_in, dim_hidden, include_bias=True)
-        self.tanh_layer = base.Tanh()
+        self.tanh_layer = activation.Tanh()
 
         self.dim_hidden = int(dim_hidden)
         self.reset()
