@@ -39,6 +39,8 @@ class Autoencoder(base.BaseModel):
             self.layers.append(l_rel)
             self.optim.register_layer(2 * (i - 1), *l_lin.parameters)
 
+        self.layers = tuple(layers)
+
     def forward(self, X):
         out = X
 
@@ -64,6 +66,8 @@ class Autoencoder(base.BaseModel):
             param_grads = grads[1]
             grads = self.optim.update(layer_id, *param_grads)
             layer.update(*grads)
+
+        return dout
 
 
 def _test():
