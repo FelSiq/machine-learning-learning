@@ -4,21 +4,34 @@ from . import base
 from . import activation
 
 
-class RNNCell(base._BaseLayer):
+class _BaseSequenceCell(base._BaseLayer):
     def __init__(self, dim_in: int, dim_hidden: int):
         assert int(dim_in) > 0
         assert int(dim_hidden) > 0
 
-        super(RNNCell, self).__init__(trainable=True)
-
-        self.lin_hidden = base.Linear(dim_hidden, dim_hidden, include_bias=False)
-        self.lin_input = base.Linear(dim_in, dim_hidden, include_bias=True)
-        self.tanh_layer = activation.Tanh()
+        super(_BaseSequenceCell, self).__init__(trainable=True)
 
         self.dim_in = int(dim_in)
         self.dim_hidden = int(dim_hidden)
 
         self.reset()
+
+    def reset(self):
+        self.cell_state = np.empty(0, dtype=float)
+
+    def _prepare_cell_state(self, X):
+        if self.cell_state.size == 0:
+            batch_size = X.shape[0]
+            self.cell_state = np.zeros((batch_size, self.dim_hidden), dtype=float)
+
+
+class RNNCell(_BaseSequenceCell):
+    def __init__(self, dim_in: int, dim_hidden: int):
+        super(RNNCell, self).__init__(dim_in, dim_hidden)
+
+        self.lin_hidden = base.Linear(dim_hidden, dim_hidden, include_bias=False)
+        self.lin_input = base.Linear(dim_in, dim_hidden, include_bias=True)
+        self.tanh_layer = activation.Tanh()
 
         self.layers = (
             self.lin_hidden,
@@ -31,14 +44,8 @@ class RNNCell(base._BaseLayer):
             *self.lin_input.parameters,
         )
 
-    def reset(self):
-        self.cell_state = np.empty(0, dtype=float)
-
     def forward(self, X):
-        if self.cell_state.size == 0:
-            batch_size = X.shape[0]
-            self.cell_state = np.zeros((batch_size, self.dim_hidden), dtype=float)
-
+        self._prepare_cell_state(X)
         aux_cell_state = self.lin_hidden(self.cell_state)
         aux_X = self.lin_input(X)
         self.cell_state = self.tanh_layer(aux_cell_state + aux_X)
