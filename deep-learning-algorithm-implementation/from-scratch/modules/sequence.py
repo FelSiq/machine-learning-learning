@@ -15,7 +15,9 @@ class RNNCell(base._BaseLayer):
         self.lin_input = base.Linear(dim_in, dim_hidden, include_bias=True)
         self.tanh_layer = activation.Tanh()
 
+        self.dim_in = int(dim_in)
         self.dim_hidden = int(dim_hidden)
+
         self.reset()
 
         self.layers = (

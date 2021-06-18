@@ -6,38 +6,37 @@ import modules
 import optim
 
 
-class RNN(base.BaseModel):
+class SequenceModel(base.BaseModel):
     def __init__(
         self,
-        dim_in: int,
-        dim_hidden: int,
+        cell_model,
         learning_rate: float,
         clip_grad_norm: float = 1.0,
     ):
         assert float(clip_grad_norm) > 0.0
 
-        super(RNN, self).__init__()
+        super(SequenceModel, self).__init__()
 
-        self.rnn_cell = modules.RNNCell(dim_in, dim_hidden)
+        self.sequence_cell = cell_model
 
         self.optim = optim.Nadam(learning_rate)
         self.clip_grad_norm = float(clip_grad_norm)
 
-        self.dim_in = int(dim_in)
-        self.dim_hidden = int(dim_hidden)
+        self.dim_in = int(self.sequence_cell.dim_in)
+        self.dim_hidden = int(self.sequence_cell.dim_hidden)
 
-        self.layers = (self.rnn_cell,)
+        self.layers = (self.sequence_cell,)
 
-        self.optim.register_layer(0, *self.rnn_cell.parameters)
+        self.optim.register_layer(0, *self.sequence_cell.parameters)
 
     def forward(self, X):
         # X.shape = (time, batch)
         outputs = np.empty((X.shape[0], X.shape[1], self.dim_hidden), dtype=float)
 
         for t, X_t in enumerate(X):
-            outputs[t, ...] = self.rnn_cell(X_t)
+            outputs[t, ...] = self.sequence_cell(X_t)
 
-        self.rnn_cell.reset()
+        self.sequence_cell.reset()
 
         return outputs
 
@@ -59,8 +58,8 @@ class RNN(base.BaseModel):
         dout = douts[-1] if douts.ndim == 3 else douts
         i = 1
 
-        while self.rnn_cell.has_stored_grads:
-            grads = self.rnn_cell.backward(dout_h, dout)
+        while self.sequence_cell.has_stored_grads:
+            grads = self.sequence_cell.backward(dout_h, dout)
             self._clip_grads(grads)
 
             (dout_h, dout_X) = grads[0]
@@ -75,14 +74,26 @@ class RNN(base.BaseModel):
                 dout = np.zeros_like(dout)
 
             grads = self.optim.update(0, *param_grads)
-            self.rnn_cell.update(*grads)
+            self.sequence_cell.update(*grads)
             i += 1
 
-        self.rnn_cell.clean_grad_cache()
+        self.sequence_cell.clean_grad_cache()
         douts_X = np.asfarray(douts_X)
         # shape: (time, batch, dim_in)
 
         return douts_X
+
+
+class RNN(SequenceModel):
+    def __init__(
+        self,
+        dim_in: int,
+        dim_hidden: int,
+        learning_rate: float,
+        clip_grad_norm: float = 1.0,
+    ):
+        rnn_cell = modules.RNNCell(dim_in, dim_hidden)
+        super(RNN, self).__init__(rnn_cell, learning_rate, clip_grad_norm)
 
 
 class Bidirectional(base.BaseModel):
@@ -268,7 +279,7 @@ def _test():
         dim_hidden=64,
         dim_out=1,
         learning_rate=2.5e-5,
-        bidirectional=True,
+        bidirectional=False,
     )
 
     criterion = losses.BCELoss(with_logits=True)
