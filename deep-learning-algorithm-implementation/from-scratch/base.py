@@ -1,3 +1,5 @@
+import copy
+
 import numpy as np
 
 
@@ -32,3 +34,6 @@ class BaseModel:
         self.frozen = True
         for layer in self.layers:
             layer.eval()
+
+    def copy(self):
+        return copy.deepcopy(self)

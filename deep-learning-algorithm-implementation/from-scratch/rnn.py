@@ -85,31 +85,27 @@ class RNN(base.BaseModel):
         return douts_X
 
 
-class RNNBidirectional(base.BaseModel):
-    def __init__(
-        self,
-        dim_in: int,
-        dim_hidden: int,
-        learning_rate: float,
-        clip_grad_norm: float = 1.0,
-    ):
-        super(RNNBidirectional, self).__init__()
-        self.rnn_forward = RNN(dim_in, dim_hidden, learning_rate, clip_grad_norm)
-        self.rnn_backward = RNN(dim_in, dim_hidden, learning_rate, clip_grad_norm)
-        self.dim_hidden = int(dim_hidden)
+class Bidirectional(base.BaseModel):
+    def __init__(self, model):
+        super(Bidirectional, self).__init__()
+
+        self.rnn_l_to_r = model
+        self.rnn_r_to_l = model.copy()
+
+        self.dim_hidden = int(self.rnn_l_to_r.dim_hidden)
 
         self.layers = (
-            self.rnn_forward,
-            self.rnn_backward,
+            self.rnn_l_to_r,
+            self.rnn_r_to_l,
         )
 
     def forward(self, X):
         # shape: (time, batch, dim_in)
-        out_forward = self.rnn_forward(X)
-        out_backward = self.rnn_backward(X[::-1, ...])
+        out_l_to_r = self.rnn_l_to_r(X)
+        out_r_to_l = self.rnn_r_to_l(X[::-1, ...])
         # shape (both): (time, batch, dim_hidden)
 
-        outputs = np.dstack((out_forward, out_backward))
+        outputs = np.dstack((out_l_to_r, out_r_to_l))
         # shape: (time, batch, 2 * dim_hidden)
 
         return outputs
@@ -120,13 +116,10 @@ class RNNBidirectional(base.BaseModel):
 
         # if n_dim = 3: douts (time, batch, 2 * dim_hidden)
         # if n_dim = 2: douts (batch, 2 * dim_hidden)
-        douts_forward = douts[..., : self.dim_hidden]
-        douts_backward = douts[..., self.dim_hidden :]
+        douts_l_to_r = self.rnn_l_to_r.backward(douts[..., : self.dim_hidden])
+        douts_r_to_l = self.rnn_r_to_l.backward(douts[..., self.dim_hidden :])
 
-        douts_forward_X = self.rnn_forward.backward(douts_forward)
-        douts_backward_X = self.rnn_backward.backward(douts_backward)
-
-        douts_X = douts_forward_X + douts_backward_X
+        douts_X = douts_l_to_r + douts_r_to_l
 
         return douts_X
 
@@ -147,10 +140,13 @@ class NLPProcessor(base.BaseModel):
         super(NLPProcessor, self).__init__()
 
         self.embed_layer = modules.Embedding(num_embed_tokens, dim_embed)
-        algorithm = RNNBidirectional if bool(bidirectional) else RNN
-        self.rnn = algorithm(
+        self.rnn = RNN(
             dim_embed, dim_hidden, learning_rate, clip_grad_norm=clip_grad_norm
         )
+
+        if bidirectional:
+            self.rnn = Bidirectional(self.rnn)
+
         self.lin_out_layer = modules.Linear(
             dim_hidden * (1 + int(bool(bidirectional))), dim_out
         )
