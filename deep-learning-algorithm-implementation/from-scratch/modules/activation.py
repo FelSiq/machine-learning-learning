@@ -18,6 +18,23 @@ class ReLU(base._BaseLayer):
         return dout
 
 
+class LeakyReLU(base._BaseLayer):
+    def __init__(self, slope: float):
+        assert float(slope) >= 0.0
+        super(LeakyReLU, self).__init__()
+        self.slope = float(slope)
+
+    def forward(self, X):
+        out = np.maximum(X, self.slope * X)
+        self._store_in_cache(X)
+        return out
+
+    def backward(self, dout):
+        (X,) = self._pop_from_cache()
+        dout = np.maximum(X > 0.0, self.slope, dtype=float) * dout
+        return dout
+
+
 class Tanh(base._BaseLayer):
     def __init__(self):
         super(Tanh, self).__init__()
