@@ -80,21 +80,3 @@ class CrossEntropyLoss(_BaseLoss):
             ce_loss /= y.size
 
         return ce_loss, grads
-
-
-class HingeLoss(_BaseLoss):
-    def __call__(self, y, y_preds):
-        y = y.reshape(-1, 1)
-        y_preds = y_preds.reshape(-1, 1)
-
-        assert y.size == y_preds.size
-
-        aux = 1.0 - y * y_preds
-        grads = (aux > 0.0).astype(float, copy=False) * -y
-
-        hinge_loss = float(np.sum(np.maximum(0.0, aux)))
-
-        if self.average:
-            hinge_loss /= y.size
-
-        return hinge_loss, grads
