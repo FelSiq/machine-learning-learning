@@ -33,6 +33,9 @@ class BCELoss(_BaseLoss):
         self.sigmoid = modules.Sigmoid() if bool(with_logits) else None
 
     def __call__(self, y, y_preds):
+        y_preds = y_preds.reshape(-1, 1)
+        y = y.reshape(-1, 1)
+
         assert y.shape == y_preds.shape
 
         pos_inds = y >= 0.999
@@ -54,3 +57,24 @@ class BCELoss(_BaseLoss):
             grads = self.sigmoid.backward(grads)
 
         return bce_loss, grads
+
+
+class CrossEntropyLoss(_BaseLoss):
+    def __init__(self, average: bool = True):
+        super(CrossEntropyLoss, self).__init__(average)
+
+    def __call__(self, y, y_logits):
+        y = y.reshape(-1, 1)
+
+        assert y.size == y_logits.shape[0]
+
+        grad = np.copy(y_logits)
+        y = y.astype(int, copy=False)
+        np.subtract.at(grad, y, 1.0)
+
+        ce_loss = -np.mean(np.take_along_axis(y_logits, y, axis=-1))
+
+        if self.average:
+            ce_loss /= y.size
+
+        return ce_loss, grad
