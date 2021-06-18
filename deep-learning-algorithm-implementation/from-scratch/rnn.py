@@ -59,7 +59,7 @@ class SequenceModel(base.BaseModel):
         i = 1
 
         while self.sequence_cell.has_stored_grads:
-            grads = self.sequence_cell.backward(dout_h, dout)
+            grads = self.sequence_cell.backward(dout_h + dout)
             self._clip_grads(grads)
 
             (dout_h, dout_X) = grads[0]
@@ -94,6 +94,18 @@ class RNN(SequenceModel):
     ):
         rnn_cell = modules.RNNCell(dim_in, dim_hidden)
         super(RNN, self).__init__(rnn_cell, learning_rate, clip_grad_norm)
+
+
+class GRU(SequenceModel):
+    def __init__(
+        self,
+        dim_in: int,
+        dim_hidden: int,
+        learning_rate: float,
+        clip_grad_norm: float = 1.0,
+    ):
+        gru_cell = modules.GRUCell(dim_in, dim_hidden)
+        super(GRU, self).__init__(gru_cell, learning_rate, clip_grad_norm)
 
 
 class Bidirectional(base.BaseModel):
@@ -151,7 +163,7 @@ class NLPProcessor(base.BaseModel):
         super(NLPProcessor, self).__init__()
 
         self.embed_layer = modules.Embedding(num_embed_tokens, dim_embed)
-        self.rnn = RNN(
+        self.rnn = GRU(
             dim_embed, dim_hidden, learning_rate, clip_grad_norm=clip_grad_norm
         )
 
@@ -259,7 +271,7 @@ def _test():
     np.random.seed(32)
 
     batch_size = 32
-    train_epochs = 25
+    train_epochs = 20
 
     X_train, y_train, X_test, y_test, word_count = tweets_utils.get_data()
     X_eval, X_test = X_test[:50], X_test[50:]
@@ -278,7 +290,7 @@ def _test():
         dim_embed=16,
         dim_hidden=64,
         dim_out=1,
-        learning_rate=2.5e-5,
+        learning_rate=2.5e-4,
         bidirectional=False,
     )
 

@@ -123,3 +123,20 @@ class Flatten(Reshape):
     def forward(self, X):
         self._store_in_cache(X.shape)
         return X.ravel()
+
+
+class WeightedAverage(_BaseLayer):
+    def __call__(self, X, Y, W):
+        return self.forward(X, Y, W)
+
+    def forward(self, X, Y, W):
+        out = W * X + (1.0 - W) * Y
+        self._store_in_cache(X, Y, W)
+        return out
+
+    def backward(self, dout):
+        X, Y, W = self._pop_from_cache()
+        dX = W * dout
+        dY = (1.0 - W) * dout
+        dW = (X - Y) * dout
+        return dX, dY, dW
