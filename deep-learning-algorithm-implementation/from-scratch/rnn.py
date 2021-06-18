@@ -271,7 +271,7 @@ def _test():
     np.random.seed(32)
 
     batch_size = 32
-    train_epochs = 20
+    train_epochs = 10
 
     X_train, y_train, X_test, y_test, word_count = tweets_utils.get_data()
 
@@ -340,9 +340,16 @@ def _test():
 
     model.eval()
     y_preds_logits = model(X_test.T)
-    y_preds_logits = np.squeeze(y_preds_logits[-1])
-    y_preds_logits = (y_preds_logits > 0.0).astype(int, copy=False)
-    test_acc = float(np.mean(y_preds_logits == y_test))
+
+    if isinstance(criterion, losses.BCELoss):
+        y_preds_logits = np.squeeze(y_preds_logits[-1])
+        y_preds = (y_preds_logits > 0.0).astype(int, copy=False)
+
+    else:
+        y_preds_logits = y_preds_logits[-1]
+        y_preds = y_preds_logits.argmax(axis=-1)
+
+    test_acc = float(np.mean(y_preds == y_test))
     print(f"Test acc: {test_acc:.3f}")
 
 

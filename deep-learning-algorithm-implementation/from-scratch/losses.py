@@ -1,4 +1,5 @@
 import numpy as np
+import scipy.special
 
 import modules
 
@@ -68,13 +69,14 @@ class CrossEntropyLoss(_BaseLoss):
 
         assert y.size == y_logits.shape[0]
 
-        grad = np.copy(y_logits)
+        grads = np.copy(y_logits)
         y = y.astype(int, copy=False)
-        np.subtract.at(grad, y, 1.0)
+        grads[np.arange(y.size), y.ravel()] -= 1.0
 
-        ce_loss = -np.mean(np.take_along_axis(y_logits, y, axis=-1))
+        log_probs = y_logits - scipy.special.logsumexp(y_logits, axis=-1, keepdims=True)
+        ce_loss = -np.mean(np.take_along_axis(log_probs, y, axis=-1))
 
         if self.average:
             ce_loss /= y.size
 
-        return ce_loss, grad
+        return ce_loss, grads
