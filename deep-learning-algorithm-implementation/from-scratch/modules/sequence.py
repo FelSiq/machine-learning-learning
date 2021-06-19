@@ -17,12 +17,13 @@ class _BaseSequenceCell(base.BaseLayer):
         self.reset()
 
     def reset(self):
+        self.hidden_state = np.empty(0, dtype=float)
         self.cell_state = np.empty(0, dtype=float)
 
-    def _prepare_cell_state(self, X):
-        if self.cell_state.size == 0:
+    def _prepare_hidden_state(self, X):
+        if self.hidden_state.size == 0:
             batch_size = X.shape[0]
-            self.cell_state = np.zeros((batch_size, self.dim_hidden), dtype=float)
+            self.hidden_state = np.zeros((batch_size, self.dim_hidden), dtype=float)
 
 
 class RNNCell(_BaseSequenceCell):
@@ -45,10 +46,10 @@ class RNNCell(_BaseSequenceCell):
         )
 
     def forward(self, X):
-        self._prepare_cell_state(X)
-        aux_cell_state = self.lin_hidden(self.cell_state) + self.lin_input(X)
-        self.cell_state = self.tanh_layer(aux_cell_state)
-        return self.cell_state
+        self._prepare_hidden_state(X)
+        aux_hidden_state = self.lin_hidden(self.hidden_state) + self.lin_input(X)
+        self.hidden_state = self.tanh_layer(aux_hidden_state)
+        return self.hidden_state
 
     def backward(self, dout):
         dout = self.tanh_layer.backward(dout)
@@ -101,16 +102,16 @@ class GRUCell(_BaseSequenceCell):
         )
 
     def forward(self, X):
-        self._prepare_cell_state(X)
-        z = self.lin_z(self.cell_state, X)
-        r = self.lin_r(self.cell_state, X)
-        r_cs = self.multiply(r, self.cell_state)
+        self._prepare_hidden_state(X)
+        z = self.lin_z(self.hidden_state, X)
+        r = self.lin_r(self.hidden_state, X)
+        r_cs = self.multiply(r, self.hidden_state)
         h = self.lin_h(r_cs, X)
-        self.cell_state = self.weighted_avg(self.cell_state, h, z)
-        return self.cell_state
+        self.hidden_state = self.weighted_avg(self.hidden_state, h, z)
+        return self.hidden_state
 
     def backward(self, dout):
-        (d_cell_state, dh, dz) = self.weighted_avg.backward(dout)
+        (d_hidden_state, dh, dz) = self.weighted_avg.backward(dout)
 
         ((dr_cs, dXh), lin_h_params) = self.lin_h.backward(dh)
 
@@ -153,8 +154,7 @@ class LSTMCell(_BaseSequenceCell):
         )
 
         self.multiply = base.Multiply()
-
-        self.weighted_avg = base.WeightedAverage()
+        self.tanh = base.Tanh()
 
         self.layers = (
             self.lin_i,
@@ -162,7 +162,7 @@ class LSTMCell(_BaseSequenceCell):
             self.lin_o,
             self.lin_c,
             self.multiply,
-            self.weighted_avg,
+            self.tanh,
         )
 
         self.parameters = (
@@ -172,24 +172,67 @@ class LSTMCell(_BaseSequenceCell):
             *self.lin_c.parameters,
         )
 
-    def forward(self, X):
-        # TODO: finish this.
-        self._prepare_cell_state(X)
-        i = self.lin_i(self.cell_state, X)
-        f = self.lin_i(self.cell_state, X)
-        o = self.lin_i(self.cell_state, X)
-        c = self.lin_i(self.cell_state, X)
-        c = self.multiply(f, self.cell_state) + self.multiply(i, c)
-        return self.cell_state
+    def _prepare_cell_state(self, X):
+        if self.cell_state.size == 0:
+            batch_size = X.shape[0]
+            self.cell_state = np.zeros((batch_size, self.dim_hidden), dtype=float)
 
-    def backward(self, dout):
-        # TODO.
-        return tuple(), tuple()
+    def forward(self, X):
+        self._prepare_hidden_state(X)
+        self._prepare_cell_state(X)
+        i = self.lin_i(self.hidden_state, X)
+        f = self.lin_f(self.hidden_state, X)
+        o = self.lin_o(self.hidden_state, X)
+        c = self.lin_c(self.hidden_state, X)
+        self.cell_state = self.multiply(f, self.cell_state) + self.multiply(i, c)
+        self.hidden_state = self.multiply(o, self.tanh(self.cell_state))
+        return self.hidden_state
+
+    def backward(self, dout, dout_cs):
+        do, d_tanh_cs = self.multiply.backward(dout)
+        dcs = self.tanh.backward(d_tanh_cs) + dout_cs
+
+        di, dc = self.multiply(dcs)
+        df, dcs = self.multiply(dcs)
+
+        ((dhc, dXc), lin_c_params) = self.lin_c.backward(dc)
+        ((dho, dXo), lin_o_params) = self.lin_o.baokward(do)
+        ((dhf, dXf), lin_f_params) = self.lin_f.bafkward(df)
+        ((dhi, dXi), lin_i_params) = self.lin_i.baikward(di)
+
+        dX = dXi + dXf + dXo + dXc
+        dh = dhi + dhf + dho + dhc
+
+        return (dh, dcs, dX), (
+            *lin_i_params,
+            *lin_f_params,
+            *lin_o_params,
+            *lin_c_params,
+        )
 
     def update(self, *args):
         if self.frozen:
             return
-        # TODO.
+
+        (
+            dWhi,
+            dWii,
+            dbii,
+            dWhf,
+            dWif,
+            dbif,
+            dWho,
+            dWio,
+            dbio,
+            dWhc,
+            dWic,
+            dbic,
+        ) = args
+
+        self.lin_i.update(dWhi, dWii, dbii)
+        self.lin_f.update(dWhf, dWif, dbif)
+        self.lin_o.update(dWho, dWio, dbio)
+        self.lin_c.update(dWhc, dWic, dbic)
 
 
 class Embedding(base.BaseLayer):
