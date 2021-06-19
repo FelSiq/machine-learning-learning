@@ -24,8 +24,6 @@ class Autoencoder(base.BaseModel):
 
         super(Autoencoder, self).__init__()
 
-        self.layers = []
-        l_rel = modules.ReLU()
         self.optim = optim.Adam(
             learning_rate=learning_rate,
             first_momentum=first_momentum,
@@ -33,13 +31,14 @@ class Autoencoder(base.BaseModel):
         )
         self.clip_grad_norm = float(clip_grad_norm)
 
-        for i in range(1, len(dims)):
-            l_lin = modules.Linear(dims[i - 1], dims[i])
-            self.layers.append(l_lin)
-            self.layers.append(l_rel)
-            self.optim.register_layer(2 * (i - 1), *l_lin.parameters)
+        self.layers = []
 
-        self.layers = tuple(layers)
+        for i in range(1, len(dims)):
+            l_lin = modules.Linear(dims[i - 1], dims[i], activation=modules.ReLU())
+            self.layers.append(l_lin)
+            self.optim.register_layer(i - 1, *l_lin.parameters)
+
+        self.layers = tuple(self.layers)
 
     def forward(self, X):
         out = X
@@ -57,10 +56,6 @@ class Autoencoder(base.BaseModel):
             layer_id = len(self.layers) - i - 1
             grads = layer.backward(dout)
             self._clip_grads(grads)
-
-            if not layer.trainable:
-                dout = grads
-                continue
 
             (dout,) = grads[0]
             param_grads = grads[1]
