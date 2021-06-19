@@ -72,54 +72,40 @@ class GRUCell(_BaseSequenceCell):
     def __init__(self, dim_in: int, dim_hidden: int):
         super(GRUCell, self).__init__(dim_in, dim_hidden)
 
-        self.lin_hidden_z = base.Linear(dim_hidden, dim_hidden, include_bias=False)
-        self.lin_input_z = base.Linear(dim_in, dim_hidden, include_bias=True)
-
-        self.lin_hidden_r = base.Linear(dim_hidden, dim_hidden, include_bias=False)
-        self.lin_input_r = base.Linear(dim_in, dim_hidden, include_bias=True)
-
-        self.lin_hidden_h = base.Linear(dim_hidden, dim_hidden, include_bias=False)
-        self.lin_input_h = base.Linear(dim_in, dim_hidden, include_bias=True)
+        self.lin_z = base.MultiLinear(
+            [dim_hidden, dim_in], dim_hidden, outer_activation=activation.Sigmoid()
+        )
+        self.lin_r = base.MultiLinear(
+            [dim_hidden, dim_in], dim_hidden, outer_activation=activation.Sigmoid()
+        )
+        self.lin_h = base.MultiLinear(
+            [dim_hidden, dim_in], dim_hidden, outer_activation=activation.Tanh()
+        )
 
         self.weighted_avg = base.WeightedAverage()
 
-        self.tanh_layer = activation.Tanh()
-        self.sigm_layer = activation.Sigmoid()
-
         self.layers = (
-            self.lin_hidden_z,
-            self.lin_input_z,
-            self.lin_hidden_r,
-            self.lin_input_r,
-            self.lin_hidden_h,
-            self.lin_input_h,
+            self.lin_z,
+            self.lin_r,
+            self.lin_h,
             self.weighted_avg,
-            self.tanh_layer,
-            self.sigm_layer,
         )
 
         self.parameters = (
-            *self.lin_hidden_z.parameters,
-            *self.lin_input_z.parameters,
-            *self.lin_hidden_r.parameters,
-            *self.lin_input_r.parameters,
-            *self.lin_hidden_h.parameters,
-            *self.lin_input_h.parameters,
+            *self.lin_z.parameters,
+            *self.lin_r.parameters,
+            *self.lin_h.parameters,
         )
 
     def forward(self, X):
         self._prepare_cell_state(X)
 
-        z = self.lin_hidden_z(self.cell_state) + self.lin_input_z(X)
-        z = self.sigm_layer(z)
-
-        r = self.lin_hidden_r(self.cell_state) + self.lin_input_r(X)
-        r = self.sigm_layer(r)
+        z = self.lin_z(self.cell_state, X)
+        r = self.lin_r(self.cell_state, X)
 
         r_cs = r * self.cell_state
 
-        h = self.lin_hidden_h(r_cs) + self.lin_input_h(X)
-        h = self.tanh_layer(h)
+        h = self.lin_h(r_cs, X)
 
         self._store_in_cache(self.cell_state, r)
 
@@ -132,38 +118,48 @@ class GRUCell(_BaseSequenceCell):
 
         (d_cell_state, dh, dz) = self.weighted_avg.backward(dout)
 
-        dh = self.tanh_layer.backward(dh)
-        ((dr_cs,), (dWhh,)) = self.lin_hidden_h.backward(dh)
-        ((dXh,), (dWih, dbih)) = self.lin_input_h.backward(dh)
+        ((dr_cs, dXh), lin_h_params) = self.lin_h.backward(dh)
 
         dr = prev_cell_state * dr_cs
         dhh = r * dr_cs
 
-        dr = self.sigm_layer.backward(dr)
-        ((dhr,), (dWhr,)) = self.lin_hidden_r.backward(dr)
-        ((dXr,), (dWir, dbir)) = self.lin_input_r.backward(dr)
+        ((dhr, dXr), lin_r_params) = self.lin_r.backward(dr)
+        ((dhz, dXz), lin_z_params) = self.lin_z.backward(dz)
 
-        dz = self.sigm_layer.backward(dr)
-        ((dhz,), (dWhz,)) = self.lin_hidden_z.backward(dz)
-        ((dXz,), (dWiz, dbiz)) = self.lin_input_z.backward(dz)
-
-        dX = dXz + dXr + dXh
         dh = dhz + dhr + dhh
+        dX = dXz + dXr + dXh
 
-        return ((dh, dX), (dWhh, dWih, dbih, dWhr, dWir, dbir, dWhz, dWiz, dbiz))
+        return ((dh, dX), (*lin_z_params, *lin_r_params, *lin_h_params))
 
     def update(self, *args):
         if self.frozen:
             return
 
-        (dWhh, dWih, dbih, dWhr, dWir, dbir, dWhz, dWiz, dbiz) = args
+        (dWhz, dWiz, dbiz, dWhr, dWir, dbir, dWhh, dWih, dbih) = args
 
-        self.lin_hidden_h.update(dWhh)
-        self.lin_hidden_r.update(dWhr)
-        self.lin_hidden_z.update(dWhz)
-        self.lin_input_h.update(dWih, dbih)
-        self.lin_input_r.update(dWir, dbir)
-        self.lin_input_z.update(dWiz, dbiz)
+        self.lin_z.update(dWhz, dWiz, dbiz)
+        self.lin_r.update(dWhr, dWir, dbir)
+        self.lin_h.update(dWhh, dWih, dbih)
+
+
+class LSTMCell(_BaseSequenceCell):
+    def __init__(self, dim_in: int, dim_hidden: int):
+        super(LSTMCell, self).__init__(dim_in, dim_hidden)
+        # TODO.
+
+    def forward(self, X):
+        self._prepare_cell_state(X)
+        # TODO.
+        return self.cell_state
+
+    def backward(self, dout):
+        # TODO.
+        return tuple(), tuple()
+
+    def update(self, *args):
+        if self.frozen:
+            return
+        # TODO.
 
 
 class Embedding(base._BaseLayer):
