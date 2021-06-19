@@ -6,11 +6,6 @@ import modules
 
 
 class BaseModel(modules.BaseComponent):
-    def __init__(self):
-        self.frozen = False
-        self.layers = tuple()
-        self.parameters = tuple()
-
     def _clip_grads(self, grads):
         if isinstance(grads, tuple):
             douts, param_grads = grads
