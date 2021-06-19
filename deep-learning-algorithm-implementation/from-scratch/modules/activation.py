@@ -4,9 +4,6 @@ from . import base
 
 
 class ReLU(base.BaseLayer):
-    def __init__(self):
-        super(ReLU, self).__init__()
-
     def forward(self, X):
         out = np.maximum(X, 0.0)
         self._store_in_cache(X)
@@ -36,9 +33,6 @@ class LeakyReLU(base.BaseLayer):
 
 
 class Tanh(base.BaseLayer):
-    def __init__(self):
-        super(Tanh, self).__init__()
-
     def forward(self, X):
         out = np.tanh(X)
         self._store_in_cache(out)
@@ -51,9 +45,6 @@ class Tanh(base.BaseLayer):
 
 
 class Sigmoid(base.BaseLayer):
-    def __init__(self):
-        super(Sigmoid, self).__init__()
-
     def forward(self, X):
         inds_pos = X >= 0
         inds_neg = ~inds_pos
