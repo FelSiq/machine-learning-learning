@@ -51,7 +51,13 @@ class _BaseLayer:
 
 
 class Linear(_BaseLayer):
-    def __init__(self, dim_in: int, dim_out: int, include_bias: bool = True):
+    def __init__(
+        self,
+        dim_in: int,
+        dim_out: int,
+        include_bias: bool = True,
+        activation: t.Optional[t.Callable[[np.ndarray], np.ndarray]] = None,
+    ):
         assert dim_in > 0
         assert dim_out > 0
 
@@ -68,11 +74,16 @@ class Linear(_BaseLayer):
         else:
             self.parameters = (self.weights,)
 
+        self.activation = activation
+
     def forward(self, X):
         out = X @ self.weights
 
         if self.bias.size:
             out += self.bias
+
+        if self.activation is not None:
+            out = self.activation(out)
 
         self._store_in_cache(X)
 
@@ -80,6 +91,9 @@ class Linear(_BaseLayer):
 
     def backward(self, dout):
         (X,) = self._pop_from_cache()
+
+        if self.activation is not None:
+            dout = self.activation.backward(dout)
 
         dW = X.T @ dout
         dX = dout @ self.weights.T
@@ -104,7 +118,26 @@ class Linear(_BaseLayer):
 
 
 class MultiLinear(_BaseLayer):
-    def __init__(self, dims_in: t.Tuple[int], dim_out: int, add_bias: bool = True):
+    def __init__(
+        self,
+        dims_in: t.Tuple[int],
+        dim_out: int,
+        add_bias: bool = True,
+        activations: t.Optional[
+            t.Sequence, t.Callable[[np.ndarray], np.ndarray]
+        ] = None,
+    ):
+        super(MultiLinear, self).__init__(trainable=True)
+
+        if activations is None:
+            activations = [None] * len(dims_in)
+
+        elif hasattr(activations, "__len__"):
+            assert len(activations) == len(dims_in)
+
+        else:
+            activations = [activations] * len(dims_in)
+
         self.layers = [
             Linear(dim_in, dim_out, add_bias=False) for dim_in in dims_in[:-1]
         ]
@@ -123,7 +156,7 @@ class MultiLinear(_BaseLayer):
     def forward(self, X):
         out = np.zeros((X.shape[0], self.dim_out), dtype=float)
 
-        for layer in self.layers:
+        for layer in reversed(self.layers):
             out += layer(out)
 
         return out
