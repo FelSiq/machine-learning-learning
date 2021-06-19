@@ -31,10 +31,12 @@ class Autoencoder(base.BaseModel):
         )
         self.clip_grad_norm = float(clip_grad_norm)
 
-        self.weights = modules.Sequential([
-            modules.Linear(dims[i - 1], dims[i], activation=modules.ReLU())
-            for i in range(1, len(dims))
-        ])
+        self.weights = modules.Sequential(
+            [
+                modules.Linear(dims[i - 1], dims[i], activation=modules.ReLU())
+                for i in range(1, len(dims))
+            ]
+        )
 
         self.optim.register_layer(0, *self.weights.parameters)
 
