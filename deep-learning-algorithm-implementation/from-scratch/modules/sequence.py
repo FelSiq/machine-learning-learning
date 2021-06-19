@@ -263,3 +263,66 @@ class Embedding(base.BaseLayer):
 
         (demb,) = args
         self.embedding -= demb
+
+
+class Bidirectional(base.BaseLayer):
+    def __init__(self, model):
+        super(Bidirectional, self).__init__(trainable=True)
+
+        self.rnn_l_to_r = model
+        self.rnn_r_to_l = model.copy()
+
+        self.dim_hidden = int(self.rnn_l_to_r.dim_hidden)
+
+        self.layers = (
+            self.rnn_l_to_r,
+            self.rnn_r_to_l,
+        )
+
+        self.parameters = (
+            *self.rnn_l_to_r.parameters,
+            *self.rnn_r_to_l.parameters,
+        )
+
+    def forward(self, X):
+        # shape: (time, batch, dim_in)
+        out_l_to_r = self.rnn_l_to_r(X)
+        out_r_to_l = self.rnn_r_to_l(X[::-1, ...])
+        # shape (both): (time, batch, dim_hidden)
+
+        outputs = np.dstack((out_l_to_r, out_r_to_l))
+        # shape: (time, batch, 2 * dim_hidden)
+
+        return outputs
+
+    def backward(self, douts):
+        # if n_dim = 3: douts (time, batch, 2 * dim_hidden)
+        # if n_dim = 2: douts (batch, 2 * dim_hidden)
+        douts_l_to_r = self.rnn_l_to_r.backward(douts[..., : self.dim_hidden])
+        douts_r_to_l = self.rnn_r_to_l.backward(douts[..., self.dim_hidden :])
+
+        douts_X = douts_l_to_r + douts_r_to_l
+
+        return douts_X
+
+
+class DeepSequenceModel(base.BaseLayer):
+    def __init__(self, model, num_layers: int):
+        assert int(num_layers) > 0
+
+        super(DeepSequenceModel, self).__init__(trainable=True)
+
+        self.weights = compose.Sequential([model.copy() for _ in range(num_layers)])
+
+        for model in self.weights[1:]:
+            # TODO: change input dim of middle dimensions here
+            pass
+
+        self.parameters = (*self.weights.parameters,)
+        self.layers = (self.weights,)
+
+    def forward(self, X):
+        return self.weights(X)
+
+    def backward(self, dout):
+        return self.weights.backward(dout)
