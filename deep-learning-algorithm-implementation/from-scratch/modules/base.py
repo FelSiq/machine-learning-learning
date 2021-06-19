@@ -52,6 +52,9 @@ class _BaseLayer:
 
 class Linear(_BaseLayer):
     def __init__(self, dim_in: int, dim_out: int, include_bias: bool = True):
+        assert dim_in > 0
+        assert dim_out > 0
+
         super(Linear, self).__init__(trainable=True)
 
         he_init_coef = np.sqrt(2.0 / dim_in)
@@ -98,6 +101,50 @@ class Linear(_BaseLayer):
 
         (dW,) = args
         self.weights -= dW
+
+
+class MultiLinear(_BaseLayer):
+    def __init__(self, dims_in: t.Tuple[int], dim_out: int, add_bias: bool = True):
+        self.layers = [
+            Linear(dim_in, dim_out, add_bias=False) for dim_in in dims_in[:-1]
+        ]
+        self.layers.append(Linear(dims_in[-1], dim_out, add_bias=add_bias))
+        self.layers = tuple(self.layer)
+
+        self.dim_out = int(dim_out)
+
+        self.parameters = []
+
+        for layer in self.layers:
+            self.parameters.extend(layer.parameters)
+
+        self.parameters = tuple(self.parameters)
+
+    def forward(self, X):
+        out = np.zeros((X.shape[0], self.dim_out), dtype=float)
+
+        for layer in self.layers:
+            out += layer(out)
+
+        return out
+
+    def backward(self, dout):
+        d_outs = []  # type: t.List[np.ndarray]
+        d_params = []  # type: t.List[np.ndarray]
+
+        for layer in self.layers:
+            grads = layer.backward(dout)
+            d_outs.append(grads[0])
+            d_params.append(grads[1])
+
+        return tuple(d_outs), tuple(d_params)
+
+    def update(self, *args):
+        if self.frozen:
+            return
+
+        for layer, d_params in zip(self.layers, args):
+            layer.update(d_params)
 
 
 class Reshape(_BaseLayer):
