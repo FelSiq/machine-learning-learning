@@ -154,7 +154,7 @@ class LSTMCell(_BaseSequenceCell):
         )
 
         self.multiply = base.Multiply()
-        self.tanh = base.Tanh()
+        self.tanh = activation.Tanh()
 
         self.layers = (
             self.lin_i,
@@ -192,13 +192,13 @@ class LSTMCell(_BaseSequenceCell):
         do, d_tanh_cs = self.multiply.backward(dout)
         dcs = self.tanh.backward(d_tanh_cs) + dout_cs
 
-        di, dc = self.multiply(dcs)
-        df, dcs = self.multiply(dcs)
+        di, dc = self.multiply.backward(dcs)
+        df, dcs = self.multiply.backward(dcs)
 
         ((dhc, dXc), lin_c_params) = self.lin_c.backward(dc)
-        ((dho, dXo), lin_o_params) = self.lin_o.baokward(do)
-        ((dhf, dXf), lin_f_params) = self.lin_f.bafkward(df)
-        ((dhi, dXi), lin_i_params) = self.lin_i.baikward(di)
+        ((dho, dXo), lin_o_params) = self.lin_o.backward(do)
+        ((dhf, dXf), lin_f_params) = self.lin_f.backward(df)
+        ((dhi, dXi), lin_i_params) = self.lin_i.backward(di)
 
         dX = dXi + dXf + dXo + dXc
         dh = dhi + dhf + dho + dhc
