@@ -82,12 +82,15 @@ class GRUCell(_BaseSequenceCell):
             [dim_hidden, dim_in], dim_hidden, outer_activation=activation.Tanh()
         )
 
+        self.multiply = base.Multiply()
+
         self.weighted_avg = base.WeightedAverage()
 
         self.layers = (
             self.lin_z,
             self.lin_r,
             self.lin_h,
+            self.multiply,
             self.weighted_avg,
         )
 
@@ -99,29 +102,19 @@ class GRUCell(_BaseSequenceCell):
 
     def forward(self, X):
         self._prepare_cell_state(X)
-
         z = self.lin_z(self.cell_state, X)
         r = self.lin_r(self.cell_state, X)
-
-        r_cs = r * self.cell_state
-
+        r_cs = self.multiply(r, self.cell_state)
         h = self.lin_h(r_cs, X)
-
-        self._store_in_cache(self.cell_state, r)
-
         self.cell_state = self.weighted_avg(self.cell_state, h, z)
-
         return self.cell_state
 
     def backward(self, dout):
-        (prev_cell_state, r) = self._pop_from_cache()
-
         (d_cell_state, dh, dz) = self.weighted_avg.backward(dout)
 
         ((dr_cs, dXh), lin_h_params) = self.lin_h.backward(dh)
 
-        dr = prev_cell_state * dr_cs
-        dhh = r * dr_cs
+        dr, dhh = self.multiply.backward(dr_cs)
 
         ((dhr, dXr), lin_r_params) = self.lin_r.backward(dr)
         ((dhz, dXz), lin_z_params) = self.lin_z.backward(dz)
@@ -145,11 +138,48 @@ class GRUCell(_BaseSequenceCell):
 class LSTMCell(_BaseSequenceCell):
     def __init__(self, dim_in: int, dim_hidden: int):
         super(LSTMCell, self).__init__(dim_in, dim_hidden)
-        # TODO.
+
+        self.lin_i = base.MultiLinear(
+            [dim_hidden, dim_in], dim_hidden, outer_activation=activation.Sigmoid()
+        )
+        self.lin_f = base.MultiLinear(
+            [dim_hidden, dim_in], dim_hidden, outer_activation=activation.Sigmoid()
+        )
+        self.lin_o = base.MultiLinear(
+            [dim_hidden, dim_in], dim_hidden, outer_activation=activation.Sigmoid()
+        )
+        self.lin_c = base.MultiLinear(
+            [dim_hidden, dim_in], dim_hidden, outer_activation=activation.Tanh()
+        )
+
+        self.multiply = base.Multiply()
+
+        self.weighted_avg = base.WeightedAverage()
+
+        self.layers = (
+            self.lin_i,
+            self.lin_f,
+            self.lin_o,
+            self.lin_c,
+            self.multiply,
+            self.weighted_avg,
+        )
+
+        self.parameters = (
+            *self.lin_i.parameters,
+            *self.lin_f.parameters,
+            *self.lin_o.parameters,
+            *self.lin_c.parameters,
+        )
 
     def forward(self, X):
+        # TODO: finish this.
         self._prepare_cell_state(X)
-        # TODO.
+        i = self.lin_i(self.cell_state, X)
+        f = self.lin_i(self.cell_state, X)
+        o = self.lin_i(self.cell_state, X)
+        c = self.lin_i(self.cell_state, X)
+        c = self.multiply(f, self.cell_state) + self.multiply(i, c)
         return self.cell_state
 
     def backward(self, dout):

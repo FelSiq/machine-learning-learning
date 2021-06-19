@@ -243,3 +243,19 @@ class WeightedAverage(BaseLayer):
         dY = (1.0 - W) * dout
         dW = (X - Y) * dout
         return dX, dY, dW
+
+
+class Multiply(BaseLayer):
+    def __call__(self, X, Y):
+        return self.forward(X, Y)
+
+    def forward(self, X, Y):
+        out = X * Y
+        self._store_in_cache(X, Y)
+        return out
+
+    def backward(self, dout):
+        (X, Y) = self._pop_from_cache()
+        dX = Y * dout
+        dY = X * dout
+        return dX, dY
