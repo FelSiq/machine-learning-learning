@@ -47,6 +47,8 @@ class SequenceModel(base.BaseModel):
         if douts.ndim == 2:
             douts = np.expand_dims(douts, 0)
 
+        # TODO: fix this method for LSTMs (which return both cell state and hidden state)
+
         batch_size = douts.shape[1]
 
         douts_X = []  # type: t.List[np.ndarray]
@@ -106,6 +108,18 @@ class GRU(SequenceModel):
     ):
         gru_cell = modules.GRUCell(dim_in, dim_hidden)
         super(GRU, self).__init__(gru_cell, learning_rate, clip_grad_norm)
+
+
+class LSTM(SequenceModel):
+    def __init__(
+        self,
+        dim_in: int,
+        dim_hidden: int,
+        learning_rate: float,
+        clip_grad_norm: float = 1.0,
+    ):
+        lstm_cell = modules.LSTMCell(dim_in, dim_hidden)
+        super(LSTM, self).__init__(lstm_cell, learning_rate, clip_grad_norm)
 
 
 class Bidirectional(base.BaseModel):
