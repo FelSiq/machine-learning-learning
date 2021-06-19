@@ -130,10 +130,7 @@ class MultiLinear(BaseLayer):
     ):
         super(MultiLinear, self).__init__(trainable=True)
 
-        if inner_activations is None:
-            inner_activations = [None] * len(dims_in)
-
-        elif hasattr(inner_activations, "__len__"):
+        if hasattr(inner_activations, "__len__"):
             assert len(inner_activations) == len(dims_in)
 
         else:
