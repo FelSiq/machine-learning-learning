@@ -34,16 +34,7 @@ class RNNCell(_BaseSequenceCell):
         self.lin_input = base.Linear(dim_in, dim_hidden, include_bias=True)
         self.tanh_layer = activation.Tanh()
 
-        self.layers = (
-            self.lin_hidden,
-            self.lin_input,
-            self.tanh_layer,
-        )
-
-        self.parameters = (
-            *self.lin_hidden.parameters,
-            *self.lin_input.parameters,
-        )
+        self.register_layers(self.lin_hidden, self.lin_input, self.tanh_layer)
 
     def forward(self, X):
         self._prepare_hidden_state(X)
@@ -87,18 +78,12 @@ class GRUCell(_BaseSequenceCell):
 
         self.weighted_avg = base.WeightedAverage()
 
-        self.layers = (
+        self.register_layers(
             self.lin_z,
             self.lin_r,
             self.lin_h,
             self.multiply,
             self.weighted_avg,
-        )
-
-        self.parameters = (
-            *self.lin_z.parameters,
-            *self.lin_r.parameters,
-            *self.lin_h.parameters,
         )
 
     def forward(self, X):
@@ -156,20 +141,13 @@ class LSTMCell(_BaseSequenceCell):
         self.multiply = base.Multiply()
         self.tanh = activation.Tanh()
 
-        self.layers = (
+        self.register_layers(
             self.lin_i,
             self.lin_f,
             self.lin_o,
             self.lin_c,
             self.multiply,
             self.tanh,
-        )
-
-        self.parameters = (
-            *self.lin_i.parameters,
-            *self.lin_f.parameters,
-            *self.lin_o.parameters,
-            *self.lin_c.parameters,
         )
 
     def _prepare_cell_state(self, X):
@@ -274,15 +252,7 @@ class Bidirectional(base.BaseLayer):
 
         self.dim_hidden = int(self.rnn_l_to_r.dim_hidden)
 
-        self.layers = (
-            self.rnn_l_to_r,
-            self.rnn_r_to_l,
-        )
-
-        self.parameters = (
-            *self.rnn_l_to_r.parameters,
-            *self.rnn_r_to_l.parameters,
-        )
+        self.register_layers(self.rnn_l_to_r, self.rnn_r_to_l)
 
     def forward(self, X):
         # shape: (time, batch, dim_in)
@@ -318,8 +288,7 @@ class DeepSequenceModel(base.BaseLayer):
             # TODO: change input dim of middle dimensions here
             pass
 
-        self.parameters = (*self.weights.parameters,)
-        self.layers = (self.weights,)
+        self.register_layers(self.weights)
 
     def forward(self, X):
         return self.weights(X)

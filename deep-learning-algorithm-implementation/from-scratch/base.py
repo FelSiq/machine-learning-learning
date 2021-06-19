@@ -2,11 +2,14 @@ import copy
 
 import numpy as np
 
+import modules
 
-class BaseModel:
+
+class BaseModel(modules.BaseComponent):
     def __init__(self):
         self.frozen = False
         self.layers = tuple()
+        self.parameters = tuple()
 
     def _clip_grads(self, grads):
         if isinstance(grads, tuple):
@@ -21,22 +24,6 @@ class BaseModel:
 
         for grad in param_grads:
             np.clip(grad, -self.clip_grad_norm, self.clip_grad_norm, out=grad)
-
-    def __call__(self, X):
-        return self.forward(X)
-
-    def __iter__(self):
-        return iter(self.layers)
-
-    def train(self):
-        self.frozen = False
-        for layer in self.layers:
-            layer.train()
-
-    def eval(self):
-        self.frozen = True
-        for layer in self.layers:
-            layer.eval()
 
     def copy(self):
         return copy.deepcopy(self)

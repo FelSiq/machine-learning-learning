@@ -24,12 +24,9 @@ class _SequenceModel(base.BaseModel):
 
         self.dim_in = int(self.sequence_cell.dim_in)
         self.dim_hidden = int(self.sequence_cell.dim_hidden)
-
         self.uses_cell_state = isinstance(cell_model, modules.LSTMCell)
 
-        self.layers = (self.sequence_cell,)
-        self.parameters = (*self.sequence_cell.parameters,)
-
+        self.register_layers(self.sequence_cell)
         self.optim.register_layer(0, *self.sequence_cell.parameters)
 
     def forward(self, X):
@@ -170,18 +167,7 @@ class NLPProcessor(base.BaseModel):
         self.dim_hidden = int(dim_hidden)
         self.dim_out = int(dim_out)
 
-        self.layers = (
-            self.embed_layer,
-            self.rnn,
-            self.lin_out_layer,
-        )
-
-        self.parameters = (
-            *self.embed_layer.parameters,
-            *self.rnn.parameters,
-            *self.lin_out_layer.parameters,
-        )
-
+        self.register_layers(self.embed_layer, self.rnn, self.lin_out_layer)
         self.optim.register_layer(0, *self.embed_layer.parameters)
         self.optim.register_layer(1, *self.lin_out_layer.parameters)
 

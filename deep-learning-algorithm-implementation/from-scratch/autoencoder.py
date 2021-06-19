@@ -38,9 +38,8 @@ class Autoencoder(base.BaseModel):
             ]
         )
 
+        self.register_layers(self.weights)
         self.optim.register_layer(0, *self.weights.parameters)
-
-        self.layers = (self.weights,)
 
     def forward(self, X):
         return self.weights(X)

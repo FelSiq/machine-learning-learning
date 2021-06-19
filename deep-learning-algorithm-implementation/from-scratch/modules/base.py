@@ -3,22 +3,14 @@ import typing as t
 import numpy as np
 
 
-class BaseLayer:
-    def __init__(self, trainable: bool = False):
-        self._cache = []
-        self.trainable = trainable
+class BaseComponent:
+    def __init__(self):
         self.frozen = False
         self.parameters = tuple()
         self.layers = tuple()
 
-    def _store_in_cache(self, *args):
-        if self.frozen:
-            return
-
-        self._cache.append(args)
-
-    def _pop_from_cache(self):
-        return self._cache.pop()
+    def __iter__(self):
+        return iter(self.layers)
 
     def forward(self, X):
         raise NotImplementedError
@@ -28,6 +20,41 @@ class BaseLayer:
 
     def backward(self, dout):
         raise NotImplementedError
+
+    def train(self):
+        self.frozen = False
+        for layer in self.layers:
+            layer.train()
+
+    def eval(self):
+        self.frozen = True
+        for layer in self.layers:
+            layer.eval()
+
+    def register_layers(self, *layers):
+        self.layers = tuple(layers)
+        nested_parameters = []
+
+        for layer in layers:
+            nested_parameters.extend(layer.parameters)
+
+        self.parameters = (*self.parameters, *nested_parameters)
+
+
+class BaseLayer(BaseComponent):
+    def __init__(self, trainable: bool = False):
+        super(BaseLayer, self).__init__()
+        self._cache = []
+        self.trainable = trainable
+
+    def _store_in_cache(self, *args):
+        if self.frozen:
+            return
+
+        self._cache.append(args)
+
+    def _pop_from_cache(self):
+        return self._cache.pop()
 
     def update(self, *args):
         raise NotImplementedError
@@ -39,15 +66,11 @@ class BaseLayer:
     def has_stored_grads(self):
         return len(self._cache) > 0 or any(l.has_stored_grads for l in self.layers)
 
-    def train(self):
-        self.frozen = False
-        for layer in self.layers:
-            layer.train()
+    def register_layers(self, *layers):
+        if not self.trainable:
+            assert all(map(lambda l: not l.trainable, layers))
 
-    def eval(self):
-        self.frozen = True
-        for layer in self.layers:
-            layer.eval()
+        super(BaseLayer, self).register_layers(*layers)
 
 
 class Linear(BaseLayer):
@@ -137,8 +160,9 @@ class MultiLinear(BaseLayer):
             inner_activations = [inner_activations] * len(dims_in)
 
         self.outer_activation = outer_activation
+        self.dim_out = int(dim_out)
 
-        self.layers = tuple(
+        layers = [
             Linear(
                 dim_in,
                 dim_out,
@@ -146,16 +170,9 @@ class MultiLinear(BaseLayer):
                 activation=activation,
             )
             for i, (dim_in, activation) in enumerate(zip(dims_in, inner_activations), 1)
-        )
+        ]
 
-        self.dim_out = int(dim_out)
-
-        self.parameters = []
-
-        for layer in self.layers:
-            self.parameters.extend(layer.parameters)
-
-        self.parameters = tuple(self.parameters)
+        self.register_layers(*layers)
 
     def forward(self, *args):
         batch_size = args[0].shape[0]
