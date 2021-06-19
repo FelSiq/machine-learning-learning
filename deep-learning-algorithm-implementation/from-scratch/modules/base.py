@@ -120,29 +120,36 @@ class Linear(_BaseLayer):
 class MultiLinear(_BaseLayer):
     def __init__(
         self,
-        dims_in: t.Tuple[int],
+        dims_in: t.Sequence[int],
         dim_out: int,
-        add_bias: bool = True,
-        activations: t.Optional[
-            t.Sequence, t.Callable[[np.ndarray], np.ndarray]
+        include_bias: bool = True,
+        inner_activations: t.Optional[
+            t.Union[t.Sequence, t.Callable[[np.ndarray], np.ndarray]]
         ] = None,
+        outer_activation: t.Optional[t.Callable[[np.ndarray], np.ndarray]] = None,
     ):
         super(MultiLinear, self).__init__(trainable=True)
 
-        if activations is None:
-            activations = [None] * len(dims_in)
+        if inner_activations is None:
+            inner_activations = [None] * len(dims_in)
 
-        elif hasattr(activations, "__len__"):
-            assert len(activations) == len(dims_in)
+        elif hasattr(inner_activations, "__len__"):
+            assert len(inner_activations) == len(dims_in)
 
         else:
-            activations = [activations] * len(dims_in)
+            inner_activations = [inner_activations] * len(dims_in)
 
-        self.layers = [
-            Linear(dim_in, dim_out, add_bias=False) for dim_in in dims_in[:-1]
-        ]
-        self.layers.append(Linear(dims_in[-1], dim_out, add_bias=add_bias))
-        self.layers = tuple(self.layer)
+        self.outer_activation = outer_activation
+
+        self.layers = tuple(
+            Linear(
+                dim_in,
+                dim_out,
+                include_bias=(i == len(dims_in) and include_bias),
+                activation=activation,
+            )
+            for i, (dim_in, activation) in enumerate(zip(dims_in, inner_activations), 1)
+        )
 
         self.dim_out = int(dim_out)
 
@@ -153,22 +160,33 @@ class MultiLinear(_BaseLayer):
 
         self.parameters = tuple(self.parameters)
 
-    def forward(self, X):
-        out = np.zeros((X.shape[0], self.dim_out), dtype=float)
+    def forward(self, *args):
+        batch_size = args[0].shape[0]
 
-        for layer in reversed(self.layers):
-            out += layer(out)
+        out = np.zeros((batch_size, self.dim_out), dtype=float)
+
+        for layer, X in reversed(tuple(zip(self.layers, args))):
+            out += layer(X)
+
+        if self.outer_activation is not None:
+            out = self.outer_activation(out)
 
         return out
+
+    def __call__(self, *args):
+        return self.forward(*args)
 
     def backward(self, dout):
         d_outs = []  # type: t.List[np.ndarray]
         d_params = []  # type: t.List[np.ndarray]
 
+        if self.outer_activation is not None:
+            dout = self.outer_activation.backward(dout)
+
         for layer in self.layers:
-            grads = layer.backward(dout)
-            d_outs.extend(grads[0])
-            d_params.extend(grads[1])
+            cur_d_outs, cur_d_params = layer.backward(dout)
+            d_outs.extend(cur_d_outs)
+            d_params.extend(cur_d_params)
 
         return tuple(d_outs), tuple(d_params)
 
@@ -176,8 +194,10 @@ class MultiLinear(_BaseLayer):
         if self.frozen:
             return
 
-        for layer, d_params in zip(self.layers, args):
+        for layer, d_params in zip(self.layers[:-1], args[:-2]):
             layer.update(d_params)
+
+        self.layers[-1].update(args[-2], args[-1])
 
 
 class Reshape(_BaseLayer):
