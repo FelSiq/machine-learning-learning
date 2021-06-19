@@ -194,10 +194,13 @@ class MultiLinear(_BaseLayer):
         if self.frozen:
             return
 
-        for layer, d_params in zip(self.layers[:-1], args[:-2]):
+        nl = len(self.layers)
+
+        for layer, d_params in zip(self.layers[:-1], args[: nl - 1]):
             layer.update(d_params)
 
-        self.layers[-1].update(args[-2], args[-1])
+        last_layer_args = args[nl - 1 :] if len(args) > nl else (args[-1],)
+        self.layers[-1].update(*last_layer_args)
 
 
 class Reshape(_BaseLayer):
