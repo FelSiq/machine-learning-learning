@@ -25,6 +25,8 @@ class SequenceModel(base.BaseModel):
         self.dim_in = int(self.sequence_cell.dim_in)
         self.dim_hidden = int(self.sequence_cell.dim_hidden)
 
+        self.uses_cell_state = isinstance(cell_model, modules.LSTMCell)
+
         self.layers = (self.sequence_cell,)
 
         self.optim.register_layer(0, *self.sequence_cell.parameters)
@@ -56,15 +58,25 @@ class SequenceModel(base.BaseModel):
 
         # if n_dim = 3: douts (time, batch, dim_hidden)
         # if n_dim = 2: douts (batch, dim_hidden) (only the last timestep)
+
+        if self.uses_cell_state:
+            dout_cs = np.zeros((batch_size, self.dim_hidden), dtype=float)
+
         dout_h = np.zeros((batch_size, self.dim_hidden), dtype=float)
         dout = douts[-1] if douts.ndim == 3 else douts
         i = 1
 
         while self.sequence_cell.has_stored_grads:
-            grads = self.sequence_cell.backward(dout_h + dout)
-            self._clip_grads(grads)
+            if self.uses_cell_state:
+                grads = self.sequence_cell.backward(dout_h + dout, dout_cs)
+                self._clip_grads(grads)
+                (dout_h, dout_cs, dout_X) = grads[0]
 
-            (dout_h, dout_X) = grads[0]
+            else:
+                grads = self.sequence_cell.backward(dout_h + dout)
+                self._clip_grads(grads)
+                (dout_h, dout_X) = grads[0]
+
             param_grads = grads[1]
 
             douts_X.insert(0, dout_X)
@@ -177,7 +189,7 @@ class NLPProcessor(base.BaseModel):
         super(NLPProcessor, self).__init__()
 
         self.embed_layer = modules.Embedding(num_embed_tokens, dim_embed)
-        self.rnn = GRU(
+        self.rnn = LSTM(
             dim_embed, dim_hidden, learning_rate, clip_grad_norm=clip_grad_norm
         )
 
