@@ -28,6 +28,7 @@ class SequenceModel(base.BaseModel):
         self.uses_cell_state = isinstance(cell_model, modules.LSTMCell)
 
         self.layers = (self.sequence_cell,)
+        self.parameters = (*self.sequence_cell.parameters,)
 
         self.optim.register_layer(0, *self.sequence_cell.parameters)
 
@@ -43,9 +44,6 @@ class SequenceModel(base.BaseModel):
         return outputs
 
     def backward(self, douts):
-        if self.frozen:
-            return
-
         if douts.ndim == 2:
             douts = np.expand_dims(douts, 0)
 
@@ -134,6 +132,28 @@ class LSTM(SequenceModel):
         super(LSTM, self).__init__(lstm_cell, learning_rate, clip_grad_norm)
 
 
+class DeepSequenceModel(base.BaseModel):
+    def __init__(self, model, num_layers: int):
+        assert int(num_layers) > 0
+
+        super(DeepSequenceModel, self).__init__()
+
+        self.weights = modules.Sequential([model.copy() for _ in range(num_layers)])
+
+        for model in self.weights[1:]:
+            # TODO: change input dim of middle dimensions here
+            pass
+
+        self.parameters = (*self.weights.parameters,)
+        self.layers = (self.weights,)
+
+    def forward(self, X):
+        return self.weights(X)
+
+    def backward(self, dout):
+        return self.weights.backward(dout)
+
+
 class Bidirectional(base.BaseModel):
     def __init__(self, model):
         super(Bidirectional, self).__init__()
@@ -148,6 +168,11 @@ class Bidirectional(base.BaseModel):
             self.rnn_r_to_l,
         )
 
+        self.parameters(
+            *self.rnn_l_to_r.parameters,
+            *self.rnn_r_to_l.parameters,
+        )
+
     def forward(self, X):
         # shape: (time, batch, dim_in)
         out_l_to_r = self.rnn_l_to_r(X)
@@ -160,9 +185,6 @@ class Bidirectional(base.BaseModel):
         return outputs
 
     def backward(self, douts):
-        if self.frozen:
-            return
-
         # if n_dim = 3: douts (time, batch, 2 * dim_hidden)
         # if n_dim = 2: douts (batch, 2 * dim_hidden)
         douts_l_to_r = self.rnn_l_to_r.backward(douts[..., : self.dim_hidden])
@@ -183,6 +205,7 @@ class NLPProcessor(base.BaseModel):
         learning_rate: float,
         clip_grad_norm: float = 1.0,
         bidirectional: bool = False,
+        num_layers: int = 1,
     ):
         assert float(clip_grad_norm) > 0.0
 
@@ -195,6 +218,9 @@ class NLPProcessor(base.BaseModel):
 
         if bidirectional:
             self.rnn = Bidirectional(self.rnn)
+
+        if int(num_layers) > 1:
+            self.rnn = DeepSequenceModel(self.rnn, num_layers)
 
         self.lin_out_layer = modules.Linear(
             dim_hidden * (1 + int(bool(bidirectional))), dim_out
@@ -213,6 +239,12 @@ class NLPProcessor(base.BaseModel):
             self.lin_out_layer,
         )
 
+        self.parameters = (
+            *self.embed_layer.parameters,
+            *self.rnn.parameters,
+            *self.lin_out_layer,
+        )
+
         self.optim.register_layer(0, *self.embed_layer.parameters)
         self.optim.register_layer(1, *self.lin_out_layer.parameters)
 
@@ -229,9 +261,6 @@ class NLPProcessor(base.BaseModel):
         return outputs_b
 
     def backward(self, douts):
-        if self.frozen:
-            return
-
         # if n_dim = 3: dout_y (time, batch, dim_out)
         # if n_dim = 2: dout_y (batch, dim_out) (only the last timestep)
 
@@ -322,6 +351,7 @@ def _test():
         dim_out=1,
         learning_rate=2.5e-4,
         bidirectional=False,
+        num_layers=2,
     )
 
     criterion = losses.BCELoss(with_logits=True)
