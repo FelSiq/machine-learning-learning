@@ -46,9 +46,6 @@ class Autoencoder(base.BaseModel):
         return self.weights(X)
 
     def backward(self, dout):
-        if self.frozen:
-            return
-
         grads = self.weights.backward(dout)
         self._clip_grads(grads)
 
