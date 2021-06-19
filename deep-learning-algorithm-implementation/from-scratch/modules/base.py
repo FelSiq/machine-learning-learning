@@ -1,3 +1,5 @@
+import copy
+
 import typing as t
 
 import numpy as np
@@ -39,6 +41,9 @@ class BaseComponent:
             nested_parameters.extend(layer.parameters)
 
         self.parameters = (*self.parameters, *nested_parameters)
+
+    def copy(self):
+        return copy.deepcopy(self)
 
 
 class BaseLayer(BaseComponent):

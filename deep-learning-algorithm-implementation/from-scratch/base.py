@@ -1,5 +1,3 @@
-import copy
-
 import numpy as np
 
 import modules
@@ -19,6 +17,3 @@ class BaseModel(modules.BaseComponent):
 
         for grad in param_grads:
             np.clip(grad, -self.clip_grad_norm, self.clip_grad_norm, out=grad)
-
-    def copy(self):
-        return copy.deepcopy(self)
