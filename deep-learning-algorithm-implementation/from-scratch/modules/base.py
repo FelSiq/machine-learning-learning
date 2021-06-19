@@ -3,7 +3,7 @@ import typing as t
 import numpy as np
 
 
-class _BaseLayer:
+class BaseLayer:
     def __init__(self, trainable: bool = False):
         self._cache = []
         self.trainable = trainable
@@ -50,7 +50,7 @@ class _BaseLayer:
             layer.eval()
 
 
-class Linear(_BaseLayer):
+class Linear(BaseLayer):
     def __init__(
         self,
         dim_in: int,
@@ -117,7 +117,7 @@ class Linear(_BaseLayer):
         self.weights -= dW
 
 
-class MultiLinear(_BaseLayer):
+class MultiLinear(BaseLayer):
     def __init__(
         self,
         dims_in: t.Sequence[int],
@@ -203,7 +203,7 @@ class MultiLinear(_BaseLayer):
         self.layers[-1].update(*last_layer_args)
 
 
-class Reshape(_BaseLayer):
+class Reshape(BaseLayer):
     def __init__(self, out_shape: t.Tuple[int, ...]):
         assert len(out_shape)
         super(Flatten, self).__init__()
@@ -228,7 +228,7 @@ class Flatten(Reshape):
         return X.ravel()
 
 
-class WeightedAverage(_BaseLayer):
+class WeightedAverage(BaseLayer):
     def __call__(self, X, Y, W):
         return self.forward(X, Y, W)
 

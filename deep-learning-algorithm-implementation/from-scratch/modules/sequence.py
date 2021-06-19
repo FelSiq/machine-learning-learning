@@ -4,7 +4,7 @@ from . import base
 from . import activation
 
 
-class _BaseSequenceCell(base._BaseLayer):
+class _BaseSequenceCell(base.BaseLayer):
     def __init__(self, dim_in: int, dim_hidden: int):
         assert int(dim_in) > 0
         assert int(dim_hidden) > 0
@@ -162,7 +162,7 @@ class LSTMCell(_BaseSequenceCell):
         # TODO.
 
 
-class Embedding(base._BaseLayer):
+class Embedding(base.BaseLayer):
     def __init__(self, num_tokens: int, dim_embedding: int):
         assert int(num_tokens) > 0
         assert int(dim_embedding) > 0

@@ -3,7 +3,7 @@ import numpy as np
 from . import base
 
 
-class ReLU(base._BaseLayer):
+class ReLU(base.BaseLayer):
     def __init__(self):
         super(ReLU, self).__init__()
 
@@ -18,7 +18,7 @@ class ReLU(base._BaseLayer):
         return dout
 
 
-class LeakyReLU(base._BaseLayer):
+class LeakyReLU(base.BaseLayer):
     def __init__(self, slope: float):
         assert float(slope) >= 0.0
         super(LeakyReLU, self).__init__()
@@ -35,7 +35,7 @@ class LeakyReLU(base._BaseLayer):
         return dout
 
 
-class Tanh(base._BaseLayer):
+class Tanh(base.BaseLayer):
     def __init__(self):
         super(Tanh, self).__init__()
 
@@ -50,7 +50,7 @@ class Tanh(base._BaseLayer):
         return dout
 
 
-class Sigmoid(base._BaseLayer):
+class Sigmoid(base.BaseLayer):
     def __init__(self):
         super(Sigmoid, self).__init__()
 
