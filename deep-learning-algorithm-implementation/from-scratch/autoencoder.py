@@ -24,43 +24,37 @@ class Autoencoder(base.BaseModel):
 
         super(Autoencoder, self).__init__()
 
-        self.optim = optim.Adam(
+        self.optim = optim.Nadam(
             learning_rate=learning_rate,
             first_momentum=first_momentum,
             second_momentum=second_momentum,
         )
         self.clip_grad_norm = float(clip_grad_norm)
 
-        self.layers = []
+        self.weights = modules.Sequential([
+            modules.Linear(dims[i - 1], dims[i], activation=modules.ReLU())
+            for i in range(1, len(dims))
+        ])
 
-        for i in range(1, len(dims)):
-            l_lin = modules.Linear(dims[i - 1], dims[i], activation=modules.ReLU())
-            self.layers.append(l_lin)
-            self.optim.register_layer(i - 1, *l_lin.parameters)
+        self.optim.register_layer(0, *self.weights.parameters)
 
-        self.layers = tuple(self.layers)
+        self.layers = (self.weights,)
 
     def forward(self, X):
-        out = X
-
-        for layer in self.layers:
-            out = layer.forward(out)
-
-        return out
+        return self.weights(X)
 
     def backward(self, dout):
         if self.frozen:
             return
 
-        for i, layer in enumerate(reversed(self.layers)):
-            layer_id = len(self.layers) - i - 1
-            grads = layer.backward(dout)
-            self._clip_grads(grads)
+        grads = self.weights.backward(dout)
+        self._clip_grads(grads)
 
-            (dout,) = grads[0]
-            param_grads = grads[1]
-            grads = self.optim.update(layer_id, *param_grads)
-            layer.update(*grads)
+        (dout,) = grads[0]
+        param_grads = grads[1]
+
+        grads = self.optim.update(0, *param_grads)
+        self.weights.update(*grads)
 
         return dout
 
