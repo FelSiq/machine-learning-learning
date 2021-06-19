@@ -134,8 +134,8 @@ class MultiLinear(_BaseLayer):
 
         for layer in self.layers:
             grads = layer.backward(dout)
-            d_outs.append(grads[0])
-            d_params.append(grads[1])
+            d_outs.extend(grads[0])
+            d_params.extend(grads[1])
 
         return tuple(d_outs), tuple(d_params)
 
