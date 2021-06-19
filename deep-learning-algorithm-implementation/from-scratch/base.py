@@ -25,6 +25,9 @@ class BaseModel:
     def __call__(self, X):
         return self.forward(X)
 
+    def __iter__(self):
+        return iter(self.layers)
+
     def train(self):
         self.frozen = False
         for layer in self.layers:
