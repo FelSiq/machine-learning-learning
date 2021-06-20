@@ -78,5 +78,6 @@ class CrossEntropyLoss(_BaseLoss):
 
         if self.average:
             ce_loss /= y.size
+            grads /= y.size
 
         return ce_loss, grads
