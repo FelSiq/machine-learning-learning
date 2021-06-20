@@ -4,11 +4,14 @@ import numpy as np
 
 
 class _BaseOptim:
-    def __init__(self, parameters, learning_rate: float):
+    def __init__(self, parameters, learning_rate: float, clip_grad_val: float = 1.0):
         assert float(learning_rate) > 0.0
+        assert float(clip_grad_val) > 0.0
+
         self.learning_rate = float(learning_rate)
         self.bias_correction = False
         self.register_layer(parameters)
+        self.clip_grad_val = float(clip_grad_val)
 
     def register_layer(self, params):
         self.parameters = tuple(params)
@@ -32,6 +35,12 @@ class _BaseOptim:
             unbiased.append(step / (1.0 - mom_it))
 
         return self._unpack(unbiased)
+
+    def clip_grads_val(self):
+        v = self.clip_grad_val
+
+        for param in self.parameters:
+            np.clip(param.grads, -v, v, out=param.grads)
 
 
 class SGD(_BaseOptim):
@@ -63,6 +72,7 @@ class Momentum(_BaseOptim):
         learning_rate: float,
         first_momentum: float,
         bias_correction: bool = True,
+        clip_grad_val: float = 1.0,
     ):
         assert 1.0 > float(first_momentum) > 0.0
 
@@ -71,7 +81,7 @@ class Momentum(_BaseOptim):
         self.fst_mom_mov_avg = []
         self.iterations = 0
 
-        super(Momentum, self).__init__(parameters, learning_rate)
+        super(Momentum, self).__init__(parameters, learning_rate, clip_grad_val)
 
     def register_layer(self, params):
         super(Momentum, self).register_layer(params)
@@ -141,13 +151,23 @@ class Adagrad(_BaseOptim):
     learning to stop way too soon.
     """
 
-    def __init__(self, parameters, learning_rate: float, eps: float = 1e-8):
+    def __init__(
+        self,
+        parameters,
+        learning_rate: float,
+        eps: float = 1e-8,
+        clip_grad_val: float = 1.0,
+    ):
         assert float(eps) > 0.0
 
         self.eps = float(eps)
         self.cum_sec_momentum = []
 
-        super(Adagrad, self).__init__(parameters, learning_rate)
+        super(Adagrad, self).__init__(
+            parameters=parameters,
+            learning_rate=learning_rate,
+            clip_grad_val=clip_grad_val,
+        )
 
     def register_layer(self, params):
         super(Adagrad, self).register_layer(params)
@@ -186,6 +206,7 @@ class Adadelta(_BaseOptim):
         learning_rate: float = 1.0,
         second_momentum: float = 0.9,
         eps: float = 1e-6,
+        clip_grad_val: float = 1.0,
     ):
         assert float(eps) > 0.0
         assert 1.0 > float(second_momentum) > 0.0
@@ -195,7 +216,11 @@ class Adadelta(_BaseOptim):
         self.mv_avg_second_mom_grads = []
         self.mv_avg_second_mom_params = []
 
-        super(Adadelta, self).__init__(parameters, learning_rate=learning_rate)
+        super(Adadelta, self).__init__(
+            parameters=parameters,
+            learning_rate=learning_rate,
+            clip_grad_val=clip_grad_val,
+        )
 
     def register_layer(self, params):
         super(Adadelta, self).register_layer(params)
@@ -255,13 +280,19 @@ class RMSProp(Adagrad):
         learning_rate: float,
         second_momentum: float = 0.9,
         eps: float = 1e-8,
+        clip_grad_val: float = 1.0,
     ):
         assert 1.0 > float(second_momentum) > 0.0
 
         self.second_momentum = float(second_momentum)
         self.sec_mom_mov_avg = []
 
-        super(RMSProp, self).__init__(parameters, learning_rate=learning_rate, eps=eps)
+        super(RMSProp, self).__init__(
+            parameters=parameters,
+            learning_rate=learning_rate,
+            eps=eps,
+            clip_grad_val=clip_grad_val,
+        )
 
     def register_layer(self, params):
         super(RMSProp, self).register_layer(params)
@@ -304,6 +335,7 @@ class Adam(Momentum, RMSProp):
         amsgrad: bool = False,
         eps: float = 1e-8,
         weight_decay_ignore_ndims: t.Tuple[int] = (1,),
+        clip_grad_val: float = 1.0,
     ):
         assert float(weight_decay) >= 0.0
 
@@ -319,6 +351,7 @@ class Adam(Momentum, RMSProp):
             parameters,
             learning_rate=learning_rate,
             first_momentum=first_momentum,
+            clip_grad_val=clip_grad_val,
         )
 
         RMSProp.__init__(
@@ -327,6 +360,7 @@ class Adam(Momentum, RMSProp):
             learning_rate=learning_rate,
             second_momentum=second_momentum,
             eps=eps,
+            clip_grad_val=clip_grad_val,
         )
 
     def register_layer(self, params):
@@ -391,6 +425,7 @@ class Adamax(Adam):
         first_momentum: float = 0.9,
         second_momentum: float = 0.999,
         eps: float = 1e-8,
+        clip_grad_val: float = 1.0,
     ):
         super(Adamax, self).__init__(
             parameters,
@@ -399,6 +434,7 @@ class Adamax(Adam):
             second_momentum=second_momentum,
             eps=eps,
             amsgrad=False,
+            clip_grad_val=clip_grad_val,
         )
 
     def step(self):
