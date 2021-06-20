@@ -144,8 +144,6 @@ class NesterovMomentum(Momentum):
 
         self.iterations += 1
 
-        return param_steps
-
 
 class Adagrad(_BaseOptim):
     """Adagrad: Adaptive Gradient Optimizer.
@@ -319,8 +317,6 @@ class RMSProp(Adagrad):
             cur_steps = cur_lr * param.grads
 
             param.update_and_step(cur_steps)
-
-        return param_steps
 
 
 class Adam(Momentum, RMSProp):

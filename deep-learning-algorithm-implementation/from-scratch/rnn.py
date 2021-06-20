@@ -129,25 +129,22 @@ class NLPProcessor(base.BaseModel):
     def backward(self, douts):
         # if n_dim = 3: dout_y (time, batch, dim_out)
         # if n_dim = 2: dout_y (batch, dim_out) (only the last timestep)
-
         if douts.ndim == 2:
             douts = np.expand_dims(douts, 0)
 
         batch_size = douts.shape[1]
-
         douts_y = []  # type: t.List[np.ndarray]
 
         for dout in reversed(douts):
             dout_y = self.lin_out_layer.backward(dout)
             douts_y.insert(0, dout_y)
 
-        self.lin_out_layer.clean_grad_cache()
         douts_y = np.squeeze(np.asfarray(douts_y))
-
         douts_X = self.rnn.backward(douts_y)
         # shape: (time, batch, emb_dim)
-
         self.embed_layer.backward(douts_X)
+
+        self.lin_out_layer.clean_grad_cache()
         self.embed_layer.clean_grad_cache()
 
 
@@ -201,8 +198,8 @@ def _test():
         dim_embed=16,
         dim_hidden=64,
         dim_out=1,
-        bidirectional=True,
-        num_layers=3,
+        bidirectional=False,
+        num_layers=1,
     )
 
     criterion = losses.BCELoss(with_logits=True)
@@ -230,9 +227,10 @@ def _test():
             y_logits = y_logits[-1]
             loss, loss_grad = criterion(y_batch, y_logits)
             model.backward(loss_grad)
+            total_loss_train += loss
+
             optim.clip_grads_val()
             optim.step()
-            total_loss_train += loss
 
             model.eval()
             y_logits = model(X_eval.T)

@@ -107,8 +107,14 @@ class BaseLayer(BaseComponent):
     def _pop_from_cache(self):
         return self._cache.pop()
 
-    def clean_grad_cache(self):
+    def clean_grad_cache(self, recurse: bool = True):
         self._cache.clear()
+
+        if not recurse:
+            return
+
+        for layer in self.layers:
+            layer.clean_grad_cache(recurse=recurse)
 
     @property
     def has_stored_grads(self):
