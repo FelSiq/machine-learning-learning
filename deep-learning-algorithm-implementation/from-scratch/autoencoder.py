@@ -72,9 +72,12 @@ def _test():
         for start in tqdm.auto.tqdm(np.arange(0, n, batch_size)):
             end = start + batch_size
             X_batch = X_train[start:end, :]
+
             X_preds = model(X_batch)
             loss, loss_grad = criterion(X_batch, X_preds)
             model.backward(loss_grad)
+
+            optim.clip_grads_val()
             optim.step()
 
             total_loss += loss

@@ -11,7 +11,7 @@ class _BaseOptim:
         self.learning_rate = float(learning_rate)
         self.bias_correction = False
         self.register_layer(parameters)
-        self.clip_grad_val = float(clip_grad_val)
+        self._clip_grad_val = float(clip_grad_val)
 
     def register_layer(self, params):
         self.parameters = tuple(params)
@@ -37,7 +37,7 @@ class _BaseOptim:
         return self._unpack(unbiased)
 
     def clip_grads_val(self):
-        v = self.clip_grad_val
+        v = self._clip_grad_val
 
         for param in self.parameters:
             np.clip(param.grads, -v, v, out=param.grads)

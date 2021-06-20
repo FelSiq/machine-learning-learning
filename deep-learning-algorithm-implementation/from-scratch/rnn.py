@@ -13,9 +13,10 @@ class _SequenceModel(modules.BaseModel):
 
         self.dim_in = int(self.sequence_cell.dim_in)
         self.dim_hidden = int(self.sequence_cell.dim_hidden)
-        self.uses_cell_state = isinstance(cell_model, modules.LSTMCell)
 
         self.register_layers(self.sequence_cell)
+
+        self.uses_cell_state = False
 
     def forward(self, X):
         # X.shape = (time, batch)
@@ -80,6 +81,7 @@ class GRU(_SequenceModel):
 class LSTM(_SequenceModel):
     def __init__(self, dim_in: int, dim_hidden: int):
         super(LSTM, self).__init__(modules.LSTMCell(dim_in, dim_hidden))
+        self.uses_cell_state = True
 
 
 class NLPProcessor(modules.BaseModel):
@@ -198,7 +200,7 @@ def _test():
         dim_hidden=64,
         dim_out=1,
         bidirectional=False,
-        num_layers=1,
+        num_layers=3,
     )
 
     criterion = losses.BCELoss(with_logits=True)
