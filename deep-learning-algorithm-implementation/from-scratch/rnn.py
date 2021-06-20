@@ -5,9 +5,9 @@ import modules
 import optimizers
 
 
-class _SequenceModel(modules.BaseModel):
+class _BaseSequenceModel(modules.BaseModel):
     def __init__(self, cell_model):
-        super(_SequenceModel, self).__init__()
+        super(_BaseSequenceModel, self).__init__()
 
         self.sequence_cell = cell_model
 
@@ -68,36 +68,37 @@ class _SequenceModel(modules.BaseModel):
         return douts_X
 
 
-class RNN(_SequenceModel):
+class RNN(_BaseSequenceModel):
     def __init__(self, dim_in: int, dim_hidden: int):
         super(RNN, self).__init__(modules.RNNCell(dim_in, dim_hidden))
 
 
-class GRU(_SequenceModel):
+class GRU(_BaseSequenceModel):
     def __init__(self, dim_in: int, dim_hidden: int):
         super(GRU, self).__init__(modules.GRUCell(dim_in, dim_hidden))
 
 
-class LSTM(_SequenceModel):
+class LSTM(_BaseSequenceModel):
     def __init__(self, dim_in: int, dim_hidden: int):
         super(LSTM, self).__init__(modules.LSTMCell(dim_in, dim_hidden))
         self.uses_cell_state = True
 
 
-class NLPProcessor(modules.BaseModel):
+class SequenceProcessor(modules.BaseModel):
     def __init__(
         self,
-        num_embed_tokens: int,
-        dim_embed: int,
+        dim_in: int,
         dim_hidden: int,
         dim_out: int,
         bidirectional: bool = False,
         num_layers: int = 1,
+        cell_type: _BaseSequenceModel = GRU,
     ):
-        super(NLPProcessor, self).__init__()
+        assert cell_type in {RNN, GRU, LSTM}
 
-        self.embed_layer = modules.Embedding(num_embed_tokens, dim_embed)
-        self.rnn = LSTM(dim_embed, dim_hidden)
+        super(SequenceProcessor, self).__init__()
+
+        self.rnn = cell_type(dim_in, dim_hidden)
 
         if int(num_layers) > 1:
             self.rnn = modules.DeepSequenceModel(self.rnn, num_layers)
@@ -109,16 +110,15 @@ class NLPProcessor(modules.BaseModel):
             dim_hidden * (1 + int(bool(bidirectional))), dim_out
         )
 
-        self.dim_embed = int(dim_embed)
+        self.dim_in = int(dim_in)
         self.dim_hidden = int(dim_hidden)
         self.dim_out = int(dim_out)
 
-        self.register_layers(self.embed_layer, self.rnn, self.lin_out_layer)
+        self.register_layers(self.rnn, self.lin_out_layer)
 
     def forward(self, X):
         # X.shape = (time, batch)
-        X_embedded = self.embed_layer(X)
-        outputs = self.rnn(X_embedded)
+        outputs = self.rnn(X)
 
         outputs_b = np.empty((X.shape[0], X.shape[1], self.dim_out), dtype=float)
 
@@ -143,10 +143,47 @@ class NLPProcessor(modules.BaseModel):
         douts_y = np.squeeze(np.asfarray(douts_y))
         douts_X = self.rnn.backward(douts_y)
         # shape: (time, batch, emb_dim)
-        self.embed_layer.backward(douts_X)
 
         self.lin_out_layer.clean_grad_cache()
-        self.embed_layer.clean_grad_cache()
+
+        return douts_X
+
+
+class NLPProcessor(modules.BaseModel):
+    def __init__(
+        self,
+        num_embed_tokens: int,
+        dim_embed: int,
+        dim_hidden: int,
+        dim_out: int,
+        bidirectional: bool = False,
+        num_layers: int = 1,
+        cell_type: _BaseSequenceModel = GRU,
+    ):
+        super(NLPProcessor, self).__init__()
+
+        self.embed_layer = modules.Embedding(num_embed_tokens, dim_embed)
+
+        self.sequence_processor = SequenceProcessor(
+            dim_in=dim_embed,
+            dim_hidden=dim_hidden,
+            dim_out=dim_out,
+            bidirectional=bidirectional,
+            num_layers=num_layers,
+            cell_type=cell_type,
+        )
+
+        self.register_layers(self.embed_layer, self.sequence_processor)
+
+    def forward(self, X):
+        # X.shape = (time, batch)
+        X_embedded = self.embed_layer(X)
+        out = self.sequence_processor(X_embedded)
+        return out
+
+    def backward(self, douts):
+        douts = self.sequence_processor.backward(douts)
+        self.embed_layer.backward(douts)
 
 
 def _test():
@@ -199,8 +236,8 @@ def _test():
         dim_embed=16,
         dim_hidden=64,
         dim_out=1,
-        bidirectional=False,
-        num_layers=3,
+        bidirectional=True,
+        num_layers=2,
     )
 
     criterion = losses.BCELoss(with_logits=True)
