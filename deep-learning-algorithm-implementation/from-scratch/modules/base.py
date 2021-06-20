@@ -80,7 +80,7 @@ class BaseComponent:
             layer.eval()
 
     def register_layers(self, *layers):
-        self.layers = tuple(layers)
+        self.layers = (*self.layers, *layers)
         nested_parameters = []
 
         for layer in layers:
@@ -127,7 +127,7 @@ class BaseLayer(BaseComponent):
         super(BaseLayer, self).register_layers(*layers)
 
 
-class BaseModel(modules.BaseComponent):
+class BaseModel(BaseComponent):
     pass
 
 
@@ -156,6 +156,9 @@ class Linear(BaseLayer):
             self.parameters = (self.weights,)
 
         self.activation = activation
+
+        if self.activation is not None:
+            self.register_layers(self.activation)
 
     def forward(self, X):
         out = X @ self.weights.values
@@ -210,7 +213,7 @@ class MultiLinear(BaseLayer):
         self.outer_activation = outer_activation
         self.dim_out = int(dim_out)
 
-        layers = [
+        self.linear_transf = [
             Linear(
                 dim_in,
                 dim_out,
@@ -220,14 +223,17 @@ class MultiLinear(BaseLayer):
             for i, (dim_in, activation) in enumerate(zip(dims_in, inner_activations), 1)
         ]
 
-        self.register_layers(*layers)
+        self.register_layers(*self.linear_transf)
+
+        if self.outer_activation is not None:
+            self.register_layers(self.outer_activation)
 
     def forward(self, *args):
         batch_size = args[0].shape[0]
 
         out = np.zeros((batch_size, self.dim_out), dtype=float)
 
-        for layer, X in reversed(tuple(zip(self.layers, args))):
+        for layer, X in reversed(tuple(zip(self.linear_transf, args))):
             out += layer(X)
 
         if self.outer_activation is not None:
@@ -244,9 +250,8 @@ class MultiLinear(BaseLayer):
         if self.outer_activation is not None:
             dout = self.outer_activation.backward(dout)
 
-        for layer in self.layers:
-            cur_d_outs = layer.backward(dout)
-            d_outs.append(cur_d_outs)
+        for layer in self.linear_transf:
+            d_outs.append(layer.backward(dout))
 
         return tuple(d_outs)
 
