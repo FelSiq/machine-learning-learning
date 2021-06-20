@@ -127,6 +127,10 @@ class BaseLayer(BaseComponent):
         super(BaseLayer, self).register_layers(*layers)
 
 
+class BaseModel(modules.BaseComponent):
+    pass
+
+
 class Linear(BaseLayer):
     def __init__(
         self,

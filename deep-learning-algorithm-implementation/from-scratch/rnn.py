@@ -1,12 +1,11 @@
 import numpy as np
 
-import base
 import losses
 import modules
 import optimizers
 
 
-class _SequenceModel(base.BaseModel):
+class _SequenceModel(modules.BaseModel):
     def __init__(self, cell_model):
         super(_SequenceModel, self).__init__()
 
@@ -83,7 +82,7 @@ class LSTM(_SequenceModel):
         super(LSTM, self).__init__(modules.LSTMCell(dim_in, dim_hidden))
 
 
-class NLPProcessor(base.BaseModel):
+class NLPProcessor(modules.BaseModel):
     def __init__(
         self,
         num_embed_tokens: int,

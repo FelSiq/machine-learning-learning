@@ -2,13 +2,12 @@ import typing as t
 
 import numpy as np
 
-import base
 import modules
 import optimizers
 import losses
 
 
-class Autoencoder(base.BaseModel):
+class Autoencoder(modules.BaseModel):
     def __init__(self, dims: t.Sequence[int]):
         assert len(dims) >= 3
         assert len(dims) % 2 == 1
