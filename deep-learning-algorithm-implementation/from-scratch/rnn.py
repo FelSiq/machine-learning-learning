@@ -98,11 +98,11 @@ class NLPProcessor(base.BaseModel):
         self.embed_layer = modules.Embedding(num_embed_tokens, dim_embed)
         self.rnn = LSTM(dim_embed, dim_hidden)
 
-        if bidirectional:
-            self.rnn = modules.Bidirectional(self.rnn)
-
         if int(num_layers) > 1:
             self.rnn = modules.DeepSequenceModel(self.rnn, num_layers)
+
+        if bidirectional:
+            self.rnn = modules.Bidirectional(self.rnn)
 
         self.lin_out_layer = modules.Linear(
             dim_hidden * (1 + int(bool(bidirectional))), dim_out
@@ -202,11 +202,11 @@ def _test():
         dim_hidden=64,
         dim_out=1,
         bidirectional=True,
-        num_layers=1,
+        num_layers=3,
     )
 
     criterion = losses.BCELoss(with_logits=True)
-    optim = optimizers.Nadam(model.parameters, learning_rate=2.5e-4)
+    optim = optimizers.Nadam(model.parameters, learning_rate=2.5e-3)
 
     batch_inds = np.arange(len(X_train))
 
@@ -230,6 +230,7 @@ def _test():
             y_logits = y_logits[-1]
             loss, loss_grad = criterion(y_batch, y_logits)
             model.backward(loss_grad)
+            optim.clip_grads_val()
             optim.step()
             total_loss_train += loss
 

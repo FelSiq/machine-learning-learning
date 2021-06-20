@@ -2,6 +2,7 @@ import numpy as np
 
 from . import base
 from . import activation
+from . import compose
 
 
 class _BaseSequenceCell(base.BaseLayer):
@@ -223,8 +224,6 @@ class DeepSequenceModel(base.BaseLayer):
 
         super(DeepSequenceModel, self).__init__(trainable=True)
 
-        assert False
-
         self.dim_in = model.dim_in
         self.dim_hidden = model.dim_hidden
 
@@ -234,8 +233,8 @@ class DeepSequenceModel(base.BaseLayer):
         layers.extend(
             [
                 algorithm(
-                    dim_in=dim_hidden,
-                    dim_hidden=dim_hidden,
+                    dim_in=self.dim_hidden,
+                    dim_hidden=self.dim_hidden,
                 )
                 for _ in range(num_layers - 1)
             ]
