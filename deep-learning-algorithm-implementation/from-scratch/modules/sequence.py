@@ -25,39 +25,30 @@ class _BaseSequenceCell(base.BaseLayer):
             batch_size = X.shape[0]
             self.hidden_state = np.zeros((batch_size, self.dim_hidden), dtype=float)
 
+    def _prepare_cell_state(self, X):
+        if self.cell_state.size == 0:
+            batch_size = X.shape[0]
+            self.cell_state = np.zeros((batch_size, self.dim_hidden), dtype=float)
+
 
 class RNNCell(_BaseSequenceCell):
     def __init__(self, dim_in: int, dim_hidden: int):
         super(RNNCell, self).__init__(dim_in, dim_hidden)
 
-        self.lin_hidden = base.Linear(dim_hidden, dim_hidden, include_bias=False)
-        self.lin_input = base.Linear(dim_in, dim_hidden, include_bias=True)
-        self.tanh_layer = activation.Tanh()
+        self.linear = base.MultiLinear(
+            [dim_hidden, dim_in], dim_hidden, outer_activation=activation.Tanh()
+        )
 
-        self.register_layers(self.lin_hidden, self.lin_input, self.tanh_layer)
+        self.register_layers(self.linear)
 
     def forward(self, X):
         self._prepare_hidden_state(X)
-        aux_hidden_state = self.lin_hidden(self.hidden_state) + self.lin_input(X)
-        self.hidden_state = self.tanh_layer(aux_hidden_state)
+        self.hidden_state = self.linear(self.hidden_state, X)
         return self.hidden_state
 
     def backward(self, dout):
-        dout = self.tanh_layer.backward(dout)
-
-        ((dh,), (dWh,)) = self.lin_hidden.backward(dout)
-        ((dX,), (dWX, dbX)) = self.lin_input.backward(dout)
-
-        return (dh, dX), (dWh, dWX, dbX)
-
-    def update(self, *args):
-        if self.frozen:
-            return
-
-        (dWh, dWX, dbX) = args
-
-        self.lin_hidden.update(dWh)
-        self.lin_input.update(dWX, dbX)
+        dh, dX = self.linear.backward(dout)
+        return dh, dX
 
 
 class GRUCell(_BaseSequenceCell):
@@ -96,29 +87,19 @@ class GRUCell(_BaseSequenceCell):
         return self.hidden_state
 
     def backward(self, dout):
-        (d_hidden_state, dh, dz) = self.weighted_avg.backward(dout)
+        d_hidden_state, dh, dz = self.weighted_avg.backward(dout)
 
-        ((dr_cs, dXh), lin_h_params) = self.lin_h.backward(dh)
+        dr_cs, dXh = self.lin_h.backward(dh)
 
         dr, dhh = self.multiply.backward(dr_cs)
 
-        ((dhr, dXr), lin_r_params) = self.lin_r.backward(dr)
-        ((dhz, dXz), lin_z_params) = self.lin_z.backward(dz)
+        dhr, dXr = self.lin_r.backward(dr)
+        dhz, dXz = self.lin_z.backward(dz)
 
         dh = dhz + dhr + dhh
         dX = dXz + dXr + dXh
 
-        return ((dh, dX), (*lin_z_params, *lin_r_params, *lin_h_params))
-
-    def update(self, *args):
-        if self.frozen:
-            return
-
-        (dWhz, dWiz, dbiz, dWhr, dWir, dbir, dWhh, dWih, dbih) = args
-
-        self.lin_z.update(dWhz, dWiz, dbiz)
-        self.lin_r.update(dWhr, dWir, dbir)
-        self.lin_h.update(dWhh, dWih, dbih)
+        return dh, dX
 
 
 class LSTMCell(_BaseSequenceCell):
@@ -150,11 +131,6 @@ class LSTMCell(_BaseSequenceCell):
             self.tanh,
         )
 
-    def _prepare_cell_state(self, X):
-        if self.cell_state.size == 0:
-            batch_size = X.shape[0]
-            self.cell_state = np.zeros((batch_size, self.dim_hidden), dtype=float)
-
     def forward(self, X):
         self._prepare_hidden_state(X)
         self._prepare_cell_state(X)
@@ -173,44 +149,15 @@ class LSTMCell(_BaseSequenceCell):
         di, dc = self.multiply.backward(dcs)
         df, dcs = self.multiply.backward(dcs)
 
-        ((dhc, dXc), lin_c_params) = self.lin_c.backward(dc)
-        ((dho, dXo), lin_o_params) = self.lin_o.backward(do)
-        ((dhf, dXf), lin_f_params) = self.lin_f.backward(df)
-        ((dhi, dXi), lin_i_params) = self.lin_i.backward(di)
+        dhc, dXc = self.lin_c.backward(dc)
+        dho, dXo = self.lin_o.backward(do)
+        dhf, dXf = self.lin_f.backward(df)
+        dhi, dXi = self.lin_i.backward(di)
 
         dX = dXi + dXf + dXo + dXc
         dh = dhi + dhf + dho + dhc
 
-        return (dh, dcs, dX), (
-            *lin_i_params,
-            *lin_f_params,
-            *lin_o_params,
-            *lin_c_params,
-        )
-
-    def update(self, *args):
-        if self.frozen:
-            return
-
-        (
-            dWhi,
-            dWii,
-            dbii,
-            dWhf,
-            dWif,
-            dbif,
-            dWho,
-            dWio,
-            dbio,
-            dWhc,
-            dWic,
-            dbic,
-        ) = args
-
-        self.lin_i.update(dWhi, dWii, dbii)
-        self.lin_f.update(dWhf, dWif, dbif)
-        self.lin_o.update(dWho, dWio, dbio)
-        self.lin_c.update(dWhc, dWic, dbic)
+        return dh, dcs, dX
 
 
 class Embedding(base.BaseLayer):
@@ -220,27 +167,20 @@ class Embedding(base.BaseLayer):
 
         super(Embedding, self).__init__(trainable=True)
 
-        self.embedding = np.random.random((num_tokens, dim_embedding))
+        self.embedding = base.Tensor(np.random.random((num_tokens, dim_embedding)))
         self.parameters = (self.embedding,)
 
     def forward(self, X):
-        embedded_tokens = self.embedding[X, :]
+        embedded_tokens = self.embedding.values[X, :]
         self._store_in_cache(X)
         return embedded_tokens
 
     def backward(self, dout):
         (orig_inds,) = self._pop_from_cache()
-        dout = self.embedding[orig_inds, :] * dout
-        dout_b = np.zeros_like(self.embedding)
-        np.add.at(dout_b, orig_inds, dout)
-        return tuple(), (dout_b,)
-
-    def update(self, *args):
-        if self.frozen:
-            return
-
-        (demb,) = args
-        self.embedding -= demb
+        dout = self.embedding.values[orig_inds, :] * dout
+        d_emb = np.zeros_like(self.embedding.values)
+        np.add.at(d_emb, orig_inds, dout)
+        self.embedding.grads = d_emb
 
 
 class Bidirectional(base.BaseLayer):
@@ -250,7 +190,8 @@ class Bidirectional(base.BaseLayer):
         self.rnn_l_to_r = model
         self.rnn_r_to_l = model.copy()
 
-        self.dim_hidden = int(self.rnn_l_to_r.dim_hidden)
+        self.dim_in = self.rnn_l_to_r.dim_in
+        self.dim_hidden = self.rnn_l_to_r.dim_hidden
 
         self.register_layers(self.rnn_l_to_r, self.rnn_r_to_l)
 
@@ -282,12 +223,25 @@ class DeepSequenceModel(base.BaseLayer):
 
         super(DeepSequenceModel, self).__init__(trainable=True)
 
-        self.weights = compose.Sequential([model.copy() for _ in range(num_layers)])
+        assert False
 
-        for model in self.weights[1:]:
-            # TODO: change input dim of middle dimensions here
-            pass
+        self.dim_in = model.dim_in
+        self.dim_hidden = model.dim_hidden
 
+        algorithm = type(model)
+
+        layers = [model]
+        layers.extend(
+            [
+                algorithm(
+                    dim_in=dim_hidden,
+                    dim_hidden=dim_hidden,
+                )
+                for _ in range(num_layers - 1)
+            ]
+        )
+
+        self.weights = compose.Sequential(layers)
         self.register_layers(self.weights)
 
     def forward(self, X):

@@ -3,31 +3,20 @@ import numpy as np
 import base
 import losses
 import modules
-import optim
+import optimizers
 
 
 class _SequenceModel(base.BaseModel):
-    def __init__(
-        self,
-        cell_model,
-        learning_rate: float,
-        clip_grad_norm: float = 1.0,
-    ):
-        assert float(clip_grad_norm) > 0.0
-
+    def __init__(self, cell_model):
         super(_SequenceModel, self).__init__()
 
         self.sequence_cell = cell_model
-
-        self.optim = optim.Nadam(learning_rate)
-        self.clip_grad_norm = float(clip_grad_norm)
 
         self.dim_in = int(self.sequence_cell.dim_in)
         self.dim_hidden = int(self.sequence_cell.dim_hidden)
         self.uses_cell_state = isinstance(cell_model, modules.LSTMCell)
 
         self.register_layers(self.sequence_cell)
-        self.optim.register_layer(0, *self.sequence_cell.parameters)
 
     def forward(self, X):
         # X.shape = (time, batch)
@@ -44,8 +33,6 @@ class _SequenceModel(base.BaseModel):
         if douts.ndim == 2:
             douts = np.expand_dims(douts, 0)
 
-        # TODO: fix this method for LSTMs (which return both cell state and hidden state)
-
         batch_size = douts.shape[1]
 
         douts_X = []  # type: t.List[np.ndarray]
@@ -57,34 +44,22 @@ class _SequenceModel(base.BaseModel):
         if self.uses_cell_state:
             dout_cs = np.zeros((batch_size, self.dim_hidden), dtype=float)
 
-        dout_h = np.zeros((batch_size, self.dim_hidden), dtype=float)
         dout = douts[-1] if douts.ndim == 3 else douts
         i = 1
 
         while self.sequence_cell.has_stored_grads:
             if self.uses_cell_state:
-                grads = self.sequence_cell.backward(dout_h + dout, dout_cs)
-                self._clip_grads(grads)
-                (dout_h, dout_cs, dout_X) = grads[0]
+                (dout_h, dout_cs, dout_X) = self.sequence_cell.backward(dout, dout_cs)
 
             else:
-                grads = self.sequence_cell.backward(dout_h + dout)
-                self._clip_grads(grads)
-                (dout_h, dout_X) = grads[0]
-
-            param_grads = grads[1]
+                (dout_h, dout_X) = self.sequence_cell.backward(dout)
 
             douts_X.insert(0, dout_X)
+            dout = dout_h
 
             if dout.ndim == 3:
-                dout = douts[-i - 1]
-
-            elif i == 1:
-                dout = np.zeros_like(dout)
-
-            grads = self.optim.update(0, *param_grads)
-            self.sequence_cell.update(*grads)
-            i += 1
+                dout += douts[-i - 1]
+                i += 1
 
         self.sequence_cell.clean_grad_cache()
         douts_X = np.asfarray(douts_X)
@@ -94,39 +69,18 @@ class _SequenceModel(base.BaseModel):
 
 
 class RNN(_SequenceModel):
-    def __init__(
-        self,
-        dim_in: int,
-        dim_hidden: int,
-        learning_rate: float,
-        clip_grad_norm: float = 1.0,
-    ):
-        rnn_cell = modules.RNNCell(dim_in, dim_hidden)
-        super(RNN, self).__init__(rnn_cell, learning_rate, clip_grad_norm)
+    def __init__(self, dim_in: int, dim_hidden: int):
+        super(RNN, self).__init__(modules.RNNCell(dim_in, dim_hidden))
 
 
 class GRU(_SequenceModel):
-    def __init__(
-        self,
-        dim_in: int,
-        dim_hidden: int,
-        learning_rate: float,
-        clip_grad_norm: float = 1.0,
-    ):
-        gru_cell = modules.GRUCell(dim_in, dim_hidden)
-        super(GRU, self).__init__(gru_cell, learning_rate, clip_grad_norm)
+    def __init__(self, dim_in: int, dim_hidden: int):
+        super(GRU, self).__init__(modules.GRUCell(dim_in, dim_hidden))
 
 
 class LSTM(_SequenceModel):
-    def __init__(
-        self,
-        dim_in: int,
-        dim_hidden: int,
-        learning_rate: float,
-        clip_grad_norm: float = 1.0,
-    ):
-        lstm_cell = modules.LSTMCell(dim_in, dim_hidden)
-        super(LSTM, self).__init__(lstm_cell, learning_rate, clip_grad_norm)
+    def __init__(self, dim_in: int, dim_hidden: int):
+        super(LSTM, self).__init__(modules.LSTMCell(dim_in, dim_hidden))
 
 
 class NLPProcessor(base.BaseModel):
@@ -136,19 +90,13 @@ class NLPProcessor(base.BaseModel):
         dim_embed: int,
         dim_hidden: int,
         dim_out: int,
-        learning_rate: float,
-        clip_grad_norm: float = 1.0,
         bidirectional: bool = False,
         num_layers: int = 1,
     ):
-        assert float(clip_grad_norm) > 0.0
-
         super(NLPProcessor, self).__init__()
 
         self.embed_layer = modules.Embedding(num_embed_tokens, dim_embed)
-        self.rnn = LSTM(
-            dim_embed, dim_hidden, learning_rate, clip_grad_norm=clip_grad_norm
-        )
+        self.rnn = LSTM(dim_embed, dim_hidden)
 
         if bidirectional:
             self.rnn = modules.Bidirectional(self.rnn)
@@ -160,16 +108,11 @@ class NLPProcessor(base.BaseModel):
             dim_hidden * (1 + int(bool(bidirectional))), dim_out
         )
 
-        self.optim = optim.Nadam(learning_rate)
-        self.clip_grad_norm = float(clip_grad_norm)
-
         self.dim_embed = int(dim_embed)
         self.dim_hidden = int(dim_hidden)
         self.dim_out = int(dim_out)
 
         self.register_layers(self.embed_layer, self.rnn, self.lin_out_layer)
-        self.optim.register_layer(0, *self.embed_layer.parameters)
-        self.optim.register_layer(1, *self.lin_out_layer.parameters)
 
     def forward(self, X):
         # X.shape = (time, batch)
@@ -195,15 +138,8 @@ class NLPProcessor(base.BaseModel):
         douts_y = []  # type: t.List[np.ndarray]
 
         for dout in reversed(douts):
-            grads = self.lin_out_layer.backward(dout)
-            self._clip_grads(grads)
-
-            (dout_y,) = grads[0]
-            param_grads = grads[1]
+            dout_y = self.lin_out_layer.backward(dout)
             douts_y.insert(0, dout_y)
-
-            grads = self.optim.update(1, *param_grads)
-            self.lin_out_layer.update(*grads)
 
         self.lin_out_layer.clean_grad_cache()
         douts_y = np.squeeze(np.asfarray(douts_y))
@@ -211,14 +147,7 @@ class NLPProcessor(base.BaseModel):
         douts_X = self.rnn.backward(douts_y)
         # shape: (time, batch, emb_dim)
 
-        grads = self.embed_layer.backward(douts_X)
-        self._clip_grads(grads)
-
-        param_grads = grads[1]
-
-        grads = self.optim.update(0, *param_grads)
-        self.embed_layer.update(*grads)
-
+        self.embed_layer.backward(douts_X)
         self.embed_layer.clean_grad_cache()
 
 
@@ -272,12 +201,12 @@ def _test():
         dim_embed=16,
         dim_hidden=64,
         dim_out=1,
-        learning_rate=2.5e-4,
         bidirectional=True,
         num_layers=1,
     )
 
     criterion = losses.BCELoss(with_logits=True)
+    optim = optimizers.Nadam(model.parameters, learning_rate=2.5e-4)
 
     batch_inds = np.arange(len(X_train))
 
@@ -301,6 +230,7 @@ def _test():
             y_logits = y_logits[-1]
             loss, loss_grad = criterion(y_batch, y_logits)
             model.backward(loss_grad)
+            optim.step()
             total_loss_train += loss
 
             model.eval()

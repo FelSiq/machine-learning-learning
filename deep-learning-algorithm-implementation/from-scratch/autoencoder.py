@@ -4,32 +4,17 @@ import numpy as np
 
 import base
 import modules
-import optim
+import optimizers
 import losses
 
 
 class Autoencoder(base.BaseModel):
-    def __init__(
-        self,
-        dims: t.Sequence[int],
-        learning_rate: float,
-        first_momentum: float = 0.9,
-        second_momentum: float = 0.999,
-        clip_grad_norm: float = 1.0,
-    ):
+    def __init__(self, dims: t.Sequence[int]):
         assert len(dims) >= 3
         assert len(dims) % 2 == 1
         assert dims[0] == dims[-1]
-        assert float(clip_grad_norm) > 0.0
 
         super(Autoencoder, self).__init__()
-
-        self.optim = optim.Nadam(
-            learning_rate=learning_rate,
-            first_momentum=first_momentum,
-            second_momentum=second_momentum,
-        )
-        self.clip_grad_norm = float(clip_grad_norm)
 
         self.weights = modules.Sequential(
             [
@@ -39,22 +24,12 @@ class Autoencoder(base.BaseModel):
         )
 
         self.register_layers(self.weights)
-        self.optim.register_layer(0, *self.weights.parameters)
 
     def forward(self, X):
         return self.weights(X)
 
     def backward(self, dout):
-        grads = self.weights.backward(dout)
-        self._clip_grads(grads)
-
-        (dout,) = grads[0]
-        param_grads = grads[1]
-
-        grads = self.optim.update(0, *param_grads)
-        self.weights.update(*grads)
-
-        return dout
+        return self.weights.backward(dout)
 
 
 def _test():
@@ -70,18 +45,10 @@ def _test():
     train_epochs = 60
     learning_rate = 1e-3
 
-    """
-    X, _ = sklearn.datasets.fetch_openml(
-        "mnist_784", version=1, return_X_y=True, as_frame=False
-    )
-    """
     X, _ = sklearn.datasets.load_digits(return_X_y=True)
     out_shape = (8, 8)
     np.random.shuffle(X)
 
-    layer_dims = [
-        int(ratio * X.shape[1]) for ratio in (1.0, 0.7, 0.2, 0.1, 0.2, 0.7, 1.0)
-    ]
     layer_dims = [int(ratio * X.shape[1]) for ratio in (1.0, 0.75, 0.5, 0.75, 1.0)]
 
     X_eval, X_train = X[:eval_size, :], X[eval_size : train_size + eval_size, :]
@@ -94,8 +61,9 @@ def _test():
     print("Eval shape  :", X_eval.shape)
 
     n = X_train.shape[0]
-    model = Autoencoder(layer_dims, learning_rate)
+    model = Autoencoder(layer_dims)
     criterion = losses.MSELoss()
+    optim = optimizers.Nadam(model.parameters, learning_rate=learning_rate)
 
     for epoch in np.arange(1, 1 + train_epochs):
         total_loss = 0.0
@@ -108,6 +76,7 @@ def _test():
             X_preds = model(X_batch)
             loss, loss_grad = criterion(X_batch, X_preds)
             model.backward(loss_grad)
+            optim.step()
 
             total_loss += loss
             it += 1

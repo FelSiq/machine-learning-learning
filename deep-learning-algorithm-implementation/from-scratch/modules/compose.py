@@ -27,37 +27,7 @@ class Sequential(base.BaseLayer):
         return out
 
     def backward(self, dout):
-        param_grads = []  # type: t.List[np.ndarray]
-
         for layer in reversed(self.layers):
-            grads = layer.backward(dout)
+            dout = layer.backward(dout)
 
-            if not layer.trainable:
-                dout = grads
-                continue
-
-            (dout,) = grads[0]
-            cur_param_grads = grads[1]
-
-            param_grads.extend(reversed(cur_param_grads))
-
-        return (dout,), tuple(reversed(param_grads))
-
-    def update(self, *args):
-        if self.frozen:
-            return
-
-        start = 0
-
-        for i, layer in enumerate(self.layers):
-            if not layer.trainable:
-                continue
-
-            end = start + self.param_nums[i]
-            cur_params = args[start:end]
-
-            if len(cur_params) == 1:
-                cur_params = (cur_params,)
-
-            layer.update(*cur_params)
-            start += self.param_nums[i]
+        return dout

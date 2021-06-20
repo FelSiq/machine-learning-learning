@@ -5,6 +5,30 @@ import typing as t
 import numpy as np
 
 
+class Tensor:
+    def __init__(self, values: t.Optional[np.ndarray] = None):
+        if values is None:
+            values = np.empty(0, dtype=float)
+
+        self.values = np.asfarray(values)
+        self.grads = np.empty(0, dtype=float)
+        self.frozen = False
+
+    def step(self):
+        if self.frozen:
+            return
+
+        self.values -= self.grads
+
+    def update_and_step(self, grads):
+        self.grads = grads
+        self.step()
+
+    @property
+    def size(self):
+        return self.values.size
+
+
 class BaseComponent:
     def __init__(self):
         self.frozen = False
@@ -50,7 +74,7 @@ class BaseLayer(BaseComponent):
     def __init__(self, trainable: bool = False):
         super(BaseLayer, self).__init__()
         self._cache = []
-        self.trainable = trainable
+        self.trainable = bool(trainable)
 
     def _store_in_cache(self, *args):
         if self.frozen:
@@ -60,9 +84,6 @@ class BaseLayer(BaseComponent):
 
     def _pop_from_cache(self):
         return self._cache.pop()
-
-    def update(self, *args):
-        raise NotImplementedError
 
     def clean_grad_cache(self):
         self._cache.clear()
@@ -92,11 +113,11 @@ class Linear(BaseLayer):
         super(Linear, self).__init__(trainable=True)
 
         he_init_coef = np.sqrt(2.0 / dim_in)
-        self.weights = he_init_coef * np.random.randn(dim_in, dim_out)
-        self.bias = np.empty(0, dtype=float)
+        self.weights = Tensor(he_init_coef * np.random.randn(dim_in, dim_out))
+        self.bias = Tensor()
 
         if include_bias:
-            self.bias = np.zeros(dim_out, dtype=float)
+            self.bias = Tensor(np.zeros(dim_out, dtype=float))
             self.parameters = (self.weights, self.bias)
 
         else:
@@ -105,10 +126,10 @@ class Linear(BaseLayer):
         self.activation = activation
 
     def forward(self, X):
-        out = X @ self.weights
+        out = X @ self.weights.values
 
         if self.bias.size:
-            out += self.bias
+            out += self.bias.values
 
         if self.activation is not None:
             out = self.activation(out)
@@ -124,25 +145,15 @@ class Linear(BaseLayer):
             dout = self.activation.backward(dout)
 
         dW = X.T @ dout
-        dX = dout @ self.weights.T
+        dX = dout @ self.weights.values.T
+
+        self.weights.grads = dW
 
         if self.bias.size:
             db = np.sum(dout, axis=0)
-            return (dX,), (dW, db)
+            self.bias.grads = db
 
-        return (dX,), (dW,)
-
-    def update(self, *args):
-        if self.frozen:
-            return
-
-        if self.bias.size:
-            (dW, db) = args
-            self.bias -= db
-            return
-
-        (dW,) = args
-        self.weights -= dW
+        return dX
 
 
 class MultiLinear(BaseLayer):
@@ -197,29 +208,15 @@ class MultiLinear(BaseLayer):
 
     def backward(self, dout):
         d_outs = []  # type: t.List[np.ndarray]
-        d_params = []  # type: t.List[np.ndarray]
 
         if self.outer_activation is not None:
             dout = self.outer_activation.backward(dout)
 
         for layer in self.layers:
-            cur_d_outs, cur_d_params = layer.backward(dout)
-            d_outs.extend(cur_d_outs)
-            d_params.extend(cur_d_params)
+            cur_d_outs = layer.backward(dout)
+            d_outs.append(cur_d_outs)
 
-        return tuple(d_outs), tuple(d_params)
-
-    def update(self, *args):
-        if self.frozen:
-            return
-
-        nl = len(self.layers)
-
-        for layer, d_params in zip(self.layers[:-1], args[: nl - 1]):
-            layer.update(d_params)
-
-        last_layer_args = args[nl - 1 :] if len(args) > nl else (args[-1],)
-        self.layers[-1].update(*last_layer_args)
+        return tuple(d_outs)
 
 
 class Reshape(BaseLayer):
