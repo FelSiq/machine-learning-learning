@@ -30,21 +30,14 @@ class _BaseSequenceModel(modules.BaseModel):
         return outputs
 
     def backward(self, douts):
-        if douts.ndim == 2:
-            douts = np.expand_dims(douts, 0)
-
-        batch_size = douts.shape[1]
+        dim_time, dim_batch, dim_hidden = douts.shape
 
         douts_X = []  # type: t.List[np.ndarray]
-        douts = np.squeeze(douts)
-
-        # if n_dim = 3: douts (time, batch, dim_hidden)
-        # if n_dim = 2: douts (batch, dim_hidden) (only the last timestep)
 
         if self.uses_cell_state:
-            dout_cs = np.zeros((batch_size, self.dim_hidden), dtype=float)
+            dout_cs = np.zeros((dim_batch, self.dim_hidden), dtype=float)
 
-        dout = douts[-1] if douts.ndim == 3 else douts
+        dout = douts[-1]
         i = 1
 
         while self.sequence_cell.has_stored_grads:
@@ -57,7 +50,7 @@ class _BaseSequenceModel(modules.BaseModel):
             douts_X.insert(0, dout_X)
             dout = dout_h
 
-            if dout.ndim == 3:
+            if i < dim_time:
                 dout += douts[-i - 1]
                 i += 1
 
@@ -117,10 +110,12 @@ class SequenceProcessor(modules.BaseModel):
         self.register_layers(self.rnn, self.lin_out_layer)
 
     def forward(self, X):
-        # X.shape = (time, batch)
-        outputs = self.rnn(X)
+        if X.ndim != 3:
+            X = np.expand_dims(X, -1)
 
-        outputs_b = np.empty((X.shape[0], X.shape[1], self.dim_out), dtype=float)
+        dim_time, dim_batch, _ = X.shape
+        outputs = self.rnn(X)
+        outputs_b = np.empty((dim_time, dim_batch, self.dim_out), dtype=float)
 
         for t, out_t in enumerate(outputs):
             outputs_b[t, ...] = self.lin_out_layer(out_t)
@@ -128,19 +123,15 @@ class SequenceProcessor(modules.BaseModel):
         return outputs_b
 
     def backward(self, douts):
-        # if n_dim = 3: dout_y (time, batch, dim_out)
-        # if n_dim = 2: dout_y (batch, dim_out) (only the last timestep)
-        if douts.ndim == 2:
-            douts = np.expand_dims(douts, 0)
+        dim_time, dim_batch, dim_out = douts.shape
 
-        batch_size = douts.shape[1]
         douts_y = []  # type: t.List[np.ndarray]
 
         for dout in reversed(douts):
             dout_y = self.lin_out_layer.backward(dout)
             douts_y.insert(0, dout_y)
 
-        douts_y = np.squeeze(np.asfarray(douts_y))
+        douts_y = np.asfarray(douts_y)
         douts_X = self.rnn.backward(douts_y)
         # shape: (time, batch, emb_dim)
 
@@ -186,10 +177,9 @@ class NLPProcessor(modules.BaseModel):
         self.embed_layer.backward(douts)
 
 
-def _test():
-    import pandas as pd
+def _test_nlp():
     import tqdm.auto
-    import tweets_utils
+    from test import tweets_utils
 
     def pad_batch(X):
         lens = np.fromiter(map(len, X), count=len(X), dtype=int)
@@ -264,6 +254,7 @@ def _test():
             y_logits = model(X_batch.T)
             y_logits = y_logits[-1]
             loss, loss_grad = criterion(y_batch, y_logits)
+            loss_grad = np.expand_dims(loss_grad, 0)
             model.backward(loss_grad)
             total_loss_train += loss
 
@@ -273,7 +264,7 @@ def _test():
             model.eval()
             y_logits = model(X_eval.T)
             y_logits = y_logits[-1]
-            loss, loss_grad = criterion(y_eval, y_logits)
+            loss, _ = criterion(y_eval, y_logits)
             total_loss_eval += loss
 
             it += 1
@@ -299,5 +290,77 @@ def _test():
     print(f"Test acc: {test_acc:.3f}")
 
 
+def _test_forecasting():
+    import tqdm.auto
+    from test import time_series_utils
+
+    np.random.seed(32)
+
+    batch_size = 64
+    train_epochs = 10
+
+    X_train, X_test = time_series_utils.get_data(nrows=5000)
+    X_eval, X_test = X_test[:50], X_test[50:]
+
+    y_test = X_test[:, 1:].T
+    y_eval = X_eval[:, 1:].T
+
+    X_test = X_test[:, :-1].T
+    X_eval = X_eval[:, :-1].T
+
+    model = SequenceProcessor(
+        dim_in=1,
+        dim_hidden=64,
+        dim_out=1,
+        num_layers=1,
+    )
+
+    criterion = losses.MSELoss()
+    optim = optimizers.Nadam(model.parameters, learning_rate=1e-1)
+
+    batch_inds = np.arange(len(X_train))
+
+    for epoch in np.arange(1, 1 + train_epochs):
+        total_loss_train = total_loss_eval = 0.0
+        it = 0
+
+        np.random.shuffle(batch_inds)
+        X_train = X_train[batch_inds, :]
+
+        for start in tqdm.auto.tqdm(np.arange(0, len(X_train), batch_size)):
+            end = start + batch_size
+
+            y_batch = X_train[start:end, 1:].T
+            X_batch = X_train[start:end, :-1].T
+
+            model.train()
+            y_preds = model(X_batch)
+            loss, loss_grad = criterion(y_batch, y_preds)
+            model.backward(loss_grad)
+            total_loss_train += loss
+
+            optim.clip_grads_val()
+            optim.step()
+
+            model.eval()
+            y_preds = model(X_eval)
+            loss, _ = criterion(y_eval, y_preds)
+            total_loss_eval += loss
+
+            it += 1
+
+        total_loss_train /= it
+        total_loss_eval /= it
+
+        print(f"Total loss (train) : {total_loss_train:.3f}")
+        print(f"Total loss (eval)  : {total_loss_eval:.3f}")
+
+    model.eval()
+    y_preds = np.squeeze(model(X_test))
+    test_rmse = float(np.sqrt(np.mean(np.square(y_preds - y_test))))
+    print(f"Test RMSE: {test_rmse:.3f}")
+
+
 if __name__ == "__main__":
-    _test()
+    _test_nlp()
+    # _test_forecasting()
