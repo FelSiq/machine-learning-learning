@@ -15,7 +15,7 @@ class Tensor:
         self.frozen = False
 
     def step(self):
-        if self.frozen:
+        if self.frozen or self.grads.size == 0:
             return
 
         self.values -= self.grads
@@ -27,6 +27,20 @@ class Tensor:
     @property
     def size(self):
         return self.values.size
+
+    @property
+    def shape(self):
+        return self.values.shape
+
+    def __repr__(self):
+        tokens = []  # type: t.List[str]
+
+        tokens.append(f"Tensor of shape {self.values.shape}")
+
+        if self.frozen:
+            tokens.append(" (frozen)")
+
+        return "".join(tokens)
 
 
 class BaseComponent:
@@ -49,11 +63,19 @@ class BaseComponent:
 
     def train(self):
         self.frozen = False
+
+        for param in self.parameters:
+            param.frozen = False
+
         for layer in self.layers:
             layer.train()
 
     def eval(self):
         self.frozen = True
+
+        for param in self.parameters:
+            param.frozen = True
+
         for layer in self.layers:
             layer.eval()
 
