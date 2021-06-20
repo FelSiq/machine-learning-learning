@@ -81,7 +81,11 @@ class Momentum(_BaseOptim):
         self.fst_mom_mov_avg = []
         self.iterations = 0
 
-        super(Momentum, self).__init__(parameters, learning_rate, clip_grad_val)
+        super(Momentum, self).__init__(
+            parameters=parameters,
+            learning_rate=learning_rate,
+            clip_grad_val=clip_grad_val,
+        )
 
     def register_layer(self, params):
         super(Momentum, self).register_layer(params)
