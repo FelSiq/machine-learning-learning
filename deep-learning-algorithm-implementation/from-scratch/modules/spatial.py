@@ -22,6 +22,29 @@ class _BaseFilter(base.BaseLayer):
 
         assert len(self.kernel_size) == num_spatial_dims
 
+    @staticmethod
+    def crop_center(X, out_shape, discard_left_if_truncate: bool = False):
+        out = X
+        dyn_ignored_axes = [slice(None)] * len(out_shape)
+
+        for i, s_out in enumerate(out_shape):
+            s_in = X.shape[i]
+            diff = s_in - s_out
+
+            assert diff >= 0
+
+            l_excess = diff // 2
+            r_excess = (diff + 1) // 2
+
+            if discard_left_if_truncate:
+                l_excess, r_excess = r_excess, l_excess
+
+            dyn_ignored_axes[i] = slice(l_excess, s_in - r_excess)
+            out = out[tuple(dyn_ignored_axes)]
+            dyn_ignored_axes[i] = slice(None)
+
+        return out
+
 
 class _BaseMovingFilter(_BaseFilter):
     def __init__(
@@ -54,13 +77,12 @@ class _BaseConv(_BaseMovingFilter):
         kernel_size: t.Union[int, t.Tuple[int, ...]],
         stride: t.Union[int, t.Tuple[int, ...]] = 1,
         padding_type: str = "valid",
-        padding_mode: str = "zeros",
+        padding_mode: str = "constant",
         activation: t.Optional[t.Callable[[np.ndarray], np.ndarray]] = None,
     ):
         assert int(channels_in) > 0
         assert int(channels_out) > 0
         assert str(padding_type) in {"valid", "same"}
-        assert str(padding_mode) in {"zeros", "reflect", "replicate", "circular"}
 
         super(_BaseConv, self).__init__(
             num_spatial_dims=num_spatial_dims,
@@ -87,13 +109,13 @@ class _BaseConv(_BaseMovingFilter):
         stride = self.stride[dim]
         kernel_size = self.kernel_size[dim]
         input_dim = X.shape[dim + 1]
-        padding = self.pad_widths[dim][0] if self.use_padding else 0
+        padding = self.pad_widths[dim + 1][0] if self.use_padding else 0
         return 1 + (input_dim + 2 * padding - kernel_size) // stride
 
 
 class _BaseDropout(base.BaseLayer):
     def __init__(self, prob: float):
-        assert 1.0 >= float(prob) >= 0.0
+        assert 1.0 > float(prob) >= 0.0
         super(_BaseDropout, self).__init__()
         self.prob = float(prob)
 
@@ -136,8 +158,8 @@ class LearnableFilter2d(_BaseFilter):
 
         dout = np.expand_dims(dout, self._sum_axes)
 
-        dX = np.sum(self.weights.values * dout, axis=0)
-        dW = np.sum(X * dout, axis=0)
+        dX = self.weights.values * dout
+        dW = np.sum(X * dout, axis=0, keepdims=True)
 
         self.weights.grads = dW
 
@@ -156,7 +178,7 @@ class Conv2d(_BaseConv):
         kernel_size: t.Union[int, t.Tuple[int, ...]],
         stride: t.Union[int, t.Tuple[int, ...]] = 1,
         padding_type: str = "valid",
-        padding_mode: str = "zeros",
+        padding_mode: str = "constant",
         include_bias: bool = True,
         activation: t.Optional[t.Callable[[np.ndarray], np.ndarray]] = None,
     ):
@@ -185,15 +207,17 @@ class Conv2d(_BaseConv):
     def forward(self, X):
         input_shape = X.shape
 
+        h_out_dim = self.calc_out_spatial_dim(X, 0)
+        w_out_dim = self.calc_out_spatial_dim(X, 1)
+
         if self.use_padding:
             X = np.pad(X, pad_width=self.pad_widths, mode=self.padding_mode)
+
+        input_shape_padded = X.shape
 
         h_stride, w_stride = self.stride
         h_kernel, w_kernel = self.kernel_size
         batch_size, h_dim, w_dim, d_dim = X.shape
-
-        h_out_dim = self.calc_out_spatial_dim(X, 0)
-        w_out_dim = self.calc_out_spatial_dim(X, 1)
 
         out = np.empty(
             (batch_size, h_out_dim, w_out_dim, self.channels_out), dtype=float
@@ -212,17 +236,17 @@ class Conv2d(_BaseConv):
         if self.activation is not None:
             out = self.activation(out)
 
-        self._store_in_cache(input_shape)
+        self._store_in_cache(input_shape, input_shape_padded)
 
         return out
 
     def backward(self, dout):
-        (input_shape,) = self._pop_from_cache()
+        (input_shape, input_shape_padded) = self._pop_from_cache()
 
         if self.activation is not None:
             dout = self.activation.backward(dout)
 
-        dout_b = np.zeros(input_shape, dtype=float)
+        dout_b = np.zeros(input_shape_padded, dtype=float)
 
         h_stride, w_stride = self.stride
         h_kernel, w_kernel = self.kernel_size
@@ -236,9 +260,11 @@ class Conv2d(_BaseConv):
                 w_end = w_start + w_kernel
                 for d in reversed(range(d_dout)):
                     filter_ = self.filters[d]
-                    dout_b[:, h_start:h_end, w_start:w_end, :] += filter_.backward(
-                        dout[:, r, c, d]
-                    )
+                    filter_grad = filter_.backward(dout[:, r, c, d])
+                    dout_b[:, h_start:h_end, w_start:w_end, :] += filter_grad
+
+        if self.use_padding:
+            dout_b = self.crop_center(dout_b, input_shape)
 
         return dout_b
 
