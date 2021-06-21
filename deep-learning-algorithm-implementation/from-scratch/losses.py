@@ -62,12 +62,11 @@ class CrossEntropyLoss(_BaseLoss):
         super(CrossEntropyLoss, self).__init__(average)
 
     def __call__(self, y, y_logits):
-        y = y.reshape(-1, 1)
+        y = y.reshape(-1, 1).astype(int, copy=False)
 
         assert y.size == y_logits.shape[0]
 
-        grads = np.copy(y_logits)
-        y = y.astype(int, copy=False)
+        grads = scipy.special.softmax(y_logits, axis=-1)
         grads[np.arange(y.size), y.ravel()] -= 1.0
 
         log_probs = y_logits - scipy.special.logsumexp(y_logits, axis=-1, keepdims=True)
