@@ -229,18 +229,19 @@ class DeepSequenceModel(base.BaseLayer):
 
         algorithm = type(model)
 
-        layers = [model]
-        layers.extend(
+        self.weights = compose.Sequential(
             [
-                algorithm(
-                    dim_in=self.dim_hidden,
-                    dim_hidden=self.dim_hidden,
-                )
-                for _ in range(num_layers - 1)
+                model,
+                [
+                    algorithm(
+                        dim_in=self.dim_hidden,
+                        dim_hidden=self.dim_hidden,
+                    )
+                    for _ in range(num_layers - 1)
+                ],
             ]
         )
 
-        self.weights = compose.Sequential(layers)
         self.register_layers(self.weights)
 
     def forward(self, X):
