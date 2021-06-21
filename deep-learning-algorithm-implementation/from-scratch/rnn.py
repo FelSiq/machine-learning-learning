@@ -19,8 +19,8 @@ class _BaseSequenceModel(modules.BaseModel):
         self.uses_cell_state = False
 
     def forward(self, X):
-        # X.shape = (time, batch)
-        outputs = np.empty((X.shape[0], X.shape[1], self.dim_hidden), dtype=float)
+        dim_time, dim_batch, _ = X.shape
+        outputs = np.empty((dim_time, dim_batch, self.dim_hidden), dtype=float)
 
         for t, X_t in enumerate(X):
             outputs[t, ...] = self.sequence_cell(X_t)
@@ -203,7 +203,7 @@ def _test_nlp():
     np.random.seed(32)
 
     batch_size = 32
-    train_epochs = 10
+    train_epochs = 5
 
     X_train, y_train, X_test, y_test, word_count = tweets_utils.get_data()
 
@@ -226,8 +226,9 @@ def _test_nlp():
         dim_embed=16,
         dim_hidden=64,
         dim_out=1,
-        bidirectional=True,
+        bidirectional=False,
         num_layers=2,
+        cell_type=LSTM,
     )
 
     criterion = losses.BCELoss(with_logits=True)
@@ -296,10 +297,10 @@ def _test_forecasting():
 
     np.random.seed(32)
 
-    batch_size = 64
-    train_epochs = 10
+    batch_size = 128
+    train_epochs = 3
 
-    X_train, X_test = time_series_utils.get_data(nrows=5000)
+    X_train, X_test = time_series_utils.get_data(nrows=3000)
     X_eval, X_test = X_test[:50], X_test[50:]
 
     y_test = X_test[:, 1:].T
@@ -310,9 +311,10 @@ def _test_forecasting():
 
     model = SequenceProcessor(
         dim_in=1,
-        dim_hidden=64,
+        dim_hidden=32,
         dim_out=1,
-        num_layers=1,
+        num_layers=2,
+        cell_type=LSTM,
     )
 
     criterion = losses.MSELoss()
@@ -363,4 +365,4 @@ def _test_forecasting():
 
 if __name__ == "__main__":
     _test_nlp()
-    # _test_forecasting()
+    _test_forecasting()
