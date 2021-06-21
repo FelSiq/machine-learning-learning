@@ -259,12 +259,12 @@ class MultiLinear(BaseLayer):
 class Reshape(BaseLayer):
     def __init__(self, out_shape: t.Tuple[int, ...]):
         assert len(out_shape)
-        super(Flatten, self).__init__()
+        super(Reshape, self).__init__()
         self.out_shape = tuple(out_shape)
 
     def forward(self, X):
         self._store_in_cache(X.shape)
-        return X.reshape(self.out_shape)
+        return X.reshape(-1, self.out_shape)
 
     def backward(self, dout):
         (shape,) = self._pop_from_cache()
@@ -272,13 +272,15 @@ class Reshape(BaseLayer):
         return dout
 
 
-class Flatten(Reshape):
-    def __init__(self):
-        super(Flatten, self).__init__(out_shape=(-1,))
-
+class Flatten(BaseLayer):
     def forward(self, X):
         self._store_in_cache(X.shape)
-        return X.ravel()
+        return X.reshape(-1, np.prod(X.shape[1:]))
+
+    def backward(self, dout):
+        (shape,) = self._pop_from_cache()
+        dout = dout.reshape(shape)
+        return dout
 
 
 class WeightedAverage(BaseLayer):
