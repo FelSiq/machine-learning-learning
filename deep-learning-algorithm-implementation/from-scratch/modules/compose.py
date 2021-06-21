@@ -1,9 +1,11 @@
 from . import base
+from . import _utils
 
 
 class Sequential(base.BaseLayer):
     def __init__(self, layers):
         super(Sequential, self).__init__(trainable=True)
+        layers = _utils.collapse(layers, base.BaseLayer)
         self.register_layers(*layers)
 
     def forward(self, X):
