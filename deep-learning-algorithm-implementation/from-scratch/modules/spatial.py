@@ -78,6 +78,10 @@ class _BaseMovingFilter(_BaseFilter):
         return 1 + (input_dim - kernel_size) // stride
 
 
+class _BaseFixedFilter(_BaseFilter):
+    pass
+
+
 class _BaseConv(_BaseMovingFilter):
     def __init__(
         self,
@@ -130,7 +134,7 @@ class _BaseDropout(base.BaseLayer):
         self.prob = float(prob)
 
 
-class LearnableFilter2d(_BaseFilter):
+class LearnableFilter2d(_BaseFixedFilter):
     def __init__(
         self,
         dim_in: int,
@@ -180,7 +184,7 @@ class LearnableFilter2d(_BaseFilter):
         return dX
 
 
-class MaxFilter2d(_BaseFilter):
+class MaxFilter2d(_BaseFixedFilter):
     def __init__(
         self,
         kernel_size: t.Union[int, t.Tuple[int, ...]],
@@ -214,7 +218,38 @@ class MaxFilter2d(_BaseFilter):
         max_indices = max_indices.reshape(-1, 1, d_dim)
 
         dout_b = max_indices == np.arange(h_dim * w_dim).reshape(1, -1, 1)
+        dout = np.expand_dims(dout, (1, 2))
         dout_b = dout_b.astype(float, copy=False).reshape(input_shape) * dout
+
+        return dout_b
+
+
+class AvgFilter2d(_BaseFixedFilter):
+    def __init__(self, kernel_size: t.Union[int, t.Tuple[int, ...]]):
+        super(AvgFilter2d, self).__init__(
+            kernel_size=kernel_size,
+            num_spatial_dims=2,
+            trainable=False,
+        )
+
+    def forward(self, X):
+        input_shape = X.shape
+
+        _, h_dim, w_dim, d_dim = input_shape
+        X = X.reshape(-1, h_dim * w_dim, d_dim)
+        out = np.mean(X, axis=1)
+
+        self._store_in_cache(input_shape)
+
+        return out
+
+    def backward(self, dout):
+        (input_shape,) = self._pop_from_cache()
+
+        _, h_dim, w_dim, _ = input_shape
+
+        dout = np.expand_dims(dout, (1, 2))
+        dout_b = np.full(fill_value=1.0 / (h_dim * w_dim), shape=input_shape) * dout
 
         return dout_b
 
@@ -322,21 +357,23 @@ class Dropout2d(_BaseDropout):
     pass
 
 
-class MaxPool2d(_BaseMovingFilter):
+class _Pool2d(_BaseMovingFilter):
     def __init__(
         self,
+        trainable: bool,
+        filter_: _BaseFixedFilter,
         kernel_size: t.Union[int, t.Tuple[int, ...]],
         stride: t.Union[int, t.Tuple[int, ...]] = -1,
     ):
-        super(MaxPool2d, self).__init__(
+        super(_Pool2d, self).__init__(
             num_spatial_dims=2,
-            trainable=False,
+            trainable=trainable,
             kernel_size=kernel_size,
             stride=stride,
         )
 
-        self.max_filter = MaxFilter2d(kernel_size=kernel_size)
-        self.register_layers(self.max_filter)
+        self.filter = filter_
+        self.register_layers(self.filter)
 
     def forward(self, X):
         h_out_dim = self.calc_out_spatial_dim(X, 0)
@@ -354,7 +391,7 @@ class MaxPool2d(_BaseMovingFilter):
                 w_end = w_start + w_kernel
 
                 X_slice = X[:, h_start:h_end, w_start:w_end, :]
-                out[:, r, c, :] = self.max_filter(X_slice)
+                out[:, r, c, :] = self.filter(X_slice)
 
         self._store_in_cache(X.shape)
 
@@ -376,11 +413,35 @@ class MaxPool2d(_BaseMovingFilter):
                 w_start = c * w_stride
                 w_end = w_start + w_kernel
 
-                grad = self.max_filter.backward(dout[:, r, c, :])
+                grad = self.filter.backward(dout[:, r, c, :])
                 dout_b[:, h_start:h_end, w_start:w_end, :] += grad
 
         return dout_b
 
 
-class AvgPool2d(_BaseMovingFilter):
-    pass
+class MaxPool2d(_Pool2d):
+    def __init__(
+        self,
+        kernel_size: t.Union[int, t.Tuple[int, ...]],
+        stride: t.Union[int, t.Tuple[int, ...]] = -1,
+    ):
+        super(MaxPool2d, self).__init__(
+            trainable=False,
+            filter_=MaxFilter2d(kernel_size=kernel_size),
+            kernel_size=kernel_size,
+            stride=stride,
+        )
+
+
+class AvgPool2d(_Pool2d):
+    def __init__(
+        self,
+        kernel_size: t.Union[int, t.Tuple[int, ...]],
+        stride: t.Union[int, t.Tuple[int, ...]] = -1,
+    ):
+        super(AvgPool2d, self).__init__(
+            trainable=False,
+            filter_=AvgFilter2d(kernel_size=kernel_size),
+            kernel_size=kernel_size,
+            stride=stride,
+        )
