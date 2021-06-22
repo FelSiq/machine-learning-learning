@@ -180,6 +180,45 @@ class LearnableFilter2d(_BaseFilter):
         return dX
 
 
+class MaxFilter2d(_BaseFilter):
+    def __init__(
+        self,
+        kernel_size: t.Union[int, t.Tuple[int, ...]],
+    ):
+        super(MaxFilter2d, self).__init__(
+            kernel_size=kernel_size,
+            num_spatial_dims=2,
+            trainable=False,
+        )
+
+    def forward(self, X):
+        input_shape = X.shape
+
+        _, h_dim, w_dim, d_dim = input_shape
+
+        X = X.reshape(-1, h_dim * w_dim, d_dim)
+
+        max_indices = np.argmax(X, axis=1)
+        out = np.take_along_axis(X, np.expand_dims(max_indices, 1), axis=1)
+        out = np.squeeze(out)
+
+        self._store_in_cache(max_indices, input_shape)
+
+        return out
+
+    def backward(self, dout):
+        (max_indices, input_shape) = self._pop_from_cache()
+
+        _, h_dim, w_dim, d_dim = input_shape
+
+        max_indices = max_indices.reshape(-1, 1, d_dim)
+
+        dout_b = max_indices == np.arange(h_dim * w_dim).reshape(1, -1, 1)
+        dout_b = dout_b.astype(float, copy=False).reshape(input_shape) * dout
+
+        return dout_b
+
+
 class Conv2d(_BaseConv):
     def __init__(
         self,
@@ -296,6 +335,9 @@ class MaxPool2d(_BaseMovingFilter):
             stride=stride,
         )
 
+        self.max_filter = MaxFilter2d(kernel_size=kernel_size)
+        self.register_layers(self.max_filter)
+
     def forward(self, X):
         h_out_dim = self.calc_out_spatial_dim(X, 0)
         w_out_dim = self.calc_out_spatial_dim(X, 1)
@@ -312,18 +354,7 @@ class MaxPool2d(_BaseMovingFilter):
                 w_end = w_start + w_kernel
 
                 X_slice = X[:, h_start:h_end, w_start:w_end, :]
-                X_slice_shape = X_slice.shape
-                X_slice = X_slice.reshape(
-                    -1, (h_end - h_start) * (w_end - w_start), d_dim
-                )
-
-                chosen_index = np.argmax(X_slice, axis=1)
-
-                out[:, r, c, :] = np.squeeze(
-                    np.take_along_axis(X_slice, np.expand_dims(chosen_index, 1), axis=1)
-                )
-
-                self._store_in_cache(chosen_index, X_slice_shape)
+                out[:, r, c, :] = self.max_filter(X_slice)
 
         self._store_in_cache(X.shape)
 
@@ -345,16 +376,7 @@ class MaxPool2d(_BaseMovingFilter):
                 w_start = c * w_stride
                 w_end = w_start + w_kernel
 
-                (chosen_index, X_slice_shape) = self._pop_from_cache()
-
-                _, h_slice, w_slice, _ = X_slice_shape
-                chosen_index = chosen_index.reshape(-1, 1, d_dout)
-                grad = chosen_index == np.arange(h_slice * w_slice).reshape(1, -1, 1)
-                grad = (
-                    grad.astype(float, copy=False).reshape(X_slice_shape)
-                    * dout[:, r, c, :]
-                )
-
+                grad = self.max_filter.backward(dout[:, r, c, :])
                 dout_b[:, h_start:h_end, w_start:w_end, :] += grad
 
         return dout_b
