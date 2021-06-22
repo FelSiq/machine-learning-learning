@@ -43,6 +43,42 @@ class _BaseOptim:
             np.clip(param.grads, -v, v, out=param.grads)
 
 
+class Demon:
+    """Decaying momentum.
+
+    Reference
+    ---------
+    https://arxiv.org/pdf/1910.04952.pdf
+    """
+
+    def __init__(
+        self, initial_momentum: float, max_iterations: int, min_momentum: float = 0.0
+    ):
+        assert int(max_iterations) >= 0
+        assert float(initial_momentum) >= float(min_momentum) >= 0.0
+
+        self.T = int(max_iterations)
+        self.t = 0
+        self.m_init = self.m_cur = float(initial_momentum)
+        self.m_min = float(min_momentum)
+
+    def set_timestep(self, new_t: int):
+        assert int(new_t) >= 0
+        self.t = int(new_t)
+
+    def reset(self):
+        self.t = 0
+
+    def step(self):
+        if self.t >= self.T:
+            return self.m_min
+
+        self.t += 1
+        decay_factor = (self.T - self.t) / (self.T - self.m_init * self.t)
+        self.m_cur = self.m_min + (self.m_init - self.m_min) * decay_factor
+        return self.m_cur
+
+
 class SGD(_BaseOptim):
     """Vanilla SGD.
 
@@ -70,9 +106,11 @@ class Momentum(_BaseOptim):
         self,
         parameters,
         learning_rate: float,
-        first_momentum: float,
+        first_momentum: float = 0.9,
         bias_correction: bool = True,
         clip_grad_val: float = 1.0,
+        demon_iter_num: t.Optional[int] = None,
+        demon_min_mom: float = 0.0,
     ):
         assert 1.0 > float(first_momentum) > 0.0
 
@@ -87,6 +125,15 @@ class Momentum(_BaseOptim):
             clip_grad_val=clip_grad_val,
         )
 
+        self.demon = None
+
+        if demon_iter_num is not None:
+            self.demon = Demon(
+                initial_momentum=self.first_momentum,
+                max_iterations=demon_iter_num,
+                min_momentum=demon_min_mom,
+            )
+
     def register_layer(self, params):
         super(Momentum, self).register_layer(params)
 
@@ -95,6 +142,7 @@ class Momentum(_BaseOptim):
 
     def step(self):
         m = self.first_momentum
+        it = self.iterations
 
         for i, param in enumerate(self.parameters):
             prev_fst_mma = self.fst_mom_mov_avg[i]
@@ -111,6 +159,9 @@ class Momentum(_BaseOptim):
 
         self.iterations += 1
 
+        if self.demon is not None:
+            self.first_momentum = self.demon.step()
+
 
 class NesterovMomentum(Momentum):
     """Nesterov Accelerated Gradient (NAG).
@@ -124,6 +175,7 @@ class NesterovMomentum(Momentum):
 
     def step(self):
         m = self.first_momentum
+        it = self.iterations
 
         for i, param in enumerate(self.parameters):
             prev_fst_mma = self.fst_mom_mov_avg[i]
@@ -143,6 +195,9 @@ class NesterovMomentum(Momentum):
             param.update_and_step(cur_steps)
 
         self.iterations += 1
+
+        if self.demon is not None:
+            self.first_momentum = self.demon.step()
 
 
 class Adagrad(_BaseOptim):
@@ -336,6 +391,8 @@ class Adam(Momentum, RMSProp):
         eps: float = 1e-8,
         weight_decay_ignore_ndims: t.Tuple[int] = (1,),
         clip_grad_val: float = 1.0,
+        demon_iter_num: t.Optional[int] = None,
+        demon_min_mom: float = 0.0,
     ):
         assert float(weight_decay) >= 0.0
 
@@ -352,6 +409,8 @@ class Adam(Momentum, RMSProp):
             learning_rate=learning_rate,
             first_momentum=first_momentum,
             clip_grad_val=clip_grad_val,
+            demon_iter_num=demon_iter_num,
+            demon_min_mom=demon_min_mom,
         )
 
         RMSProp.__init__(
@@ -406,6 +465,9 @@ class Adam(Momentum, RMSProp):
 
         self.iterations += 1
 
+        if self.demon is not None:
+            self.first_momentum = self.demon.step()
+
 
 class Adamax(Adam):
     """Adam with second moment generalized to infinity norm.
@@ -426,6 +488,8 @@ class Adamax(Adam):
         second_momentum: float = 0.999,
         eps: float = 1e-8,
         clip_grad_val: float = 1.0,
+        demon_iter_num: t.Optional[int] = None,
+        demon_min_mom: float = 0.0,
     ):
         super(Adamax, self).__init__(
             parameters,
@@ -435,6 +499,8 @@ class Adamax(Adam):
             eps=eps,
             amsgrad=False,
             clip_grad_val=clip_grad_val,
+            demon_iter_num=demon_iter_num,
+            demon_min_mom=demon_min_mom,
         )
 
     def step(self):
@@ -465,6 +531,9 @@ class Adamax(Adam):
             param.update_and_step(cur_steps)
 
         self.iterations += 1
+
+        if self.demon is not None:
+            self.first_momentum = self.demon.step()
 
 
 class Nadam(Adam):
@@ -510,3 +579,6 @@ class Nadam(Adam):
             param.update_and_step(cur_steps)
 
         self.iterations += 1
+
+        if self.demon is not None:
+            self.first_momentum = self.demon.step()
