@@ -15,36 +15,27 @@ class _BaseDropout(base.BaseLayer):
 class Dropout(_BaseDropout):
     def forward(self, X):
         if self.frozen:
-            out = X / self.keep_prob
-            return out
+            return X
 
-        dropped_mask = np.random.random(X.shape) <= self.drop_prob
+        mask = np.random.random(X.shape) <= self.keep_prob
+        mask = mask.astype(float, copy=False)
+        mask /= self.keep_prob
 
-        if not self.inplace:
-            X = np.copy(X)
+        out = np.multiply(X, mask, out=X if self.inplace else None)
 
-        X[dropped_mask] = 0.0
+        self._store_in_cache(mask)
 
-        self._store_in_cache(dropped_mask)
-
-        return X
+        return out
 
     def backward(self, dout):
-        (dropped_mask,) = self._pop_from_cache()
-
-        if not self.inplace:
-            dout = np.copy(dout)
-
-        dout[dropped_mask] = 0.0
-
-        return dout
+        (mask,) = self._pop_from_cache()
+        return mask * dout
 
 
 class Dropout2d(_BaseDropout):
     def forward(self, X):
         if self.frozen:
-            out = X / self.keep_prob
-            return out
+            return X
 
         num_channels = X.shape[-1]
         dropped_channel_mask = np.random.random(num_channels) <= self.drop_prob
@@ -53,6 +44,7 @@ class Dropout2d(_BaseDropout):
             X = np.copy(X)
 
         X[..., dropped_channel_mask] = 0.0
+        X[..., ~dropped_channel_mask] /= self.keep_prob
 
         self._store_in_cache(dropped_channel_mask)
 
@@ -65,5 +57,6 @@ class Dropout2d(_BaseDropout):
             dout = np.copy(dout)
 
         dout[..., dropped_channel_mask] = 0.0
+        dout[..., ~dropped_channel_mask] /= self.keep_prob
 
         return dout
