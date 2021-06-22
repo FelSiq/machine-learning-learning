@@ -4,8 +4,12 @@ from . import base
 
 
 class ReLU(base.BaseLayer):
+    def __init__(self, inplace: bool = False):
+        super(ReLU, self).__init__()
+        self.inplace = bool(inplace)
+
     def forward(self, X):
-        out = np.maximum(X, 0.0)
+        out = np.maximum(X, 0.0, out=X if self.inplace else None)
         self._store_in_cache(X)
         return out
 
