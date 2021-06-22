@@ -235,7 +235,7 @@ class Adagrad(_BaseOptim):
     def step(self):
         for i, param in enumerate(self.parameters):
             prev_cum_sec_mom = self.cum_sec_momentum[i]
-            cur_cum_sec_mom = prev_cum_sec_mom + np.square(param)
+            cur_cum_sec_mom = prev_cum_sec_mom + np.square(param.grads)
 
             self.cum_sec_momentum[i] = cur_cum_sec_mom
 
@@ -286,8 +286,8 @@ class Adadelta(_BaseOptim):
             weights_grads, weights_params = np.zeros(
                 (2, *param.values.shape), dtype=float
             )
-            mv_avg_second_mom_grads.append(weights_grads)
-            mv_avg_second_mom_params.append(weights_params)
+            self.mv_avg_second_mom_grads.append(weights_grads)
+            self.mv_avg_second_mom_params.append(weights_params)
 
     def step(self):
         m = self.second_momentum
