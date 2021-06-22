@@ -12,6 +12,34 @@ class _BaseDropout(base.BaseLayer):
         self.inplace = bool(inplace)
 
 
+class Dropout(_BaseDropout):
+    def forward(self, X):
+        if self.frozen:
+            out = X / self.keep_prob
+            return out
+
+        dropped_mask = np.random.random(X.shape) <= self.drop_prob
+
+        if not self.inplace:
+            X = np.copy(X)
+
+        X[dropped_mask] = 0.0
+
+        self._store_in_cache(dropped_mask)
+
+        return X
+
+    def backward(self, dout):
+        (dropped_mask,) = self._pop_from_cache()
+
+        if not self.inplace:
+            dout = np.copy(dout)
+
+        dout[dropped_mask] = 0.0
+
+        return dout
+
+
 class Dropout2d(_BaseDropout):
     def forward(self, X):
         if self.frozen:
