@@ -197,20 +197,11 @@ class MultiLinear(BaseLayer):
         dims_in: t.Sequence[int],
         dim_out: int,
         include_bias: bool = True,
-        inner_activations: t.Optional[
-            t.Union[t.Sequence, t.Callable[[np.ndarray], np.ndarray]]
-        ] = None,
-        outer_activation: t.Optional[t.Callable[[np.ndarray], np.ndarray]] = None,
+        activation: t.Optional[t.Callable[[np.ndarray], np.ndarray]] = None,
     ):
         super(MultiLinear, self).__init__(trainable=True)
 
-        if hasattr(inner_activations, "__len__"):
-            assert len(inner_activations) == len(dims_in)
-
-        else:
-            inner_activations = [inner_activations] * len(dims_in)
-
-        self.outer_activation = outer_activation
+        self.activation = activation
         self.dim_out = int(dim_out)
 
         self.linear_transf = [
@@ -218,15 +209,15 @@ class MultiLinear(BaseLayer):
                 dim_in,
                 dim_out,
                 include_bias=(i == len(dims_in) and include_bias),
-                activation=activation,
+                activation=None,
             )
-            for i, (dim_in, activation) in enumerate(zip(dims_in, inner_activations), 1)
+            for i, dim_in in enumerate(dims_in, 1)
         ]
 
         self.register_layers(*self.linear_transf)
 
-        if self.outer_activation is not None:
-            self.register_layers(self.outer_activation)
+        if self.activation is not None:
+            self.register_layers(self.activation)
 
     def forward(self, *args):
         batch_size = args[0].shape[0]
@@ -236,8 +227,8 @@ class MultiLinear(BaseLayer):
         for layer, X in reversed(tuple(zip(self.linear_transf, args))):
             out += layer(X)
 
-        if self.outer_activation is not None:
-            out = self.outer_activation(out)
+        if self.activation is not None:
+            out = self.activation(out)
 
         return out
 
@@ -247,8 +238,8 @@ class MultiLinear(BaseLayer):
     def backward(self, dout):
         d_outs = []  # type: t.List[np.ndarray]
 
-        if self.outer_activation is not None:
-            dout = self.outer_activation.backward(dout)
+        if self.activation is not None:
+            dout = self.activation.backward(dout)
 
         for layer in self.linear_transf:
             d_outs.append(layer.backward(dout))

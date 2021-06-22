@@ -37,7 +37,7 @@ class RNNCell(_BaseSequenceCell):
         super(RNNCell, self).__init__(dim_in, dim_hidden)
 
         self.linear = base.MultiLinear(
-            [dim_hidden, dim_in], dim_hidden, outer_activation=activation.Tanh()
+            [dim_hidden, dim_in], dim_hidden, activation=activation.Tanh()
         )
 
         self.register_layers(self.linear)
@@ -57,13 +57,13 @@ class GRUCell(_BaseSequenceCell):
         super(GRUCell, self).__init__(dim_in, dim_hidden)
 
         self.lin_z = base.MultiLinear(
-            [dim_hidden, dim_in], dim_hidden, outer_activation=activation.Sigmoid()
+            [dim_hidden, dim_in], dim_hidden, activation=activation.Sigmoid()
         )
         self.lin_r = base.MultiLinear(
-            [dim_hidden, dim_in], dim_hidden, outer_activation=activation.Sigmoid()
+            [dim_hidden, dim_in], dim_hidden, activation=activation.Sigmoid()
         )
         self.lin_h = base.MultiLinear(
-            [dim_hidden, dim_in], dim_hidden, outer_activation=activation.Tanh()
+            [dim_hidden, dim_in], dim_hidden, activation=activation.Tanh()
         )
 
         self.multiply = base.Multiply()
@@ -108,16 +108,16 @@ class LSTMCell(_BaseSequenceCell):
         super(LSTMCell, self).__init__(dim_in, dim_hidden)
 
         self.lin_i = base.MultiLinear(
-            [dim_hidden, dim_in], dim_hidden, outer_activation=activation.Sigmoid()
+            [dim_hidden, dim_in], dim_hidden, activation=activation.Sigmoid()
         )
         self.lin_f = base.MultiLinear(
-            [dim_hidden, dim_in], dim_hidden, outer_activation=activation.Sigmoid()
+            [dim_hidden, dim_in], dim_hidden, activation=activation.Sigmoid()
         )
         self.lin_o = base.MultiLinear(
-            [dim_hidden, dim_in], dim_hidden, outer_activation=activation.Sigmoid()
+            [dim_hidden, dim_in], dim_hidden, activation=activation.Sigmoid()
         )
         self.lin_c = base.MultiLinear(
-            [dim_hidden, dim_in], dim_hidden, outer_activation=activation.Tanh()
+            [dim_hidden, dim_in], dim_hidden, activation=activation.Tanh()
         )
 
         self.multiply = base.Multiply()
