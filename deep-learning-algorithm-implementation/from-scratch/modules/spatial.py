@@ -60,12 +60,22 @@ class _BaseMovingFilter(_BaseFilter):
             kernel_size=kernel_size,
         )
 
-        assert _utils.all_positive(stride)
+        assert _utils.all_nonzero(stride)
 
         self.num_spatial_dims = int(num_spatial_dims)
+
         self.stride = _utils.replicate(stride, num_spatial_dims)
+        self.stride = tuple(
+            s if s > 0 else k for s, k in zip(self.stride, self.kernel_size)
+        )
 
         assert len(self.stride) == num_spatial_dims
+
+    def calc_out_spatial_dim(self, X: int, dim: int):
+        stride = self.stride[dim]
+        kernel_size = self.kernel_size[dim]
+        input_dim = X.shape[dim + 1]
+        return 1 + (input_dim - kernel_size) // stride
 
 
 class _BaseConv(_BaseMovingFilter):
@@ -274,7 +284,80 @@ class Dropout2d(_BaseDropout):
 
 
 class MaxPool2d(_BaseMovingFilter):
-    pass
+    def __init__(
+        self,
+        kernel_size: t.Union[int, t.Tuple[int, ...]],
+        stride: t.Union[int, t.Tuple[int, ...]] = -1,
+    ):
+        super(MaxPool2d, self).__init__(
+            num_spatial_dims=2,
+            trainable=False,
+            kernel_size=kernel_size,
+            stride=stride,
+        )
+
+    def forward(self, X):
+        h_out_dim = self.calc_out_spatial_dim(X, 0)
+        w_out_dim = self.calc_out_spatial_dim(X, 1)
+
+        h_stride, w_stride = self.stride
+        h_kernel, w_kernel = self.kernel_size
+        batch_size, h_dim, w_dim, d_dim = X.shape
+
+        out = np.empty((batch_size, h_out_dim, w_out_dim, d_dim), dtype=float)
+
+        for r, h_start in enumerate(range(0, h_dim - h_kernel + 1, h_stride)):
+            h_end = h_start + h_kernel
+            for c, w_start in enumerate(range(0, w_dim - w_kernel + 1, w_stride)):
+                w_end = w_start + w_kernel
+
+                X_slice = X[:, h_start:h_end, w_start:w_end, :]
+                X_slice_shape = X_slice.shape
+                X_slice = X_slice.reshape(
+                    -1, (h_end - h_start) * (w_end - w_start), d_dim
+                )
+
+                chosen_index = np.argmax(X_slice, axis=1)
+
+                out[:, r, c, :] = np.squeeze(
+                    np.take_along_axis(X_slice, np.expand_dims(chosen_index, 1), axis=1)
+                )
+
+                self._store_in_cache(chosen_index, X_slice_shape)
+
+        self._store_in_cache(X.shape)
+
+        return out
+
+    def backward(self, dout):
+        (input_shape,) = self._pop_from_cache()
+
+        dout_b = np.zeros(input_shape, dtype=float)
+
+        h_stride, w_stride = self.stride
+        h_kernel, w_kernel = self.kernel_size
+        _, h_dout, w_dout, d_dout = dout.shape
+
+        for r in reversed(range(h_dout)):
+            h_start = r * h_stride
+            h_end = h_start + h_kernel
+            for c in reversed(range(w_dout)):
+                w_start = c * w_stride
+                w_end = w_start + w_kernel
+
+                (chosen_index, X_slice_shape) = self._pop_from_cache()
+
+                _, h_slice, w_slice, _ = X_slice_shape
+                chosen_index = chosen_index.reshape(-1, 1, d_dout)
+                grad = chosen_index == np.arange(h_slice * w_slice).reshape(1, -1, 1)
+                grad = (
+                    grad.astype(float, copy=False).reshape(X_slice_shape)
+                    * dout[:, r, c, :]
+                )
+
+                dout_b[:, h_start:h_end, w_start:w_end, :] += grad
+
+        return dout_b
 
 
 class AvgPool2d(_BaseMovingFilter):
