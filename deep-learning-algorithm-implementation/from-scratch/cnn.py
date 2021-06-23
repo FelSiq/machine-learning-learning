@@ -21,20 +21,28 @@ class CNN(modules.BaseModel):
         self.weights = modules.Sequential(
             [
                 [
-                    modules.Conv2d(
-                        channels_in=channels_num[i - 1],
-                        channels_out=channels_num[i],
-                        kernel_size=kernel_sizes[i - 1],
-                        activation=modules.ReLU(),
-                        padding_type=padding,
-                    )
+                    [
+                        modules.Conv2d(
+                            channels_in=channels_num[i - 1],
+                            channels_out=channels_num[i],
+                            kernel_size=kernel_sizes[i - 1],
+                            activation=modules.ReLU(inplace=True),
+                            padding_type=padding,
+                        ),
+                        modules.SpatialDropout(drop_prob=0.3, inplace=True),
+                    ]
                     for i in range(1, len(channels_num))
                 ],
                 modules.Flatten(),
                 [
-                    modules.Linear(
-                        linear_dims[i - 1], linear_dims[i], activation=modules.ReLU()
-                    )
+                    [
+                        modules.Linear(
+                            linear_dims[i - 1],
+                            linear_dims[i],
+                            activation=modules.ReLU(inplace=True),
+                        ),
+                        modules.Dropout(drop_prob=0.3, inplace=True),
+                    ]
                     for i in range(1, len(linear_dims) - 1)
                 ],
                 modules.Linear(

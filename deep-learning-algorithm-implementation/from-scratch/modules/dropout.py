@@ -32,7 +32,7 @@ class Dropout(_BaseDropout):
         return mask * dout
 
 
-class Dropout2d(_BaseDropout):
+class SpatialDropout(_BaseDropout):
     def forward(self, X):
         if self.frozen:
             return X
