@@ -17,8 +17,21 @@ class Autoencoder(modules.BaseModel):
 
         self.weights = modules.Sequential(
             [
-                modules.Linear(dims[i - 1], dims[i], activation=modules.ReLU())
-                for i in range(1, len(dims))
+                [
+                    [
+                        modules.Linear(
+                            dims[i - 1],
+                            dims[i],
+                            activation=modules.ReLU(inplace=False),
+                            include_bias=False,
+                        ),
+                        modules.BatchNorm1d(dims[i]),
+                    ]
+                    for i in range(1, len(dims) - 1)
+                ],
+                modules.Linear(
+                    dims[-2], dims[-1], activation=modules.ReLU(inplace=True)
+                ),
             ]
         )
 
@@ -42,7 +55,7 @@ def _test():
     train_size = 20000
     batch_size = 32
     train_epochs = 60
-    learning_rate = 1e-3
+    learning_rate = 2e-3
 
     X, _ = sklearn.datasets.load_digits(return_X_y=True)
     out_shape = (8, 8)
@@ -62,7 +75,13 @@ def _test():
     n = X_train.shape[0]
     model = Autoencoder(layer_dims)
     criterion = losses.MSELoss()
-    optim = optimizers.Nadam(model.parameters, learning_rate=learning_rate)
+
+    optim = optimizers.Nadam(
+        model.parameters,
+        learning_rate=learning_rate,
+        demon_iter_num=train_epochs / 1 * (n / batch_size),
+        demon_min_mom=0.2,
+    )
 
     for epoch in np.arange(1, 1 + train_epochs):
         total_loss = 0.0
