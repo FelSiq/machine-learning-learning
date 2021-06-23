@@ -1,8 +1,9 @@
 import copy
-
 import typing as t
 
 import numpy as np
+
+from . import _utils
 
 
 class Tensor:
@@ -31,6 +32,31 @@ class Tensor:
     @property
     def shape(self):
         return self.values.shape
+
+    @staticmethod
+    def from_shape(shape, mode: str = "normal", **kwargs):
+        assert mode in {"normal", "uniform", "constant", "zeros"}
+
+        if mode == "normal":
+            mean = kwargs.get("mean", 0.0)
+            std = kwargs.get("std", 1.0)
+            std = _utils.get_weight_init_dist_params(std, mode, shape)
+            return Tensor(np.random.normal(mean, std, shape))
+
+        if mode == "uniform":
+            std = kwargs.get("std")
+
+            if std is not None:
+                low, high = _utils.get_weight_init_dist_params(std, mode, shape)
+
+            else:
+                low = kwargs.get("low", 0.0)
+                high = kwargs.get("high", 1.0)
+
+            return Tensor(np.random.uniform(low, high, shape))
+
+        constant = kwargs.get("value", 0.0) if mode == "constant" else 0.0
+        return Tensor(np.full(shape, fill_value=constant, dtype=float))
 
     def __repr__(self):
         tokens = []  # type: t.List[str]
@@ -138,18 +164,23 @@ class Linear(BaseLayer):
         dim_out: int,
         include_bias: bool = True,
         activation: t.Optional[t.Callable[[np.ndarray], np.ndarray]] = None,
+        weight_init_std: t.Union[str, float] = "he",
     ):
         assert dim_in > 0
         assert dim_out > 0
 
         super(Linear, self).__init__(trainable=True)
 
-        he_init_coef = np.sqrt(2.0 / dim_in)
-        self.weights = Tensor(he_init_coef * np.random.randn(dim_in, dim_out))
+        self.weights = Tensor.from_shape(
+            shape=(dim_in, dim_out),
+            mode="normal",
+            std=weight_init_std,
+        )
+
         self.bias = Tensor()
 
         if include_bias:
-            self.bias = Tensor(np.zeros(dim_out, dtype=float))
+            self.bias = Tensor.from_shape((dim_out), mode="zeros")
             self.parameters = (self.weights, self.bias)
 
         else:
