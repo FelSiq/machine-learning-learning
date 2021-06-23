@@ -21,8 +21,12 @@ class Tensor:
 
         self.values -= self.grads
 
-    def update_and_step(self, grads):
+    def update_grads(self, grads):
+        assert grads.shape == self.values.shape, str(self)
         self.grads = grads
+
+    def update_and_step(self, grads):
+        self.update_grads(grads)
         self.step()
 
     @property
@@ -62,7 +66,7 @@ class Tensor:
 
             return Tensor(np.random.uniform(low, high, shape))
 
-        constant = kwargs.get("value", 0.0) if mode == "constant" else 0.0
+        constant = kwargs["value"] if mode == "constant" else 0.0
         return Tensor(np.full(shape, fill_value=constant, dtype=float))
 
     def __repr__(self):
@@ -123,6 +127,28 @@ class BaseComponent:
 
     def copy(self):
         return copy.deepcopy(self)
+
+
+class MovingAverage(BaseComponent):
+    def __init__(
+        self,
+        stat_shape: t.Tuple[int, ...],
+        momentum: float = 0.9,
+        init_const: float = 0.0,
+    ):
+        assert 1.0 > float(momentum) > 0.0
+        self.m = float(momentum)
+        self.stat = np.full(stat_shape, fill_value=init_const, dtype=float)
+
+    def update(self, new_stats):
+        self.stat *= self.m
+        self.stat += (1.0 - self.m) * np.asfarray(new_stats)
+
+    def __call__(self, new_stats):
+        self.update(new_stats)
+
+    def __iter__(self):
+        return iter(self.stat)
 
 
 class BaseLayer(BaseComponent):
@@ -237,11 +263,11 @@ class Linear(BaseLayer):
         dW = X.T @ dout
         dX = dout @ self.weights.values.T
 
-        self.weights.grads = dW
+        self.weights.update_grads(dW)
 
         if self.bias.size:
             db = np.sum(dout, axis=0)
-            self.bias.grads = db
+            self.bias.update_grads(db)
 
         return dX
 
@@ -364,40 +390,124 @@ class Multiply(BaseLayer):
         return dX, dY
 
 
+class Divide(BaseLayer):
+    def __call__(self, X, Y):
+        return self.forward(X, Y)
+
+    def forward(self, X, Y):
+        out = X / Y
+        self._store_in_cache(X, Y)
+        return out
+
+    def backward(self, dout):
+        (X, Y) = self._pop_from_cache()
+        dX = dout / Y
+        dY = -X / np.square(Y) * dout
+        return dX, dY
+
+
 class _BaseReduce(BaseLayer):
-    def __init__(self, axes: t.Optional[t.Tuple[int, ...]] = None):
+    def __init__(self, axis: t.Optional[t.Tuple[int, ...]] = None):
         super(_BaseReduce, self).__init__()
-        self.axes = tuple(axes) if axes is not None else None
+
+        if axis is not None and not hasattr(axis, "__len__"):
+            self.axis = (int(axis),)
+
+        else:
+            self.axis = tuple(axis) if axis is not None else None
 
 
 class Sum(_BaseReduce):
     def forward(self, X):
-        self._store_in_cache(X.ndim)
-        return np.sum(X, axis=self.axes)
+        self._store_in_cache(X.shape)
+        out = np.sum(X, axis=self.axis)
+        return out
 
     def backward(self, dout):
-        X_ndim = self._pop_from_cache()
+        (inp_shape,) = self._pop_from_cache()
 
-        if self.axes:
-            dout = np.expand_dims(dout, self.axes)
+        if dout.ndim != len(inp_shape):
+            dout = np.expand_dims(dout, self.axis)
 
-        else:
-            dout = np.expand_dims(dout, list(range(1, X_ndim)))
+        dout = np.ones(inp_shape, dtype=float) * dout
 
         return dout
 
 
-class Average(_BaseReduce):
-    def __init__(self, axes: t.Optional[t.Tuple[int, ...]] = None):
-        super(Average, self).__init__()
-        self.sum = Sum()
-        self.register_layers(self.sum)
-
+class Average(Sum):
     def forward(self, X):
-        self._store_in_cache(X.size)
-        return self.sum(X) / X.size
+        if self.axis:
+            inp_size = int(np.prod([X.shape[i] for i in self.axis]))
+
+        else:
+            inp_size = X.size
+
+        self._store_in_cache(inp_size)
+
+        out = super(Average, self).forward(X) / inp_size
+
+        return out
 
     def backward(self, dout):
+        dout = super(Average, self).backward(dout)
         (inp_size,) = self._pop_from_cache()
-        dout = self.sum.backward(dout)
-        return dout / inp_size
+        dout = dout / inp_size
+        return dout
+
+
+class Power(BaseLayer):
+    def __init__(self, power: float, eps: float = 1e-7):
+        assert float(eps) > 0.0
+        super(Power, self).__init__()
+        self.power = float(power)
+        self.eps = float(eps)
+
+    def forward(self, X):
+        X_pow_m1 = np.power(X + self.eps, self.power - 1)
+        self._store_in_cache(X_pow_m1)
+        return X_pow_m1 * X
+
+    def backward(self, dout):
+        (X_pow_m1,) = self._pop_from_cache()
+        return self.power * X_pow_m1 * dout
+
+
+class StandardDeviation(BaseLayer):
+    def __init__(
+        self,
+        axis: t.Optional[t.Tuple[int, ...]] = None,
+        return_avg: bool = False,
+    ):
+        super(StandardDeviation, self).__init__()
+        self.return_avg = bool(return_avg)
+        self.avg = Average(axis=axis)
+        self.square = Power(power=2)
+        self.register_layers(self.avg)
+        self.sqrt = Power(power=0.5)
+
+    def forward(self, X):
+        avg = self.avg(X)
+        std = self.sqrt(self.avg(self.square(X - avg)))
+
+        if self.return_avg:
+            return std, avg
+
+        return std
+
+    def backward(self, dout, d_avg_extern=None):
+        dout = self.sqrt.backward(dout)
+        dout = self.avg.backward(dout)
+
+        d_X_centered = self.square.backward(dout)
+
+        dX_a = d_X_centered
+        d_avg = -d_X_centered
+
+        if d_avg is not None:
+            d_avg += d_avg_extern
+
+        dX_b = self.avg.backward(d_avg)
+
+        dX = dX_a + dX_b
+
+        return dX
