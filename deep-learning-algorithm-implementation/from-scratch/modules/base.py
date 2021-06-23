@@ -44,7 +44,8 @@ class Tensor:
             return Tensor(np.random.normal(mean, std, shape))
 
         if mode == "uniform":
-            init_type, dims = kwargs.get("std", (None, None))
+            aux = kwargs.get("std", (None, None))
+            init_type, dims = (aux, None) if isinstance(aux, str) else aux
 
             if init_type is not None:
                 low, high = _utils.get_weight_init_dist_params(
@@ -237,7 +238,7 @@ class MultiLinear(BaseLayer):
         dim_out: int,
         include_bias: bool = True,
         activation: t.Optional[t.Callable[[np.ndarray], np.ndarray]] = None,
-        weight_init_std: t.Union[t.Tuple[str, str], float] = ("normal", "xavier"),
+        weight_init_std: t.Union[t.Tuple[str, str], float] = ("normal", "he"),
     ):
         super(MultiLinear, self).__init__(trainable=True)
 
