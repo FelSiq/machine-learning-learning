@@ -35,19 +35,39 @@ def collapse(items, cls):
     return cur_items
 
 
+def weight_init_param_he(dist: str, dim_in: int, *args):
+    assert dist in {"normal", "uniform"}
+
+    if dist == "normal":
+        return np.sqrt(2.0 / dim_in)
+
+    return np.sqrt(6.0 / dim_in)
+
+
+def weight_init_param_xavier(dist: str, dim_in: int, *args):
+    assert dist in {"normal", "uniform"}
+
+    if dist == "normal":
+        return np.sqrt(1.0 / (3.0 * dim_in))
+
+    return np.sqrt(1.0 / dim_in)
+
+
+def weight_init_param_xavier_norm(dist: str, dim_in: int, dim_out: int, *args):
+    assert dist in {"normal", "uniform"}
+
+    if dist == "normal":
+        return np.sqrt(2.0 / (dim_in + dim_out))
+
+    return np.sqrt(6.0 / (dim_in + dim_out))
+
+
 # NOTE: either 'normal' and 'uniform' distributions are initialized
 # to have the very same variance.
 _WEIGHT_INIT_PARAM = {
-    ("normal", "he"): lambda dim_in, _: np.sqrt(2.0 / dim_in),
-    ("normal", "xavier"): lambda dim_in, _: np.sqrt(1.0 / (3.0 * dim_in)),
-    ("normal", "xavier_norm"): lambda dim_in, dim_out: np.sqrt(
-        2.0 / (dim_in + dim_out)
-    ),
-    ("uniform", "he"): lambda dim_in, _: np.sqrt(6.0 / dim_in),
-    ("uniform", "xavier"): lambda dim_in, _: np.sqrt(1.0 / dim_in),
-    ("uniform", "xavier_norm"): lambda dim_in, dim_out: np.sqrt(
-        6.0 / (dim_in + dim_out)
-    ),
+    "he": weight_init_param_he,
+    "xavier": weight_init_param_xavier,
+    "xavier_norm": weight_init_param_xavier_norm,
 }
 
 # Known rules of thumb:
@@ -56,17 +76,27 @@ _WEIGHT_INIT_PARAM = {
 
 
 def get_weight_init_dist_params(
-    std: t.Union[str, float], dist: str, shape: t.Union[int, int]
+    std: t.Union[str, float],
+    dist: str,
+    shape: t.Union[int, int],
+    dims: t.Optional[t.Tuple[int, int]] = None,
 ):
     if np.isreal(std):
+        assert dist == "normal"
         return float(std)
 
     assert dist in {"normal", "uniform"}
     assert not isinstance(std, str) or std in {"he", "xavier", "xavier_norm"}
 
-    dim_in, dim_out = shape
+    if dims is not None:
+        dim_in, dim_out = dims if hasattr(dims, "__len__") else (dims, dims)
 
-    param = _WEIGHT_INIT_PARAM[(dist, std)](dim_in, dim_out)
+    else:
+        dim_in, dim_out = shape
+
+    init_type = std
+
+    param = _WEIGHT_INIT_PARAM[init_type](dist, dim_in, dim_out)
 
     if dist == "normal":
         return param

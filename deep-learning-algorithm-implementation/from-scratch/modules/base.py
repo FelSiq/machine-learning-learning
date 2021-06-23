@@ -44,14 +44,16 @@ class Tensor:
             return Tensor(np.random.normal(mean, std, shape))
 
         if mode == "uniform":
-            std = kwargs.get("std")
+            init_type, dims = kwargs.get("std", (None, None))
 
-            if std is not None:
-                low, high = _utils.get_weight_init_dist_params(std, mode, shape)
+            if init_type is not None:
+                low, high = _utils.get_weight_init_dist_params(
+                    init_type, mode, shape, dims
+                )
 
             else:
-                low = kwargs.get("low", 0.0)
                 high = kwargs.get("high", 1.0)
+                low = kwargs.get("low", -high)
 
             return Tensor(np.random.uniform(low, high, shape))
 
@@ -164,17 +166,23 @@ class Linear(BaseLayer):
         dim_out: int,
         include_bias: bool = True,
         activation: t.Optional[t.Callable[[np.ndarray], np.ndarray]] = None,
-        weight_init_std: t.Union[str, float] = "he",
+        weight_init_std: t.Union[t.Tuple[str, str], float] = ("normal", "he"),
     ):
         assert dim_in > 0
         assert dim_out > 0
 
         super(Linear, self).__init__(trainable=True)
 
+        if hasattr(weight_init_std, "__len__"):
+            mode, std = weight_init_std
+
+        else:
+            mode, std = "normal", weight_init_std
+
         self.weights = Tensor.from_shape(
             shape=(dim_in, dim_out),
-            mode="normal",
-            std=weight_init_std,
+            mode=mode,
+            std=std,
         )
 
         self.bias = Tensor()
@@ -229,6 +237,7 @@ class MultiLinear(BaseLayer):
         dim_out: int,
         include_bias: bool = True,
         activation: t.Optional[t.Callable[[np.ndarray], np.ndarray]] = None,
+        weight_init_std: t.Union[t.Tuple[str, str], float] = ("normal", "xavier"),
     ):
         super(MultiLinear, self).__init__(trainable=True)
 
@@ -241,6 +250,7 @@ class MultiLinear(BaseLayer):
                 dim_out,
                 include_bias=(i == len(dims_in) and include_bias),
                 activation=None,
+                weight_init_std=weight_init_std,
             )
             for i, dim_in in enumerate(dims_in, 1)
         ]
