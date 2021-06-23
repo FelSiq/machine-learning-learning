@@ -33,6 +33,10 @@ class Tensor:
     def shape(self):
         return self.values.shape
 
+    @property
+    def ndim(self):
+        return self.values.ndim
+
     @staticmethod
     def from_shape(shape, mode: str = "normal", **kwargs):
         assert mode in {"normal", "uniform", "constant", "zeros"}
@@ -387,7 +391,7 @@ class Average(_BaseReduce):
     def __init__(self, axes: t.Optional[t.Tuple[int, ...]] = None):
         super(Average, self).__init__()
         self.sum = Sum()
-        self.register_layer * (self.sum)
+        self.register_layers(self.sum)
 
     def forward(self, X):
         self._store_in_cache(X.size)
