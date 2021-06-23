@@ -444,9 +444,9 @@ class Average(Sum):
 
         self._store_in_cache(inp_size)
 
-        out = super(Average, self).forward(X) / inp_size
+        avg = super(Average, self).forward(X) / inp_size
 
-        return out
+        return avg
 
     def backward(self, dout):
         dout = super(Average, self).backward(dout)
@@ -480,10 +480,12 @@ class StandardDeviation(BaseLayer):
     ):
         super(StandardDeviation, self).__init__()
         self.return_avg = bool(return_avg)
+
         self.avg = Average(axis=axis)
         self.square = Power(power=2)
-        self.register_layers(self.avg)
         self.sqrt = Power(power=0.5)
+
+        self.register_layers(self.avg, self.square, self.sqrt)
 
     def forward(self, X):
         avg = self.avg(X)
