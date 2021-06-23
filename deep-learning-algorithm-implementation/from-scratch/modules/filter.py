@@ -161,7 +161,7 @@ class LearnableFilter2d(_BaseFixedFilter):
         if reduce_layer is None:
             reduce_layer = base.Identity
 
-        self.reduce_layer = reduce_layer(axes=tuple(range(1, len(self.weights.shape))))
+        self.reduce_layer = reduce_layer(axis=tuple(range(1, len(self.weights.shape))))
 
         self.register_layers(self.reduce_layer)
 
@@ -183,11 +183,11 @@ class LearnableFilter2d(_BaseFixedFilter):
         dX = self.weights.values * dXtW
         dW = np.sum(X * dXtW, axis=0, keepdims=True)
 
-        self.weights.grads = dW
+        self.weights.update_grads(dW)
 
         if self.bias.size:
             db = np.expand_dims(np.sum(dout), 0)
-            self.bias.grads = db
+            self.bias.update_grads(db)
 
         return dX
 

@@ -182,7 +182,7 @@ class Embedding(base.BaseLayer):
         (orig_inds,) = self._pop_from_cache()
         d_emb = np.zeros_like(self.embedding.values)
         np.add.at(d_emb, orig_inds, dout)
-        self.embedding.grads = d_emb
+        self.embedding.update_grads(d_emb)
 
 
 class Bidirectional(base.BaseLayer):
