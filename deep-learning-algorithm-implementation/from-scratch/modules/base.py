@@ -160,6 +160,17 @@ class BaseModel(BaseComponent):
     pass
 
 
+class Identity(BaseLayer):
+    def __init__(self, *args, **kwargs):
+        pass
+
+    def forward(self, X):
+        return X
+
+    def backward(self, dout):
+        return dout
+
+
 class Linear(BaseLayer):
     def __init__(
         self,
@@ -347,3 +358,42 @@ class Multiply(BaseLayer):
         dX = Y * dout
         dY = X * dout
         return dX, dY
+
+
+class _BaseReduce(BaseLayer):
+    def __init__(self, axes: t.Optional[t.Tuple[int, ...]] = None):
+        super(_BaseReduce, self).__init__()
+        self.axes = tuple(axes) if axes is not None else None
+
+
+class Sum(_BaseReduce):
+    def forward(self, X):
+        self._store_in_cache(X.ndim)
+        return np.sum(X, axis=self.axes)
+
+    def backward(self, dout):
+        X_ndim = self._pop_from_cache()
+
+        if self.axes:
+            dout = np.expand_dims(dout, self.axes)
+
+        else:
+            dout = np.expand_dims(dout, list(range(1, X_ndim)))
+
+        return dout
+
+
+class Average(_BaseReduce):
+    def __init__(self, axes: t.Optional[t.Tuple[int, ...]] = None):
+        super(Average, self).__init__()
+        self.sum = Sum()
+        self.register_layer * (self.sum)
+
+    def forward(self, X):
+        self._store_in_cache(X.size)
+        return self.sum(X) / X.size
+
+    def backward(self, dout):
+        (inp_size,) = self._pop_from_cache()
+        dout = self.sum.backward(dout)
+        return dout / inp_size
