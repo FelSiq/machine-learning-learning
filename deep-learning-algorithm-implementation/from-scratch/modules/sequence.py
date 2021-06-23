@@ -37,7 +37,10 @@ class RNNCell(_BaseSequenceCell):
         super(RNNCell, self).__init__(dim_in, dim_hidden)
 
         self.linear = base.MultiLinear(
-            [dim_hidden, dim_in], dim_hidden, activation=activation.Tanh()
+            [dim_hidden, dim_in],
+            dim_hidden,
+            activation=activation.Tanh(),
+            weight_init_std=("uniform", ("xavier", self.dim_hidden)),
         )
 
         self.register_layers(self.linear)
@@ -56,14 +59,25 @@ class GRUCell(_BaseSequenceCell):
     def __init__(self, dim_in: int, dim_hidden: int):
         super(GRUCell, self).__init__(dim_in, dim_hidden)
 
+        weight_init_std = ("uniform", ("xavier", self.dim_hidden))
+
         self.lin_z = base.MultiLinear(
-            [dim_hidden, dim_in], dim_hidden, activation=activation.Sigmoid()
+            [dim_hidden, dim_in],
+            dim_hidden,
+            activation=activation.Sigmoid(),
+            weight_init_std=weight_init_std,
         )
         self.lin_r = base.MultiLinear(
-            [dim_hidden, dim_in], dim_hidden, activation=activation.Sigmoid()
+            [dim_hidden, dim_in],
+            dim_hidden,
+            activation=activation.Sigmoid(),
+            weight_init_std=weight_init_std,
         )
         self.lin_h = base.MultiLinear(
-            [dim_hidden, dim_in], dim_hidden, activation=activation.Tanh()
+            [dim_hidden, dim_in],
+            dim_hidden,
+            activation=activation.Tanh(),
+            weight_init_std=weight_init_std,
         )
 
         self.multiply = base.Multiply()
@@ -107,17 +121,31 @@ class LSTMCell(_BaseSequenceCell):
     def __init__(self, dim_in: int, dim_hidden: int):
         super(LSTMCell, self).__init__(dim_in, dim_hidden)
 
+        weight_init_std = ("uniform", ("xavier", self.dim_hidden))
+
         self.lin_i = base.MultiLinear(
-            [dim_hidden, dim_in], dim_hidden, activation=activation.Sigmoid()
+            [dim_hidden, dim_in],
+            dim_hidden,
+            activation=activation.Sigmoid(),
+            weight_init_std=weight_init_std,
         )
         self.lin_f = base.MultiLinear(
-            [dim_hidden, dim_in], dim_hidden, activation=activation.Sigmoid()
+            [dim_hidden, dim_in],
+            dim_hidden,
+            activation=activation.Sigmoid(),
+            weight_init_std=weight_init_std,
         )
         self.lin_o = base.MultiLinear(
-            [dim_hidden, dim_in], dim_hidden, activation=activation.Sigmoid()
+            [dim_hidden, dim_in],
+            dim_hidden,
+            activation=activation.Sigmoid(),
+            weight_init_std=weight_init_std,
         )
         self.lin_c = base.MultiLinear(
-            [dim_hidden, dim_in], dim_hidden, activation=activation.Tanh()
+            [dim_hidden, dim_in],
+            dim_hidden,
+            activation=activation.Tanh(),
+            weight_init_std=weight_init_std,
         )
 
         self.multiply = base.Multiply()
