@@ -133,6 +133,7 @@ class LearnableFilter2d(_BaseFixedFilter):
         dim_in: int,
         kernel_size: t.Union[int, t.Tuple[int, ...]],
         include_bias: bool = True,
+        reduce_layer: t.Optional[base.BaseComponent] = base.Sum,
     ):
         assert int(dim_in) > 0
 
@@ -142,31 +143,45 @@ class LearnableFilter2d(_BaseFixedFilter):
             kernel_size=kernel_size,
         )
 
-        self.weights = base.Tensor(np.random.randn(1, *self.kernel_size, int(dim_in)))
+        self.weights = base.Tensor.from_shape(
+            (1, *self.kernel_size, int(dim_in)),
+            mode="uniform",
+            std=("xavier", np.prod(self.kernel_size)),
+        )
         self.bias = base.Tensor()
 
         if include_bias:
-            self.bias = base.Tensor(np.zeros(1, dtype=float))
+            self.bias = base.Tensor.from_shape((1,), mode="zeros")
 
         self.parameters = (
             self.weights,
             self.bias,
         )
 
-        self._sum_axes = tuple(range(1, len(self.weights.shape)))
+        if reduce_layer is None:
+            reduce_layer = base.Identity
+
+        self.reduce_layer = reduce_layer(axes=tuple(range(1, len(self.weights.shape))))
+
+        self.register_layers(self.reduce_layer)
 
     def forward(self, X):
-        out = np.sum(X * self.weights.values, axis=self._sum_axes) + self.bias.values
+        out = self.reduce_layer(X * self.weights.values)
+
+        if self.bias.size:
+            out += self.bias.values
+
         self._store_in_cache(X)
+
         return out
 
     def backward(self, dout):
         (X,) = self._pop_from_cache()
 
-        dout = np.expand_dims(dout, self._sum_axes)
+        dXtW = self.reduce_layer.backward(dout)
 
-        dX = self.weights.values * dout
-        dW = np.sum(X * dout, axis=0, keepdims=True)
+        dX = self.weights.values * dXtW
+        dW = np.sum(X * dXtW, axis=0, keepdims=True)
 
         self.weights.grads = dW
 
@@ -344,6 +359,10 @@ class Conv2d(_BaseConv):
             dout_b = self.crop_center(dout_b, input_shape)
 
         return dout_b
+
+
+class ConvTranspose2d(_BaseConv):
+    pass
 
 
 class _Pool2d(_BaseMovingFilter):
