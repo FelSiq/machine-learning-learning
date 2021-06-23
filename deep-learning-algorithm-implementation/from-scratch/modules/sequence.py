@@ -168,7 +168,9 @@ class Embedding(base.BaseLayer):
 
         super(Embedding, self).__init__(trainable=True)
 
-        self.embedding = base.Tensor(np.random.random((num_tokens, dim_embedding)))
+        self.embedding = base.Tensor.from_shape(
+            (num_tokens, dim_embedding), mode="normal"
+        )
         self.parameters = (self.embedding,)
 
     def forward(self, X):
@@ -178,7 +180,6 @@ class Embedding(base.BaseLayer):
 
     def backward(self, dout):
         (orig_inds,) = self._pop_from_cache()
-        dout = self.embedding.values[orig_inds, :] * dout
         d_emb = np.zeros_like(self.embedding.values)
         np.add.at(d_emb, orig_inds, dout)
         self.embedding.grads = d_emb
