@@ -227,15 +227,16 @@ def _test_nlp():
         dim_hidden=64,
         dim_out=1,
         bidirectional=True,
-        num_layers=2,
+        num_layers=1,
         cell_type=GRU,
     )
 
     criterion = losses.BCELoss(with_logits=True)
     optim = optimizers.Nadam(
         model.parameters,
-        learning_rate=5e-2,
-        demon_min_mom=0.2,
+        learning_rate=5e-3,
+        clip_grad_val=0.1,
+        demon_min_mom=0.1,
         demon_iter_num=train_epochs * (len(X_train)) / batch_size,
     )
 
@@ -325,7 +326,7 @@ def _test_forecasting():
     )
 
     criterion = losses.MSELoss()
-    optim = optimizers.Nadam(model.parameters, learning_rate=1e-1)
+    optim = optimizers.Nadam(model.parameters, learning_rate=1e-2, clip_grad_val=0.1)
 
     batch_inds = np.arange(len(X_train))
 
@@ -337,6 +338,8 @@ def _test_forecasting():
         X_train = X_train[batch_inds, :]
 
         for start in tqdm.auto.tqdm(np.arange(0, len(X_train), batch_size)):
+            optim.zero_grad()
+
             end = start + batch_size
 
             y_batch = X_train[start:end, 1:].T
@@ -372,4 +375,4 @@ def _test_forecasting():
 
 if __name__ == "__main__":
     _test_nlp()
-    # _test_forecasting()
+    _test_forecasting()

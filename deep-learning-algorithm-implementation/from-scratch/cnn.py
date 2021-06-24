@@ -117,7 +117,9 @@ def _test():
     model = CNN(channels_num, kernel_sizes, linear_dims, padding=padding)
     criterion = losses.CrossEntropyLoss()
 
-    optim = optimizers.RMSProp(model.parameters, learning_rate=learning_rate, clip_grad_val=0.1)
+    optim = optimizers.RMSProp(
+        model.parameters, learning_rate=learning_rate, clip_grad_val=0.1
+    )
 
     inds = np.arange(X_train.shape[0])
 
