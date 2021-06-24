@@ -146,7 +146,7 @@ class LearnableFilter2d(_BaseFixedFilter):
         self.weights = base.Tensor.from_shape(
             (1, *self.kernel_size, int(dim_in)),
             mode="uniform",
-            std=("xavier", float(np.prod(self.kernel_size))),
+            std=("xavier", float(dim_in * np.prod(self.kernel_size))),
         )
         self.bias = base.Tensor()
 
