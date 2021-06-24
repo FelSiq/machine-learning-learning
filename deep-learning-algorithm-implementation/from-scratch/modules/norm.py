@@ -55,11 +55,11 @@ class Standardization(base.BaseLayer):
 
         super(Standardization, self).__init__()
 
-        self.axis = axis
         self.return_train_stats = bool(return_train_stats)
         self.eps = float(eps)
 
-        self.std_and_avg = base.StandardDeviation(axis=self.axis, return_avg=True)
+        self.std_and_avg = base.StandardDeviation(axis=axis, return_avg=True)
+        self.axis = self.std_and_avg.axis
         self.divide = base.Divide()
 
         self.register_layers(self.std_and_avg, self.divide)
@@ -85,8 +85,7 @@ class Standardization(base.BaseLayer):
         if self.moving_avg_stats is not None:
             self.moving_avg_stats.update([avg, std])
 
-        X_centered = X - avg
-        X_norm = self.divide(X_centered, std + self.eps)
+        X_norm = self.divide(X - avg, std + self.eps)
 
         if self.return_train_stats:
             return X_norm, avg, std
@@ -94,10 +93,10 @@ class Standardization(base.BaseLayer):
         return X_norm
 
     def backward(self, dout):
-        d_X_centered, d_std = self.divide.backward(dout)
+        dX_centered, d_std = self.divide.backward(dout)
 
-        dX_a = d_X_centered
-        d_avg_extern = -d_X_centered
+        dX_a = dX_centered
+        d_avg_extern = -dX_centered
 
         dX_b = self.std_and_avg.backward(d_std, d_avg_extern)
 
@@ -111,13 +110,14 @@ class BatchNorm1d(_BaseNorm):
         self,
         dim_in: int,
         affine: bool = True,
+        moving_avg_stats: bool = True,
         momentum: float = 0.9,
     ):
         super(BatchNorm1d, self).__init__(
             dim_in=dim_in,
             scale_shape=dim_in,
             standardization_axis=0,
-            moving_avg_shape=dim_in,
+            moving_avg_shape=dim_in if moving_avg_stats else None,
             affine=affine,
             momentum=momentum,
         )
