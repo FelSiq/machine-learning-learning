@@ -214,6 +214,8 @@ class Bidirectional(base.BaseLayer):
         douts_l_to_r = self.rnn_l_to_r.backward(douts[..., : self.dim_hidden])
         douts_r_to_l = self.rnn_r_to_l.backward(douts[..., self.dim_hidden :])
 
+        douts_r_to_l = douts_r_to_l[::-1, ...]
+
         douts_X = douts_l_to_r + douts_r_to_l
 
         return douts_X
