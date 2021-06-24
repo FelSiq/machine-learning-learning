@@ -82,22 +82,22 @@ class GRUCell(_BaseSequenceCell):
         self._prepare_hidden_state(X)
         z = self.lin_z(self.hidden_state, X)
         r = self.lin_r(self.hidden_state, X)
-        r_cs = self.multiply(r, self.hidden_state)
-        h = self.lin_h(r_cs, X)
+        cs_r = self.multiply(self.hidden_state, r)
+        h = self.lin_h(cs_r, X)
         self.hidden_state = self.weighted_avg(self.hidden_state, h, z)
         return self.hidden_state
 
     def backward(self, dout):
-        d_hidden_state, dh, dz = self.weighted_avg.backward(dout)
+        d_h_avg, dh, dz = self.weighted_avg.backward(dout)
 
-        dr_cs, dXh = self.lin_h.backward(dh)
+        dcsr, dXh = self.lin_h.backward(dh)
 
-        dr, dhh = self.multiply.backward(dr_cs)
+        dhh, dr = self.multiply.backward(dcsr)
 
         dhr, dXr = self.lin_r.backward(dr)
         dhz, dXz = self.lin_z.backward(dz)
 
-        dh = dhz + dhr + dhh
+        dh = dhz + dhr + dhh + d_h_avg
         dX = dXz + dXr + dXh
 
         return dh, dX
