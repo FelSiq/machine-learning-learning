@@ -128,6 +128,11 @@ class BaseComponent:
     def copy(self):
         return copy.deepcopy(self)
 
+    @property
+    def size(self):
+        total_params = sum(p.size for p in self.parameters)
+        return total_params
+
 
 class MovingAverage(BaseComponent):
     def __init__(
