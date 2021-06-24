@@ -42,6 +42,10 @@ class _BaseOptim:
         for param in self.parameters:
             np.clip(param.grads, -v, v, out=param.grads)
 
+    def zero_grad(self):
+        for param in self.parameters:
+            param.zero_grad()
+
 
 class Demon:
     """Decaying momentum.

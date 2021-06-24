@@ -89,6 +89,8 @@ def _test():
         np.random.shuffle(X)
 
         for start in tqdm.auto.tqdm(np.arange(0, n, batch_size)):
+            optim.zero_grad()
+
             end = start + batch_size
             X_batch = X_train[start:end, :]
 
