@@ -7,12 +7,19 @@ from . import _utils
 
 
 class Tensor:
-    def __init__(self, values: t.Optional[np.ndarray] = None):
+    def __init__(
+        self, values: t.Optional[np.ndarray] = None, require_grads: bool = True
+    ):
         if values is None:
             values = np.empty(0, dtype=float)
 
         self.values = np.asfarray(values)
-        self.grads = np.empty(0, dtype=float)
+
+        self.grads = None
+
+        if require_grads:
+            self.grads = np.zeros_like(self.values, dtype=float)
+
         self.frozen = False
 
     def step(self):
@@ -21,9 +28,12 @@ class Tensor:
 
         self.values -= self.grads
 
+    def zero_grad(self):
+        self.grads *= 0.0
+
     def update_grads(self, grads):
         assert grads.shape == self.values.shape, str(self)
-        self.grads = grads
+        self.grads += grads
 
     def update_and_step(self, grads):
         self.update_grads(grads)
@@ -132,6 +142,10 @@ class BaseComponent:
     def size(self):
         total_params = sum(p.size for p in self.parameters)
         return total_params
+
+    def zero_grad(self):
+        for param in self.parameters:
+            param.zero_grad()
 
 
 class MovingAverage(BaseComponent):
@@ -501,7 +515,7 @@ class StandardDeviation(BaseLayer):
 
         self.return_avg = bool(return_avg)
 
-        self.avg = Average(axis=axis)
+        self.avg = Average(axis=axis, enforce_batch_dim=False)
         self.square = Power(power=2)
         self.sqrt = Power(power=0.5)
 
