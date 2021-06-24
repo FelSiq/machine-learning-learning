@@ -26,9 +26,10 @@ class CNN(modules.BaseModel):
                             channels_in=channels_num[i - 1],
                             channels_out=channels_num[i],
                             kernel_size=kernel_sizes[i - 1],
-                            activation=modules.ReLU(inplace=True),
+                            activation=None,
                             padding_type=padding,
                         ),
+                        modules.ReLU(inplace=True),
                         modules.SpatialDropout(drop_prob=0.3, inplace=True),
                     ]
                     for i in range(1, len(channels_num))
@@ -39,8 +40,10 @@ class CNN(modules.BaseModel):
                         modules.Linear(
                             linear_dims[i - 1],
                             linear_dims[i],
-                            activation=modules.ReLU(inplace=True),
+                            activation=None,
+                            include_bias=False,
                         ),
+                        modules.ReLU(inplace=True),
                         modules.Dropout(drop_prob=0.3, inplace=True),
                     ]
                     for i in range(1, len(linear_dims) - 1)
@@ -71,14 +74,19 @@ def _test():
 
     eval_size = 128
     test_size = 128
-    batch_size = 32
-    train_epochs = 5
-    learning_rate = 1e-3
+    batch_size = 64
+    train_epochs = 10
+    learning_rate = 1e-4
     padding = "valid"
 
-    channels_num = (1, 32, 16)
+    channels_num = (1, 32, 32)
     kernel_sizes = (2, 2) if padding == "valid" else (3, 3)
-    linear_dims = (576, 128, 10) if padding == "valid" else (1024, 128, 10)
+
+    linear_dims = (
+        (6 * 6 * channels_num[-1], 128, 10)
+        if padding == "valid"
+        else (8 * 8 * channels_num[-1], 128, 10)
+    )
 
     X, y = sklearn.datasets.load_digits(return_X_y=True)
     X = X.reshape(-1, 8, 8, 1)
@@ -97,8 +105,10 @@ def _test():
     y_eval, y_train = y[:eval_size], y[eval_size:]
 
     X_train_max = np.max(X_train)
-    X_eval /= X_train_max
+
     X_train /= X_train_max
+    X_eval /= X_train_max
+    X_test /= X_train_max
 
     print("Train shape :", X_train.shape)
     print("Eval shape  :", X_eval.shape)
@@ -106,7 +116,8 @@ def _test():
     n = X_train.shape[0]
     model = CNN(channels_num, kernel_sizes, linear_dims, padding=padding)
     criterion = losses.CrossEntropyLoss()
-    optim = optimizers.Nadam(model.parameters, learning_rate=learning_rate)
+
+    optim = optimizers.RMSProp(model.parameters, learning_rate=learning_rate, clip_grad_val=0.1)
 
     inds = np.arange(X_train.shape[0])
 
@@ -119,6 +130,8 @@ def _test():
         y_train = y_train[inds]
 
         for start in tqdm.auto.tqdm(np.arange(0, n, batch_size)):
+            optim.zero_grad()
+
             end = start + batch_size
             X_batch = X_train[start:end, :]
             y_batch = y_train[start:end]
