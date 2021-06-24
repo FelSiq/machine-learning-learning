@@ -338,7 +338,7 @@ class Reshape(BaseLayer):
 
     def forward(self, X):
         self._store_in_cache(X.shape)
-        return X.reshape(-1, self.out_shape)
+        return X.reshape(self.out_shape)
 
     def backward(self, dout):
         (shape,) = self._pop_from_cache()
@@ -513,3 +513,14 @@ class StandardDeviation(BaseLayer):
         dX = dX_a + dX_b
 
         return dX
+
+
+class Exp(BaseLayer):
+    def forward(self, X):
+        out = np.exp(X)
+        self._store_in_cache(out)
+        return out
+
+    def backward(self, dout):
+        (out,) = self._pop_from_cache()
+        return out * dout
