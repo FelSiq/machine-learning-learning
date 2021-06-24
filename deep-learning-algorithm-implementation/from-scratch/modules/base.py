@@ -155,7 +155,7 @@ class MovingAverage(BaseComponent):
         momentum: float = 0.9,
         init_const: float = 0.0,
     ):
-        assert 1.0 > float(momentum) > 0.0
+        assert 0.0 <= float(momentum) <= 1.0
         self.m = float(momentum)
         self.stat = np.full(stat_shape, fill_value=init_const, dtype=float)
 
@@ -168,6 +168,10 @@ class MovingAverage(BaseComponent):
 
     def __iter__(self):
         return iter(self.stat)
+
+    @property
+    def shape(self):
+        return self.stat.shape
 
 
 class BaseLayer(BaseComponent):
@@ -430,7 +434,7 @@ class _BaseReduce(BaseLayer):
         self,
         axis: t.Optional[t.Tuple[int, ...]] = None,
         enforce_batch_dim: bool = True,
-        squeeze_dims: bool = False,
+        keepdims: bool = True,
     ):
         super(_BaseReduce, self).__init__()
 
@@ -441,16 +445,13 @@ class _BaseReduce(BaseLayer):
             self.axis = tuple(axis) if axis is not None else None
 
         self.enforce_batch_dim = bool(enforce_batch_dim)
-        self.squeeze_dims = bool(squeeze_dims)
+        self.keepdims = bool(keepdims)
 
 
 class Sum(_BaseReduce):
     def forward(self, X):
         self._store_in_cache(X.shape)
-        out = np.sum(X, axis=self.axis)
-
-        if self.squeeze_dims:
-            out = np.squeeze(out)
+        out = np.sum(X, axis=self.axis, keepdims=self.keepdims)
 
         if self.enforce_batch_dim and out.ndim == 1:
             out = out.reshape(-1, 1)
@@ -515,7 +516,7 @@ class StandardDeviation(BaseLayer):
 
         self.return_avg = bool(return_avg)
 
-        self.avg = Average(axis=axis, enforce_batch_dim=False)
+        self.avg = Average(axis=axis, enforce_batch_dim=False, keepdims=True)
         self.square = Power(power=2)
         self.sqrt = Power(power=0.5)
 

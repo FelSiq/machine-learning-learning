@@ -163,7 +163,7 @@ class LearnableFilter2d(_BaseFixedFilter):
         self.reduce_layer = reduce_layer(
             axis=tuple(range(1, len(self.weights.shape))),
             enforce_batch_dim=False,
-            squeeze_dims=True,
+            keepdims=False,
         )
 
         self.multiply = base.Multiply()
