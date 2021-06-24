@@ -75,7 +75,7 @@ class _BaseNorm(base.BaseLayer):
     def __init__(
         self,
         dim_in: int,
-        scale_shape: t.Tuple[int, ...],
+        affine_shape: t.Tuple[int, ...],
         affine: bool,
         standardization_axis: int,
         moving_avg_shape: t.Optional[t.Tuple[int, ...]] = None,
@@ -90,8 +90,8 @@ class _BaseNorm(base.BaseLayer):
         self.affine = bool(affine)
 
         if self.affine:
-            self.gamma = base.Tensor.from_shape(scale_shape, mode="constant", value=1)
-            self.beta = base.Tensor.from_shape(scale_shape, mode="zeros")
+            self.gamma = base.Tensor.from_shape(affine_shape, mode="constant", value=1)
+            self.beta = base.Tensor.from_shape(affine_shape, mode="zeros")
 
             self.parameters = (
                 self.gamma,
@@ -145,7 +145,7 @@ class BatchNorm1d(_BaseNorm):
     ):
         super(BatchNorm1d, self).__init__(
             dim_in=dim_in,
-            scale_shape=(1, dim_in),
+            affine_shape=(1, dim_in),
             standardization_axis=0,
             moving_avg_shape=dim_in if moving_avg_stats else None,
             affine=affine,
@@ -163,7 +163,7 @@ class BatchNorm2d(_BaseNorm):
     ):
         super(BatchNorm2d, self).__init__(
             dim_in=dim_in,
-            scale_shape=(1, 1, 1, dim_in),
+            affine_shape=(1, 1, 1, dim_in),
             standardization_axis=(0, 1, 2),
             moving_avg_shape=(1, 1, 1, dim_in) if moving_avg_stats else None,
             affine=affine,
@@ -177,46 +177,63 @@ class GroupNorm2d(_BaseNorm):
         dim_in: int,
         num_groups: int,
         affine: bool = True,
-        momentum: float = 0.9,
+        affine_shape: t.Optional[t.Tuple[int, ...]] = None,
     ):
         assert int(num_groups) > 0
 
         self.num_groups = int(num_groups)
+        self.dim_per_group = int(dim_in) // self.num_groups
+
+        affine_shape = (
+            (1, *affine_shape)
+            if affine_shape is not None
+            else (1, 1, 1, self.num_groups, self.dim_per_group)
+        )
 
         super(GroupNorm2d, self).__init__(
             dim_in=dim_in,
-            scale_shape=(1, 1, 1, self.num_groups, dim_in // self.num_groups),
+            affine_shape=affine_shape,
             standardization_axis=(1, 2, 3),
             moving_avg_shape=None,
             affine=affine,
-            momentum=momentum,
         )
 
         self._grad_sum_axis = (0, 1, 2)
 
     def forward(self, X):
         inp_shape = X.shape
-        (dim_b, dim_h, dim_w, dim_c) = inp_shape
-        X = X.reshape(dim_b, dim_h, dim_w, self.num_groups, dim_c // self.num_groups)
+        X = X.reshape(*inp_shape[:-1], self.num_groups, self.dim_per_group)
         out = super(GroupNorm2d, self).forward(X)
         out = out.reshape(inp_shape)
-        self._store_in_cache(inp_shape)
         return out
 
     def backward(self, dout):
-        (inp_shape,) = self._pop_from_cache()
-        (dim_b, dim_h, dim_w, dim_c) = dout.shape
-        dout = dout.reshape(
-            dim_b, dim_h, dim_w, self.num_groups, dim_c // self.num_groups
-        )
+        shape = dout.shape
+        dout = dout.reshape(*dout.shape[:-1], self.num_groups, self.dim_per_group)
         dout = super(GroupNorm2d, self).backward(dout)
-        dout = dout.reshape(inp_shape)
+        dout = dout.reshape(shape)
         return dout
 
 
-class InstanceNorm2d(_BaseNorm):
-    pass
+class InstanceNorm2d(GroupNorm2d):
+    def __init__(self, dim_in: int, affine: bool = True):
+        super(InstanceNorm2d, self).__init__(
+            dim_in=dim_in,
+            num_groups=dim_in,
+            affine=affine,
+        )
 
 
-class LayerNorm2d(_BaseNorm):
-    pass
+class LayerNorm2d(GroupNorm2d):
+    def __init__(self, input_shape: t.Tuple[int, ...], affine: bool = True):
+        dim_in = input_shape[-1]
+        dims_spatial = input_shape[:-1]
+
+        super(LayerNorm2d, self).__init__(
+            dim_in=dim_in,
+            num_groups=1,
+            affine=affine,
+            affine_shape=(*dims_spatial, 1, dim_in),
+        )
+
+        self._grad_sum_axis = (0,)
