@@ -197,7 +197,7 @@ class BaseModel(BaseComponent):
 
 class Identity(BaseLayer):
     def __init__(self, *args, **kwargs):
-        pass
+        super(Identity, self).__init__()
 
     def forward(self, X):
         return X
@@ -447,15 +447,14 @@ class Average(Sum):
         else:
             inp_size = X.size
 
-        self._store_in_cache(inp_size)
-
         avg = super(Average, self).forward(X) / inp_size
+        self._store_in_cache(inp_size)
 
         return avg
 
     def backward(self, dout):
-        dout = super(Average, self).backward(dout)
         (inp_size,) = self._pop_from_cache()
+        dout = super(Average, self).backward(dout)
         dout = dout / inp_size
         return dout
 
@@ -484,6 +483,7 @@ class StandardDeviation(BaseLayer):
         return_avg: bool = False,
     ):
         super(StandardDeviation, self).__init__()
+
         self.return_avg = bool(return_avg)
 
         self.avg = Average(axis=axis)
@@ -491,6 +491,8 @@ class StandardDeviation(BaseLayer):
         self.sqrt = Power(power=0.5)
 
         self.register_layers(self.avg, self.square, self.sqrt)
+
+        self.axis = self.avg.axis
 
     def forward(self, X):
         avg = self.avg(X)
@@ -504,13 +506,12 @@ class StandardDeviation(BaseLayer):
     def backward(self, dout, d_avg_extern=None):
         dout = self.sqrt.backward(dout)
         dout = self.avg.backward(dout)
+        dX_centered = self.square.backward(dout)
 
-        d_X_centered = self.square.backward(dout)
+        dX_a = dX_centered
+        d_avg = -dX_centered
 
-        dX_a = d_X_centered
-        d_avg = -d_X_centered
-
-        if d_avg is not None:
+        if d_avg_extern is not None:
             d_avg += d_avg_extern
 
         dX_b = self.avg.backward(d_avg)
