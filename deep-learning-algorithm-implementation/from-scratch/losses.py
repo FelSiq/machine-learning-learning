@@ -29,9 +29,12 @@ class MSELoss(_BaseLoss):
 
 
 class BCELoss(_BaseLoss):
-    def __init__(self, average: bool = True, with_logits: bool = False):
+    def __init__(
+        self, average: bool = True, with_logits: bool = False, eps: float = 1e-7
+    ):
         super(BCELoss, self).__init__(average)
         self.sigmoid = modules.Sigmoid() if bool(with_logits) else None
+        self.eps = float(eps)
 
     def __call__(self, y, y_preds):
         y = y.reshape(y_preds.shape)
@@ -42,10 +45,11 @@ class BCELoss(_BaseLoss):
             y_preds = self.sigmoid.forward(y_preds)
 
         bce_loss = -float(
-            np.sum(np.log(y_preds[pos_inds])) + np.sum(np.log(1.0 - y_preds[~pos_inds]))
+            np.sum(np.log(self.eps + y_preds[pos_inds]))
+            + np.sum(np.log(self.eps + 1.0 - y_preds[~pos_inds]))
         )
 
-        grads = (y_preds - y) / (y_preds * (1.0 - y_preds))
+        grads = (y_preds - y) / (self.eps + y_preds * (1.0 - y_preds))
 
         if self.average:
             bce_loss /= y.size
