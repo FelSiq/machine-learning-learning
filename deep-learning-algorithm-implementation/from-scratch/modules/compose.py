@@ -21,3 +21,12 @@ class Sequential(base.BaseLayer):
             dout = layer.backward(dout)
 
         return dout
+
+    def __getitem__(self, i):
+        return self.layers[i]
+
+    def __len__(self):
+        return len(self.layers)
+
+    def __iter__(self):
+        return iter(self.layers)
