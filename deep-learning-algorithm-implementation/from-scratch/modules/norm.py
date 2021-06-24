@@ -110,6 +110,7 @@ class _BaseNorm(base.BaseLayer):
         self.register_layers(self.multiply, self.standardization)
 
         self.standardization_axis = self.standardization.axis
+        self._grad_sum_axis = self.standardization_axis
 
     def forward(self, X):
         out = self.standardization(X)
@@ -121,10 +122,10 @@ class _BaseNorm(base.BaseLayer):
 
     def backward(self, dout):
         if self.affine:
-            dbeta = np.sum(dout, axis=self.standardization_axis, keepdims=True)
+            dbeta = np.sum(dout, axis=self._grad_sum_axis, keepdims=True)
 
             dout, dgamma = self.multiply.backward(dout)
-            dgamma = np.sum(dgamma, axis=self.standardization_axis, keepdims=True)
+            dgamma = np.sum(dgamma, axis=self._grad_sum_axis, keepdims=True)
 
             self.gamma.update_grads(dgamma)
             self.beta.update_grads(dbeta)
@@ -180,16 +181,18 @@ class GroupNorm2d(_BaseNorm):
     ):
         assert int(num_groups) > 0
 
+        self.num_groups = int(num_groups)
+
         super(GroupNorm2d, self).__init__(
             dim_in=dim_in,
-            scale_shape=(1, 1, 1, dim_in, 1),
+            scale_shape=(1, 1, 1, self.num_groups, dim_in // self.num_groups),
             standardization_axis=(1, 2, 3),
             moving_avg_shape=None,
             affine=affine,
             momentum=momentum,
         )
 
-        self.num_groups = int(num_groups)
+        self._grad_sum_axis = (0, 1, 2)
 
     def forward(self, X):
         inp_shape = X.shape
@@ -197,16 +200,17 @@ class GroupNorm2d(_BaseNorm):
         X = X.reshape(dim_b, dim_h, dim_w, self.num_groups, dim_c // self.num_groups)
         out = super(GroupNorm2d, self).forward(X)
         out = out.reshape(inp_shape)
+        self._store_in_cache(inp_shape)
         return out
 
     def backward(self, dout):
-        dout_shape = dout.shape
-        (dim_b, dim_h, dim_w, dim_c) = dout_shape
+        (inp_shape,) = self._pop_from_cache()
+        (dim_b, dim_h, dim_w, dim_c) = dout.shape
         dout = dout.reshape(
             dim_b, dim_h, dim_w, self.num_groups, dim_c // self.num_groups
         )
         dout = super(GroupNorm2d, self).backward(dout)
-        dout.reshape(dout_shape)
+        dout = dout.reshape(inp_shape)
         return dout
 
 
