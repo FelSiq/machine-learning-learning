@@ -161,7 +161,11 @@ class LearnableFilter2d(_BaseFixedFilter):
         if reduce_layer is None:
             reduce_layer = base.Identity
 
-        self.reduce_layer = reduce_layer(axis=tuple(range(1, len(self.weights.shape))))
+        self.reduce_layer = reduce_layer(
+            axis=tuple(range(1, len(self.weights.shape))),
+            enforce_batch_dim=False,
+            squeeze_dims=True,
+        )
 
         self.multiply = base.Multiply()
         self.register_layers(self.reduce_layer, self.multiply)
@@ -214,6 +218,9 @@ class MaxFilter2d(_BaseFixedFilter):
         max_indices = np.argmax(X, axis=1)
         out = np.take_along_axis(X, np.expand_dims(max_indices, 1), axis=1)
         out = np.squeeze(out)
+
+        if out.ndim == 1:
+            out = np.expand_dims(out, -1)
 
         self._store_in_cache(max_indices, input_shape)
 
