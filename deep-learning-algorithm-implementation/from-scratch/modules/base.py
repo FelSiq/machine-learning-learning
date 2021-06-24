@@ -412,7 +412,12 @@ class Divide(BaseLayer):
 
 
 class _BaseReduce(BaseLayer):
-    def __init__(self, axis: t.Optional[t.Tuple[int, ...]] = None):
+    def __init__(
+        self,
+        axis: t.Optional[t.Tuple[int, ...]] = None,
+        enforce_batch_dim: bool = True,
+        squeeze_dims: bool = False,
+    ):
         super(_BaseReduce, self).__init__()
 
         if axis is not None and not hasattr(axis, "__len__"):
@@ -421,11 +426,21 @@ class _BaseReduce(BaseLayer):
         else:
             self.axis = tuple(axis) if axis is not None else None
 
+        self.enforce_batch_dim = bool(enforce_batch_dim)
+        self.squeeze_dims = bool(squeeze_dims)
+
 
 class Sum(_BaseReduce):
     def forward(self, X):
         self._store_in_cache(X.shape)
         out = np.sum(X, axis=self.axis)
+
+        if self.squeeze_dims:
+            out = np.squeeze(out)
+
+        if self.enforce_batch_dim and out.ndim == 1:
+            out = out.reshape(-1, 1)
+
         return out
 
     def backward(self, dout):
