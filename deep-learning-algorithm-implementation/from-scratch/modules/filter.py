@@ -152,11 +152,10 @@ class LearnableFilter2d(_BaseFixedFilter):
 
         if include_bias:
             self.bias = base.Tensor.from_shape((1,), mode="zeros")
+            self.parameters = (self.weights, self.bias)
 
-        self.parameters = (
-            self.weights,
-            self.bias,
-        )
+        else:
+            self.parameters = (self.weights,)
 
         if reduce_layer is None:
             reduce_layer = base.Identity
