@@ -167,14 +167,15 @@ class LearnableFilter2d(_BaseFixedFilter):
         )
 
         self.multiply = base.Multiply()
-        self.register_layers(self.reduce_layer, self.multiply)
+        self.add = base.Add()
+        self.register_layers(self.reduce_layer, self.multiply, self.add)
 
     def forward(self, X):
         out = self.multiply(X, self.weights.values)
         out = self.reduce_layer(out)
 
         if self.bias.size:
-            out += self.bias.values
+            out = self.add(out, self.bias.values)
 
         self._store_in_cache(X)
 
@@ -184,13 +185,12 @@ class LearnableFilter2d(_BaseFixedFilter):
         (X,) = self._pop_from_cache()
 
         if self.bias.size:
-            db = np.expand_dims(np.sum(dout), 0)
+            dout, db = self.add.backward(dout)
             self.bias.update_grads(db)
 
         dout = self.reduce_layer.backward(dout)
         dX, dW = self.multiply.backward(dout)
 
-        dW = np.sum(dW, axis=0, keepdims=True)
         self.weights.update_grads(dW)
 
         return dX
@@ -235,36 +235,6 @@ class MaxFilter2d(_BaseFixedFilter):
         dout_b = max_indices == np.arange(h_dim * w_dim).reshape(1, -1, 1)
         dout = np.expand_dims(dout, (1, 2))
         dout_b = dout_b.astype(float, copy=False).reshape(input_shape) * dout
-
-        return dout_b
-
-
-class AvgFilter2d(_BaseFixedFilter):
-    def __init__(self, kernel_size: t.Union[int, t.Tuple[int, ...]]):
-        super(AvgFilter2d, self).__init__(
-            kernel_size=kernel_size,
-            num_spatial_dims=2,
-            trainable=False,
-        )
-
-    def forward(self, X):
-        input_shape = X.shape
-
-        _, h_dim, w_dim, d_dim = input_shape
-        X = X.reshape(-1, h_dim * w_dim, d_dim)
-        out = np.mean(X, axis=1)
-
-        self._store_in_cache(input_shape)
-
-        return out
-
-    def backward(self, dout):
-        (input_shape,) = self._pop_from_cache()
-
-        _, h_dim, w_dim, _ = input_shape
-
-        dout = np.expand_dims(dout, (1, 2))
-        dout_b = np.full(fill_value=1.0 / (h_dim * w_dim), shape=input_shape) * dout
 
         return dout_b
 
@@ -456,7 +426,7 @@ class AvgPool2d(_Pool2d):
     ):
         super(AvgPool2d, self).__init__(
             trainable=False,
-            filter_=AvgFilter2d(kernel_size=kernel_size),
+            filter_=base.Average(axis=(1, 2), keepdims=False),
             kernel_size=kernel_size,
             stride=stride,
         )
