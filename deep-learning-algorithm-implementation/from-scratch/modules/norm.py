@@ -96,8 +96,6 @@ class _BaseNorm(base.BaseLayer):
                 self.beta,
             )
 
-            self._grad_sum_axis = tuple(i for i, s in enumerate(affine_shape) if s == 1)
-
         self.standardization = Standardization(
             axis=standardization_axis,
             moving_avg_shape=moving_avg_shape,
@@ -105,10 +103,10 @@ class _BaseNorm(base.BaseLayer):
             eps=eps,
         )
 
-        self.multiply = base.Multiply()
+        self.mult = base.Multiply()
         self.add = base.Add()
 
-        self.register_layers(self.multiply, self.standardization, self.add)
+        self.register_layers(self.mult, self.standardization, self.add)
 
         self.standardization_axis = self.standardization.axis
 
@@ -116,7 +114,7 @@ class _BaseNorm(base.BaseLayer):
         out = self.standardization(X)
 
         if self.affine:
-            out = self.multiply(out, self.gamma.values)
+            out = self.mult(out, self.gamma.values)
             out = self.add(out, self.beta.values)
 
         return out
@@ -124,10 +122,7 @@ class _BaseNorm(base.BaseLayer):
     def backward(self, dout):
         if self.affine:
             dout, dbeta = self.add.backward(dout)
-            dbeta = np.sum(dout, axis=self._grad_sum_axis, keepdims=True)
-
-            dout, dgamma = self.multiply.backward(dout)
-            dgamma = np.sum(dgamma, axis=self._grad_sum_axis, keepdims=True)
+            dout, dgamma = self.mult.backward(dout)
 
             self.gamma.update_grads(dgamma)
             self.beta.update_grads(dbeta)

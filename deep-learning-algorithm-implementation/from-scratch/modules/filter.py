@@ -166,12 +166,12 @@ class LearnableFilter2d(_BaseFixedFilter):
             keepdims=False,
         )
 
-        self.multiply = base.Multiply()
+        self.mult = base.Multiply()
         self.add = base.Add()
-        self.register_layers(self.reduce_layer, self.multiply, self.add)
+        self.register_layers(self.reduce_layer, self.mult, self.add)
 
     def forward(self, X):
-        out = self.multiply(X, self.weights.values)
+        out = self.mult(X, self.weights.values)
         out = self.reduce_layer(out)
 
         if self.bias.size:
@@ -189,7 +189,7 @@ class LearnableFilter2d(_BaseFixedFilter):
             self.bias.update_grads(db)
 
         dout = self.reduce_layer.backward(dout)
-        dX, dW = self.multiply.backward(dout)
+        dX, dW = self.mult.backward(dout)
 
         self.weights.update_grads(dW)
 
