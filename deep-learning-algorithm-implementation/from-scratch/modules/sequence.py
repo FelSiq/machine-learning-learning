@@ -121,6 +121,7 @@ class LSTMCell(_BaseSequenceCell):
         )
 
         self.multiply = base.Multiply()
+        self.add = base.Add()
         self.tanh = activation.Tanh()
 
         self.register_layers(
@@ -130,25 +131,34 @@ class LSTMCell(_BaseSequenceCell):
             self.lin_c,
             self.multiply,
             self.tanh,
+            self.add,
         )
 
     def forward(self, X):
         self._prepare_hidden_state(X)
         self._prepare_cell_state(X)
+
         i = self.lin_i(self.hidden_state, X)
         f = self.lin_f(self.hidden_state, X)
         o = self.lin_o(self.hidden_state, X)
         c = self.lin_c(self.hidden_state, X)
-        self.cell_state = self.multiply(f, self.cell_state) + self.multiply(i, c)
+
+        ma = self.multiply(f, self.cell_state)
+        mb = self.multiply(i, c)
+
+        self.cell_state = self.add(ma, mb)
         self.hidden_state = self.multiply(o, self.tanh(self.cell_state))
+
         return self.hidden_state
 
     def backward(self, dout, dout_cs):
         do, d_tanh_cs = self.multiply.backward(dout)
         dcs = self.tanh.backward(d_tanh_cs) + dout_cs
 
-        di, dc = self.multiply.backward(dcs)
-        df, dcs = self.multiply.backward(dcs)
+        dma, dmb = self.add.backward(dcs)
+
+        di, dc = self.multiply.backward(dmb)
+        df, dcs = self.multiply.backward(dma)
 
         dhc, dXc = self.lin_c.backward(dc)
         dho, dXo = self.lin_o.backward(do)
