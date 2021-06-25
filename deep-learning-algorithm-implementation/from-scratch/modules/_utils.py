@@ -102,3 +102,23 @@ def get_weight_init_dist_params(
         return param
 
     return -param, param
+
+
+def reduce_grad_broadcasting(dX, dout, X_orig_shape):
+    if X_orig_shape == dX.shape:
+        return dX
+
+    dX = np.sum(dX, axis=tuple(range(dout.ndim - len(X_orig_shape))))
+
+    dX = np.sum(
+        dX,
+        axis=tuple(
+            i for i, (dXs, Xs) in enumerate(zip(dX.shape, X_orig_shape)) if dXs != Xs
+        ),
+        keepdims=True,
+    )
+
+    # TODO: remove this assert after debugging
+    assert dX.shape == X_orig_shape, (dX.shape, X_orig_shape)
+
+    return dX

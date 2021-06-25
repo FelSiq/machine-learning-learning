@@ -32,7 +32,7 @@ class Tensor:
         self.grads *= 0.0
 
     def update_grads(self, grads):
-        assert grads.shape == self.values.shape, str(self)
+        assert grads.shape == self.values.shape, (str(self), grads.shape)
         self.grads += grads
 
     def update_and_step(self, grads):
@@ -255,6 +255,8 @@ class Linear(BaseLayer):
         if include_bias:
             self.bias = Tensor.from_shape((dim_out), mode="zeros")
             self.parameters = (self.weights, self.bias)
+            self.add = Add()
+            self.register_layers(self.add)
 
         else:
             self.parameters = (self.weights,)
@@ -268,7 +270,7 @@ class Linear(BaseLayer):
         out = X @ self.weights.values
 
         if self.bias.size:
-            out += self.bias.values
+            out = self.add(out, self.bias.values)
 
         if self.activation is not None:
             out = self.activation(out)
@@ -283,14 +285,14 @@ class Linear(BaseLayer):
         if self.activation is not None:
             dout = self.activation.backward(dout)
 
+        if self.bias.size:
+            dout, db = self.add.backward(dout)
+            self.bias.update_grads(db)
+
         dW = X.T @ dout
         dX = dout @ self.weights.values.T
 
         self.weights.update_grads(dW)
-
-        if self.bias.size:
-            db = np.sum(dout, axis=0)
-            self.bias.update_grads(db)
 
         return dX
 
@@ -380,21 +382,44 @@ class Flatten(BaseLayer):
         return dout
 
 
-class WeightedAverage(BaseLayer):
-    def __call__(self, X, Y, W):
-        return self.forward(X, Y, W)
+class Add(BaseLayer):
+    def __call__(self, X, Y):
+        return self.forward(X, Y)
 
-    def forward(self, X, Y, W):
-        out = W * X + (1.0 - W) * Y
-        self._store_in_cache(X, Y, W)
-        return out
+    def forward(self, X, Y):
+        self._store_in_cache(X.shape, Y.shape)
+        return X + Y
 
     def backward(self, dout):
-        X, Y, W = self._pop_from_cache()
-        dX = W * dout
-        dY = (1.0 - W) * dout
-        dW = (X - Y) * dout
-        return dX, dY, dW
+        (X_shape, Y_shape) = self._pop_from_cache()
+
+        dX = np.ones(X_shape, dtype=float) * dout
+        dY = np.ones(Y_shape, dtype=float) * dout
+
+        dX = _utils.reduce_grad_broadcasting(dX, dout, X_shape)
+        dY = _utils.reduce_grad_broadcasting(dY, dout, Y_shape)
+
+        return dX, dY
+
+
+class Subtract(BaseLayer):
+    def __call__(self, X, Y):
+        return self.forward(X, Y)
+
+    def forward(self, X, Y):
+        self._store_in_cache(X.shape, Y.shape)
+        return X - Y
+
+    def backward(self, dout):
+        (X_shape, Y_shape) = self._pop_from_cache()
+
+        dX = np.ones(X_shape, dtype=float) * dout
+        dY = -np.ones(Y_shape, dtype=float) * dout
+
+        dX = _utils.reduce_grad_broadcasting(dX, dout, X_shape)
+        dY = _utils.reduce_grad_broadcasting(dY, dout, Y_shape)
+
+        return dX, dY
 
 
 class Multiply(BaseLayer):
@@ -408,8 +433,13 @@ class Multiply(BaseLayer):
 
     def backward(self, dout):
         (X, Y) = self._pop_from_cache()
+
         dX = Y * dout
         dY = X * dout
+
+        dX = _utils.reduce_grad_broadcasting(dX, dout, X.shape)
+        dY = _utils.reduce_grad_broadcasting(dY, dout, Y.shape)
+
         return dX, dY
 
 
@@ -424,9 +454,37 @@ class Divide(BaseLayer):
 
     def backward(self, dout):
         (X, Y) = self._pop_from_cache()
+
         dX = dout / Y
         dY = -X / np.square(Y) * dout
+
+        dX = _utils.reduce_grad_broadcasting(dX, dout, X.shape)
+        dY = _utils.reduce_grad_broadcasting(dY, dout, Y.shape)
+
         return dX, dY
+
+
+class WeightedAverage(BaseLayer):
+    def __init__(self):
+        super(WeightedAverage).__init__()
+        self.add = Add()
+        self.mult = Multiply()
+        self.sub = Subtract()
+        self.register_layers(self.add, self.mult, self.sub)
+
+    def __call__(self, X, Y, W):
+        return self.forward(X, Y, W)
+
+    def forward(self, X, Y, W):
+        out = self.add(self.mult(self.sub(X, Y), W), Y)
+        return out
+
+    def backward(self, dout):
+        dout, dY_a = self.add.backward(dout)
+        dout, dW = self.mult.backward(dout)
+        dX, dY_b = self.sub(dout)
+        dY = dY_a + dY_b
+        return dX, dY, dW
 
 
 class _BaseReduce(BaseLayer):
@@ -519,14 +577,15 @@ class StandardDeviation(BaseLayer):
         self.avg = Average(axis=axis, enforce_batch_dim=False, keepdims=True)
         self.square = Power(power=2)
         self.sqrt = Power(power=0.5)
+        self.sub = Subtract()
 
-        self.register_layers(self.avg, self.square, self.sqrt)
+        self.register_layers(self.avg, self.square, self.sqrt, self.sub)
 
         self.axis = self.avg.axis
 
     def forward(self, X):
         avg = self.avg(X)
-        std = self.sqrt(self.avg(self.square(X - avg)))
+        std = self.sqrt(self.avg(self.square(self.sub(X, avg))))
 
         if self.return_avg:
             return std, avg
@@ -537,9 +596,7 @@ class StandardDeviation(BaseLayer):
         dout = self.sqrt.backward(dout)
         dout = self.avg.backward(dout)
         dX_centered = self.square.backward(dout)
-
-        dX_a = dX_centered
-        d_avg = -dX_centered
+        dX_a, d_avg = self.sub.backward(dX_centered)
 
         if d_avg_extern is not None:
             d_avg += d_avg_extern
