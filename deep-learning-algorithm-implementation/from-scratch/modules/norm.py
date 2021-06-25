@@ -24,8 +24,9 @@ class Standardization(base.BaseLayer):
         self.std_and_avg = base.StandardDeviation(axis=axis, return_avg=True)
         self.axis = self.std_and_avg.axis
         self.divide = base.Divide()
+        self.sub = base.Subtract()
 
-        self.register_layers(self.std_and_avg, self.divide)
+        self.register_layers(self.std_and_avg, self.divide, self.sub)
 
         self.moving_avg_stats = None
 
@@ -40,7 +41,8 @@ class Standardization(base.BaseLayer):
     def forward(self, X):
         if self.frozen and self.moving_avg_stats is not None:
             mov_avg, mov_std = self.moving_avg_stats
-            X_norm = np.divide(X - mov_avg, mov_std + self.eps)
+            X_centered = self.sub(X, mov_avg)
+            X_norm = np.divide(X_centered, mov_std + self.eps)
             return X_norm
 
         std, avg = self.std_and_avg(X)
@@ -51,7 +53,8 @@ class Standardization(base.BaseLayer):
 
             self.moving_avg_stats.update([avg, std])
 
-        X_norm = self.divide(X - avg, std + self.eps)
+        X_centered = self.sub(X, avg)
+        X_norm = self.divide(X_centered, std + self.eps)
 
         if self.return_train_stats:
             return X_norm, avg, std
@@ -60,14 +63,9 @@ class Standardization(base.BaseLayer):
 
     def backward(self, dout):
         dX_centered, d_std = self.divide.backward(dout)
-
-        dX_a = dX_centered
-        d_avg_extern = -dX_centered
-
-        dX_b = self.std_and_avg.backward(d_std, d_avg_extern)
-
+        dX_a, d_avg = self.sub.backward(dX_centered)
+        dX_b = self.std_and_avg.backward(d_std, d_avg)
         dX = dX_a + dX_b
-
         return dX
 
 
@@ -108,8 +106,9 @@ class _BaseNorm(base.BaseLayer):
         )
 
         self.multiply = base.Multiply()
+        self.add = base.Add()
 
-        self.register_layers(self.multiply, self.standardization)
+        self.register_layers(self.multiply, self.standardization, self.add)
 
         self.standardization_axis = self.standardization.axis
 
@@ -117,12 +116,14 @@ class _BaseNorm(base.BaseLayer):
         out = self.standardization(X)
 
         if self.affine:
-            out = self.multiply(out, self.gamma.values) + self.beta.values
+            out = self.multiply(out, self.gamma.values)
+            out = self.add(out, self.beta.values)
 
         return out
 
     def backward(self, dout):
         if self.affine:
+            dout, dbeta = self.add.backward(dout)
             dbeta = np.sum(dout, axis=self._grad_sum_axis, keepdims=True)
 
             dout, dgamma = self.multiply.backward(dout)
