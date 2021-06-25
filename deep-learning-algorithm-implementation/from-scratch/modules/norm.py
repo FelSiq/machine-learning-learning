@@ -98,6 +98,8 @@ class _BaseNorm(base.BaseLayer):
                 self.beta,
             )
 
+            self._grad_sum_axis = tuple(i for i, s in enumerate(affine_shape) if s == 1)
+
         self.standardization = Standardization(
             axis=standardization_axis,
             moving_avg_shape=moving_avg_shape,
@@ -110,7 +112,6 @@ class _BaseNorm(base.BaseLayer):
         self.register_layers(self.multiply, self.standardization)
 
         self.standardization_axis = self.standardization.axis
-        self._grad_sum_axis = self.standardization_axis
 
     def forward(self, X):
         out = self.standardization(X)
@@ -198,8 +199,6 @@ class GroupNorm2d(_BaseNorm):
             affine=affine,
         )
 
-        self._grad_sum_axis = (0, 1, 2)
-
     def forward(self, X):
         inp_shape = X.shape
         X = X.reshape(*inp_shape[:-1], self.num_groups, self.dim_per_group)
@@ -235,5 +234,3 @@ class LayerNorm2d(GroupNorm2d):
             affine=affine,
             affine_shape=(*dims_spatial, 1, dim_in),
         )
-
-        self._grad_sum_axis = (0,)
