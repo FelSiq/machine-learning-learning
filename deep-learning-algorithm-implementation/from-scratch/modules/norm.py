@@ -23,10 +23,10 @@ class Standardization(base.BaseLayer):
 
         self.std_and_avg = base.StandardDeviation(axis=axis, return_avg=True)
         self.axis = self.std_and_avg.axis
-        self.divide = base.Divide()
+        self.div = base.Divide()
         self.sub = base.Subtract()
 
-        self.register_layers(self.std_and_avg, self.divide, self.sub)
+        self.register_layers(self.std_and_avg, self.div, self.sub)
 
         self.moving_avg_stats = None
 
@@ -51,7 +51,7 @@ class Standardization(base.BaseLayer):
             self.moving_avg_stats.update([avg, std])
 
         X_centered = self.sub(X, avg)
-        X_norm = self.divide(X_centered, std + self.eps)
+        X_norm = self.div(X_centered, std + self.eps)
 
         if self.return_train_stats:
             return X_norm, avg, std
@@ -59,7 +59,7 @@ class Standardization(base.BaseLayer):
         return X_norm
 
     def backward(self, dout):
-        dX_centered, d_std = self.divide.backward(dout)
+        dX_centered, d_std = self.div.backward(dout)
         dX_a, d_avg = self.sub.backward(dX_centered)
         dX_b = self.std_and_avg.backward(d_std, d_avg)
         dX = dX_a + dX_b
