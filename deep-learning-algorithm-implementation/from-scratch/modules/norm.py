@@ -48,9 +48,6 @@ class Standardization(base.BaseLayer):
         std, avg = self.std_and_avg(X)
 
         if self.moving_avg_stats is not None:
-            std = std.reshape(self.moving_avg_stats.shape[1:])
-            avg = avg.reshape(self.moving_avg_stats.shape[1:])
-
             self.moving_avg_stats.update([avg, std])
 
         X_centered = self.sub(X, avg)
@@ -177,6 +174,8 @@ class GroupNorm2d(_BaseNorm):
         affine_shape: t.Optional[t.Tuple[int, ...]] = None,
     ):
         assert int(num_groups) > 0
+        assert int(dim_in) > 0
+        assert int(dim_in) % int(num_groups) == 0
 
         self.num_groups = int(num_groups)
         self.dim_per_group = int(dim_in) // self.num_groups

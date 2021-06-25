@@ -160,8 +160,9 @@ class MovingAverage(BaseComponent):
         self.stat = np.full(stat_shape, fill_value=init_const, dtype=float)
 
     def update(self, new_stats):
+        new_stats = np.asfarray(new_stats).reshape(self.stat.shape)
         self.stat *= self.m
-        self.stat += (1.0 - self.m) * np.asfarray(new_stats)
+        self.stat += (1.0 - self.m) * new_stats
 
     def __call__(self, new_stats):
         self.update(new_stats)
