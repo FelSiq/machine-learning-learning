@@ -117,6 +117,8 @@ class BaseComponent:
         for layer in self.layers:
             layer.train()
 
+        return self
+
     def eval(self):
         self.frozen = True
 
@@ -125,6 +127,8 @@ class BaseComponent:
 
         for layer in self.layers:
             layer.eval()
+
+        return self
 
     def register_layers(self, *layers):
         self.layers = (*self.layers, *layers)
@@ -146,6 +150,20 @@ class BaseComponent:
     def zero_grad(self):
         for param in self.parameters:
             param.zero_grad()
+
+    def __repr__(self):
+        strs = [f"{type(self).__name__} layer"]
+
+        if self.trainable:
+            strs.append(
+                f"with {len(self.parameters)} trainable "
+                f"tensors (total of {self.size} parameters)"
+            )
+
+        if self.frozen:
+            strs.append("(frozen)")
+
+        return " ".join(strs)
 
 
 class MovingAverage(BaseComponent):

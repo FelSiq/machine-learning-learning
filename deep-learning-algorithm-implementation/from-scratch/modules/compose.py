@@ -39,6 +39,9 @@ class Sequential(base.BaseLayer):
     def __repr__(self):
         strs = [f"Sequential component with {len(self)} layers:"]
 
+        if self.frozen:
+            strs[0] += " (frozen)"
+
         for i, layer in enumerate(self.layers):
             strs.append(f" | {i}. {str(layer)}")
 
