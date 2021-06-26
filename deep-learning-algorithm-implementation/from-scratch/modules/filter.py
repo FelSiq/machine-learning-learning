@@ -549,54 +549,76 @@ class AvgPool2d(_Pool2d):
         )
 
 
-class Upsampling(base.BaseLayer):
-    def __init__(self, scale_factor: float, mode: str = "nearest"):
+class _BaseUpsample(base.BaseLayer):
+    def __init__(
+        self, num_spatial_dim: int, scale_factor: t.Union[float, t.Tuple[float, ...]]
+    ):
         assert float(scale_factor) >= 1.0
+        assert int(num_spatial_dim) > 0
 
-        mode_to_func = dict(
-            zip(
-                ("nearest", "linear", "bilinear"),
-                (self.nearest_neighbor, self.linear, self.bilinear),
-            )
+        super(_BaseUpsample, self).__init__()
+
+        self.num_spatial_dim = int(num_spatial_dim)
+
+        scale_factor = _utils.replicate(scale_factor, self.num_spatial_dim)
+        scale_factor = (0, *scale_factor, 0)
+
+        self.scale_factor = tuple(scale_factor)
+        self.scale_factor_ceil = tuple(np.ceil(scale_factor).astype(int, copy=False))
+        self.scale_factor_rem = tuple(
+            np.subtract(self.scale_factor_ceil, self.scale_factor)
         )
 
-        assert mode in mode_to_func
 
-        self.mode = str(mode)
-        self.mode_fun = mode_to_func[self.mode]
-
-        self.scale_factor = float(scale_factor)
-        self.scale_factor_ceil = int(np.ceil(scale_factor))
-        self.scale_factor_rem = self.scale_factor_ceil - self.scale_factor
-
-    def nearest_neighbor(self, X):
+class NNUpsample(_BaseUpsample):
+    def forward(self, X):
         out = X
-        spatial_dim_adjusts = []
+        dim_adjusts = []
+        all_rem_inds = []
 
-        for axis in range(1, len(X.shape) - 1):
-            out = np.repeat(out, repeats=self.scale_factor_ceil, axis=axis)
-            excess_to_remove = int(np.ceil(self.scale_factor_rem * X.shape[axis]))
+        for axis in range(1, X.ndim - 1):
+            out = np.repeat(out, repeats=self.scale_factor_ceil[axis], axis=axis)
+            excess_to_remove = int(np.ceil(self.scale_factor_rem[axis] * X.shape[axis]))
             if excess_to_remove != 0:
-                spatial_dim_adjusts.append((axis, excess_to_remove))
+                dim_adjusts.append((axis, excess_to_remove))
 
-        for axis, excess_to_remove in spatial_dim_adjusts:
+        for axis, excess_to_remove in dim_adjusts:
             rem_inds = np.fromiter(range(excess_to_remove), dtype=int)
-            rem_inds = out.shape[axis] - 1 - rem_inds * self.scale_factor_ceil
+            rem_inds = out.shape[axis] - 1 - rem_inds * self.scale_factor_ceil[axis]
             out = np.delete(out, rem_inds, axis=axis)
+            all_rem_inds.append((axis, rem_inds))
+
+        self._store_in_cache(all_rem_inds)
 
         return out
 
-    def linear(self, X):
-        _, dim_width, dim_channels = X.shape
-        raise NotImplementedError
-
-    def bilinear(self, X):
-        _, dim_height, dim_width, dim_channels = X.shape
-        raise NotImplementedError
-
-    def forward(self, X):
-        return self.mode_fun(X)
-
     def backward(self, dout):
-        raise NotImplementedError
+        (all_rem_inds,) = self._pop_from_cache()
+        ndim = len(dout.shape)
+        axis_selector = [slice(None)] * ndim
+
+        for axis, rem_inds in all_rem_inds:
+            rem_inds -= np.fromiter(reversed(range(1, 1 + len(rem_inds))), dtype=int)
+            dout = np.insert(dout, rem_inds, 0.0, axis=axis)
+
+        for axis in range(1, ndim - 1):
+            new_shape = list(dout.shape)
+            n_reps = self.scale_factor_ceil[axis]
+            new_axis_size = dout.shape[axis] // n_reps
+            new_shape[axis] = new_axis_size
+
+            dout_b = np.zeros(new_shape, dtype=float)
+
+            for i, start in enumerate(range(0, dout.shape[axis], n_reps)):
+                end = start + n_reps
+                axis_selector[axis] = slice(start, end)
+                dout_slice = dout[tuple(axis_selector)]
+                axis_selector[axis] = [i]
+                dout_b[tuple(axis_selector)] = np.sum(
+                    dout_slice, axis=axis, keepdims=True
+                )
+                axis_selector[axis] = slice(None)
+
+            dout = dout_b
+
         return dout
