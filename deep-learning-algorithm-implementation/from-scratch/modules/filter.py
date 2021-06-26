@@ -547,3 +547,56 @@ class AvgPool2d(_Pool2d):
             kernel_size=kernel_size,
             stride=stride,
         )
+
+
+class Upsampling(base.BaseLayer):
+    def __init__(self, scale_factor: float, mode: str = "nearest"):
+        assert float(scale_factor) >= 1.0
+
+        mode_to_func = dict(
+            zip(
+                ("nearest", "linear", "bilinear"),
+                (self.nearest_neighbor, self.linear, self.bilinear),
+            )
+        )
+
+        assert mode in mode_to_func
+
+        self.mode = str(mode)
+        self.mode_fun = mode_to_func[self.mode]
+
+        self.scale_factor = float(scale_factor)
+        self.scale_factor_ceil = int(np.ceil(scale_factor))
+        self.scale_factor_rem = self.scale_factor_ceil - self.scale_factor
+
+    def nearest_neighbor(self, X):
+        out = X
+        spatial_dim_adjusts = []
+
+        for axis in range(1, len(X.shape) - 1):
+            out = np.repeat(out, repeats=self.scale_factor_ceil, axis=axis)
+            excess_to_remove = int(np.ceil(self.scale_factor_rem * X.shape[axis]))
+            if excess_to_remove != 0:
+                spatial_dim_adjusts.append((axis, excess_to_remove))
+
+        for axis, excess_to_remove in spatial_dim_adjusts:
+            rem_inds = np.fromiter(range(excess_to_remove), dtype=int)
+            rem_inds = out.shape[axis] - 1 - rem_inds * self.scale_factor_ceil
+            out = np.delete(out, rem_inds, axis=axis)
+
+        return out
+
+    def linear(self, X):
+        _, dim_width, dim_channels = X.shape
+        raise NotImplementedError
+
+    def bilinear(self, X):
+        _, dim_height, dim_width, dim_channels = X.shape
+        raise NotImplementedError
+
+    def forward(self, X):
+        return self.mode_fun(X)
+
+    def backward(self, dout):
+        raise NotImplementedError
+        return dout
