@@ -23,14 +23,14 @@ def replicate(vals, n):
     return tuple([vals] * n)
 
 
-def collapse(items, cls):
-    if isinstance(items, cls):
+def collapse(items, atom, exceptions):
+    if isinstance(items, atom) and not isinstance(items, exceptions):
         return [items]
 
     cur_items = []
 
     for item in items:
-        cur_items.extend(collapse(item, cls))
+        cur_items.extend(collapse(item, atom, exceptions))
 
     return cur_items
 

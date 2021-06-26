@@ -4,8 +4,13 @@ from . import _utils
 
 class Sequential(base.BaseLayer):
     def __init__(self, layers):
+        assert len(layers)
+
         super(Sequential, self).__init__(trainable=True)
-        layers = _utils.collapse(layers, base.BaseComponent)
+
+        layers = _utils.collapse(
+            layers, atom=base.BaseComponent, exceptions=(Sequential)
+        )
         self.register_layers(*layers)
 
     def forward(self, X):
@@ -30,3 +35,11 @@ class Sequential(base.BaseLayer):
 
     def __iter__(self):
         return iter(self.layers)
+
+    def __repr__(self):
+        strs = [f"Sequential component with {len(self)} layers:"]
+
+        for i, layer in enumerate(self.layers):
+            strs.append(f" | {i}. {str(layer)}")
+
+        return "\n".join(strs)
