@@ -126,7 +126,10 @@ class _BaseConv(_BaseMovingFilter):
         padding = self.pad_widths[dim + 1][0] if self.use_padding else 0
 
         if transpose:
-            return (input_dim - 1) * stride - 2 * padding + kernel_size
+            # Note: ignoring the padding in the formula since we will remove
+            # the padding later on, and it is useful to keep the padding for now.
+            # return (input_dim - 1) * stride - 2 * padding + kernel_size
+            return (input_dim - 1) * stride + kernel_size
 
         return 1 + (input_dim + 2 * padding - kernel_size) // stride
 
@@ -389,6 +392,7 @@ class ConvTranspose2d(_BaseConv):
         w_out_dim = self.calc_out_spatial_dim(X, 1, transpose=True)
 
         batch_dim, h_X, w_X, _ = X.shape
+
         h_stride, w_stride = self.stride
         h_kernel, w_kernel = self.kernel_size
 
@@ -424,7 +428,7 @@ class ConvTranspose2d(_BaseConv):
 
         dout_b = np.zeros(input_shape_padded, dtype=float)
 
-        _, h_X, w_X, d_X = input_shape
+        _, h_X, w_X, d_X = input_shape_padded
         batch_dim, h_dout, w_dout, _ = dout.shape
         h_stride, w_stride = self.stride
         h_kernel, w_kernel = self.kernel_size
