@@ -119,11 +119,15 @@ class _BaseConv(_BaseMovingFilter):
         if self.activation is not None:
             self.register_layers(self.activation)
 
-    def calc_out_spatial_dim(self, X: int, dim: int):
+    def calc_out_spatial_dim(self, X: int, dim: int, transpose: bool = False):
         stride = self.stride[dim]
         kernel_size = self.kernel_size[dim]
         input_dim = X.shape[dim + 1]
         padding = self.pad_widths[dim + 1][0] if self.use_padding else 0
+
+        if transpose:
+            return (input_dim - 1) * stride - 2 * padding + kernel_size
+
         return 1 + (input_dim + 2 * padding - kernel_size) // stride
 
 
@@ -133,7 +137,7 @@ class LearnableFilter2d(_BaseFixedFilter):
         dim_in: int,
         kernel_size: t.Union[int, t.Tuple[int, ...]],
         include_bias: bool = True,
-        reduce_layer: t.Optional[base.BaseComponent] = base.Sum,
+        reduce_layer: t.Optional[base.BaseComponent] = None,
     ):
         assert int(dim_in) > 0
 
@@ -158,13 +162,13 @@ class LearnableFilter2d(_BaseFixedFilter):
             self.parameters = (self.weights,)
 
         if reduce_layer is None:
-            reduce_layer = base.Identity
+            reduce_layer = base.Sum(
+                axis=tuple(range(1, len(self.weights.shape))),
+                enforce_batch_dim=False,
+                keepdims=False,
+            )
 
-        self.reduce_layer = reduce_layer(
-            axis=tuple(range(1, len(self.weights.shape))),
-            enforce_batch_dim=False,
-            keepdims=False,
-        )
+        self.reduce_layer = reduce_layer
 
         self.mult = base.Multiply()
         self.add = base.Add()
@@ -339,7 +343,116 @@ class Conv2d(_BaseConv):
 
 
 class ConvTranspose2d(_BaseConv):
-    pass
+    def __init__(
+        self,
+        channels_in: int,
+        channels_out: int,
+        kernel_size: t.Union[int, t.Tuple[int, ...]],
+        stride: t.Union[int, t.Tuple[int, ...]] = 1,
+        padding_type: str = "valid",
+        padding_mode: str = "constant",
+        include_bias: bool = True,
+        activation: t.Optional[t.Callable[[np.ndarray], np.ndarray]] = None,
+    ):
+        super(ConvTranspose2d, self).__init__(
+            num_spatial_dims=2,
+            channels_in=channels_in,
+            channels_out=channels_out,
+            kernel_size=kernel_size,
+            stride=stride,
+            padding_type=padding_type,
+            padding_mode=padding_mode,
+            activation=activation,
+        )
+
+        self.filters = [
+            LearnableFilter2d(
+                dim_in=self.channels_out,
+                kernel_size=self.kernel_size,
+                include_bias=include_bias,
+                reduce_layer=base.Identity(),
+            )
+            for _ in range(self.channels_in)
+        ]
+
+        self.register_layers(*self.filters)
+
+    def forward(self, X):
+        input_shape = X.shape
+
+        if self.use_padding:
+            X = np.pad(X, pad_width=self.pad_widths, mode=self.padding_mode)
+
+        input_shape_padded = X.shape
+
+        h_out_dim = self.calc_out_spatial_dim(X, 0, transpose=True)
+        w_out_dim = self.calc_out_spatial_dim(X, 1, transpose=True)
+
+        batch_dim, h_X, w_X, _ = X.shape
+        h_stride, w_stride = self.stride
+        h_kernel, w_kernel = self.kernel_size
+
+        out = np.zeros(
+            (batch_dim, h_out_dim, w_out_dim, self.channels_out), dtype=float
+        )
+
+        for r in range(h_X):
+            h_start = r * h_stride
+            h_end = h_start + h_kernel
+
+            for c in range(w_X):
+                w_start = c * w_stride
+                w_end = w_start + w_kernel
+
+                for d, filter_ in enumerate(self.filters):
+                    X_slice = np.expand_dims(X[:, r, c, d], (1, 2, 3))
+                    filter_act = filter_(X_slice)
+                    out[:, h_start:h_end, w_start:w_end, :] += filter_act
+
+        if self.activation is not None:
+            out = self.activation(out)
+
+        self._store_in_cache(input_shape, input_shape_padded)
+
+        return out
+
+    def backward(self, dout):
+        (input_shape, input_shape_padded) = self._pop_from_cache()
+
+        if self.activation is not None:
+            dout = self.activation.backward(dout)
+
+        dout_b = np.zeros(input_shape_padded, dtype=float)
+
+        _, h_X, w_X, d_X = input_shape
+        batch_dim, h_dout, w_dout, _ = dout.shape
+        h_stride, w_stride = self.stride
+        h_kernel, w_kernel = self.kernel_size
+
+        for r_inv, h_start in enumerate(
+            reversed(range(0, h_dout - h_kernel + 1, h_stride))
+        ):
+            r = h_X - r_inv - 1
+            h_end = h_start + h_kernel
+
+            for c_inv, w_start in enumerate(
+                reversed(range(0, w_dout - w_kernel + 1, w_stride))
+            ):
+                c = w_X - c_inv - 1
+                w_end = w_start + w_kernel
+
+                dout_slice = dout[:, h_start:h_end, w_start:w_end, :]
+
+                for d in reversed(range(d_X)):
+                    filter_ = self.filters[d]
+                    filter_grads = filter_.backward(dout_slice)
+                    filter_grads = np.squeeze(filter_grads)
+                    dout_b[:, r, c, d] += filter_grads
+
+        if self.use_padding:
+            dout_b = self.crop_center(dout_b, input_shape)
+
+        return dout_b
 
 
 class _Pool2d(_BaseMovingFilter):
