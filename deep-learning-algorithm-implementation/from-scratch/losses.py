@@ -1,3 +1,5 @@
+import typing as t
+
 import numpy as np
 import scipy.special
 
@@ -81,3 +83,55 @@ class CrossEntropyLoss(_BaseLoss):
             grads /= y.size
 
         return ce_loss, grads
+
+
+class AverageLosses:
+    def __init__(
+        self,
+        criterions: t.Tuple[_BaseLoss, ...],
+        weights: t.Optional[t.Tuple[float, ...]] = None,
+        separated_y_true: bool = False,
+        separated_y_preds: bool = False,
+    ):
+        n = len(criterions)
+
+        if weights is None:
+            weights = 1.0 / n
+
+        self.weights = modules._utils.replicate(weights, n)
+        self.criterions = tuple(criterions)
+
+        self.separated_y_true = bool(separated_y_true)
+        self.separated_y_preds = bool(separated_y_preds)
+
+    def __len__(self):
+        return len(self.criterions)
+
+    def __repr__(self):
+        strs = [f"Weighted average of {len(self)} loss functions:\n > Total Loss ="]
+        for i in range(len(self)):
+            criterion_name = type(self.criterions[i]).__name__
+            weight = self.weights[i]
+            strs.append(f"{'+ ' if i != 0 else ''}{weight:2.2f} * {criterion_name}")
+
+        return " ".join(strs)
+
+    def __call__(self, y, y_preds):
+        loss, grads = 0.0, None
+
+        for i in np.arange(len(self)):
+            criterion = self.criterions[i]
+            weight = self.weights[i]
+
+            y_true_cur = y[i] if self.separated_y_true else y
+            y_preds_cur = y_preds[i] if self.separated_y_preds else y_preds
+
+            cur_loss, cur_grads = criterion(y_true_cur, y_preds_cur)
+
+            if grads is None:
+                grads = np.zeros_like(cur_grads)
+
+            loss += weight * cur_loss
+            grads += weight * cur_grads
+
+        return loss, grads
