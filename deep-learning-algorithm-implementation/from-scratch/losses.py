@@ -117,7 +117,8 @@ class AverageLosses:
         return " ".join(strs)
 
     def __call__(self, y, y_preds):
-        loss, grads = 0.0, None
+        loss = 0.0
+        grads = []
 
         for i in np.arange(len(self)):
             criterion = self.criterions[i]
@@ -132,6 +133,6 @@ class AverageLosses:
                 grads = np.zeros_like(cur_grads)
 
             loss += weight * cur_loss
-            grads += weight * cur_grads
+            grads.append(weight * cur_grads)
 
-        return loss, grads
+        return loss, tuple(grads)
