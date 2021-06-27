@@ -483,6 +483,17 @@ class Divide(BaseLayer):
         return dX, dY
 
 
+class ScaleByConstant(BaseLayer):
+    def __init__(self, constant: float):
+        self.constant = float(constant)
+
+    def forward(self, X):
+        return self.constant * X
+
+    def backward(self, dout):
+        return self.constant * dout
+
+
 class WeightedAverage(BaseLayer):
     def __init__(self):
         super(WeightedAverage).__init__()
