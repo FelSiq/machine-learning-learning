@@ -184,13 +184,9 @@ class LearnableFilter2d(_BaseFixedFilter):
         if self.bias.size:
             out = self.add(out, self.bias.values)
 
-        self._store_in_cache(X)
-
         return out
 
     def backward(self, dout):
-        (X,) = self._pop_from_cache()
-
         if self.bias.size:
             dout, db = self.add.backward(dout)
             self.bias.update_grads(db)
