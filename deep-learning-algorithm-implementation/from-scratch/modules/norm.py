@@ -22,9 +22,10 @@ class Standardization(base.BaseLayer):
         self.eps = float(eps)
 
         self.std_and_avg = base.StandardDeviation(axis=axis, return_avg=True)
-        self.axis = self.std_and_avg.axis
         self.div = base.Divide()
         self.sub = base.Subtract()
+
+        self.axis = self.std_and_avg.axis
 
         self.register_layers(self.std_and_avg, self.div, self.sub)
 

@@ -79,6 +79,10 @@ class Tensor:
         constant = kwargs["value"] if mode == "constant" else 0.0
         return Tensor(np.full(shape, fill_value=constant, dtype=float))
 
+    def init_weights(self, mode: str = "normal", **kwargs):
+        self.values = Tensor.from_shape(self.shape, mode=mode, **kwargs).values
+        return self
+
     def __repr__(self):
         tokens = []  # type: t.List[str]
 
@@ -152,7 +156,7 @@ class BaseComponent:
             param.zero_grad()
 
     def __repr__(self):
-        strs = [f"{type(self).__name__} layer"]
+        strs = [f"{type(self).__name__} component"]
 
         if self.trainable:
             strs.append(
@@ -164,6 +168,12 @@ class BaseComponent:
             strs.append("(frozen)")
 
         return " ".join(strs)
+
+    def init_weights(self, mode: str = "normal", **kwargs):
+        for param in self.parameters:
+            param.init_weights(mode=mode, **kwargs)
+
+        return self
 
 
 class MovingAverage(BaseComponent):
@@ -487,6 +497,7 @@ class Divide(BaseLayer):
 
 class ScaleByConstant(BaseLayer):
     def __init__(self, constant: float):
+        super(ScalerByConstant, self).__init__()
         self.constant = float(constant)
 
     def forward(self, X):
