@@ -424,8 +424,10 @@ class Add(BaseLayer):
     def backward(self, dout):
         (X_shape, Y_shape) = self._pop_from_cache()
 
-        dX = np.ones(X_shape, dtype=float) * dout
-        dY = np.ones(Y_shape, dtype=float) * dout
+        # dX = np.ones(X_shape, dtype=float) * dout
+        # dY = np.ones(Y_shape, dtype=float) * dout
+        dX = dout
+        dY = dout
 
         dX = _utils.reduce_grad_broadcasting(dX, dout, X_shape)
         dY = _utils.reduce_grad_broadcasting(dY, dout, Y_shape)
@@ -444,8 +446,10 @@ class Subtract(BaseLayer):
     def backward(self, dout):
         (X_shape, Y_shape) = self._pop_from_cache()
 
-        dX = np.ones(X_shape, dtype=float) * dout
-        dY = -np.ones(Y_shape, dtype=float) * dout
+        # dX = np.ones(X_shape, dtype=float) * dout
+        # dY = -np.ones(Y_shape, dtype=float) * dout
+        dX = dout
+        dY = -dout
 
         dX = _utils.reduce_grad_broadcasting(dX, dout, X_shape)
         dY = _utils.reduce_grad_broadcasting(dY, dout, Y_shape)
