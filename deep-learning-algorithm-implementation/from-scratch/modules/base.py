@@ -229,7 +229,9 @@ class BaseLayer(BaseComponent):
 
 
 class BaseModel(BaseComponent):
-    pass
+    def __init__(self):
+        super(BaseModel, self).__init__()
+        self.trainable = True
 
 
 class Identity(BaseLayer):
