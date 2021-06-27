@@ -15,9 +15,13 @@ class _AddNoiseBase(base.BaseLayer):
 
         self.add = base.Add()
         self.register_layers(self.add)
-        self.noise_shape = tuple(noise_shape)
         self.disable_when_frozen = bool(disable_when_frozen)
         self.noise_func = None
+
+        self.noise_shape = noise_shape
+
+        if self.noise_shape is not None:
+            self.noise_shape = tuple(self.noise_shape)
 
     def forward(self, X):
         if self.frozen and self.disable_when_frozen:
@@ -50,7 +54,7 @@ class AddNoiseGaussian(_AddNoiseBase):
         self.mean = float(mean)
         self.std = float(std)
 
-        def noise_func(self, noise_shape):
+        def noise_func(noise_shape):
             return np.random.normal(loc=self.mean, scale=self.std, size=noise_shape)
 
         self.noise_func = noise_func
@@ -73,7 +77,7 @@ class AddNoiseUniform(_AddNoiseBase):
         self.low = float(low)
         self.high = float(high)
 
-        def noise_func(self, noise_shape):
+        def noise_func(noise_shape):
             return np.random.uniform(low=self.low, high=self.high, size=noise_shape)
 
         self.noise_func = noise_func
