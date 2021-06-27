@@ -20,13 +20,16 @@ class ReLU(base.BaseLayer):
 
 
 class LeakyReLU(base.BaseLayer):
-    def __init__(self, slope: float):
+    def __init__(self, slope: float, inplace: bool = False):
         assert float(slope) >= 0.0
+
         super(LeakyReLU, self).__init__()
+
         self.slope = float(slope)
+        self.inplace = bool(inplace)
 
     def forward(self, X):
-        out = np.maximum(X, self.slope * X)
+        out = np.maximum(X, self.slope * X, out=X if self.inplace else None)
         self._store_in_cache(X)
         return out
 
@@ -67,3 +70,29 @@ class Sigmoid(base.BaseLayer):
         (sig_X,) = self._pop_from_cache()
         dout = sig_X * (1.0 - sig_X) * dout
         return dout
+
+
+class Softmax(base.BaseLayer):
+    def __init__(self):
+        super(Softmax, self).__init__()
+
+        raise NotImplementedError
+
+        self.exp = base.Exp()
+        self.sum = base.Sum(axis=-1)
+        self.divide = base.Divide()
+
+        self.register_layers(self.exp, self.sum, self.divide)
+
+    def forward(self, X):
+        exp = self.exp(X - np.max(X, axis=-1, keepdims=True))
+        sum_exp = self.sum(exp)
+        probs = self.divide(exp, sum_exp)
+        return probs
+
+    def backward(self, dout):
+        d_exp_a, d_sum_exp = self.divide.backward(dout)
+        d_exp_b = self.sum.backward(d_sum_exp)
+        d_exp = d_exp_a + d_exp_b
+        dX = self.exp.backward(d_exp)
+        return dX
