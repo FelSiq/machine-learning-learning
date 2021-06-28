@@ -9,7 +9,8 @@ class ReLU(base.BaseLayer):
         self.inplace = bool(inplace)
 
     def forward(self, X):
-        out = np.maximum(X, 0.0, out=X if self.inplace else None)
+        out = X
+        out = np.maximum(out, 0.0, out=out if self.inplace else None)
         self._store_in_cache(X)
         return out
 
@@ -29,14 +30,17 @@ class LeakyReLU(base.BaseLayer):
         self.inplace = bool(inplace)
 
     def forward(self, X):
-        out = np.maximum(X, self.slope * X, out=X if self.inplace else None)
+        out = X
+        out = np.maximum(out, self.slope * out, out=out if self.inplace else None)
         self._store_in_cache(X)
         return out
 
     def backward(self, dout):
         (X,) = self._pop_from_cache()
-        dout = np.maximum(X > 0.0, self.slope, dtype=float) * dout
-        return dout
+        dout_b = (X > 0.0).astype(float, copy=False)
+        dout_b = np.maximum(dout_b, self.slope, out=dout_b)
+        dout_b *= dout
+        return dout_b
 
 
 class Tanh(base.BaseLayer):
