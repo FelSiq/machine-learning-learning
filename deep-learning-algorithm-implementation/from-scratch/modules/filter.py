@@ -575,7 +575,9 @@ class _BaseUpsample(base.BaseLayer):
         scale_factor = (0, *scale_factor, 0)
 
         self.scale_factor = tuple(scale_factor)
-        self.scale_factor_ceil = tuple(np.ceil(self.scale_factor).astype(int, copy=False))
+        self.scale_factor_ceil = tuple(
+            np.ceil(self.scale_factor).astype(int, copy=False)
+        )
         self.scale_factor_rem = tuple(
             np.subtract(self.scale_factor_ceil, self.scale_factor)
         )
