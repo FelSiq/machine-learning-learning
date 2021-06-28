@@ -28,9 +28,11 @@ class CNN(modules.BaseModel):
                             kernel_size=kernel_sizes[i - 1],
                             activation=None,
                             padding_type=padding,
+                            include_bias=False,
                         ),
+                        modules.BatchNorm2d(channels_num[i]),
                         modules.ReLU(inplace=True),
-                        modules.SpatialDropout(drop_prob=0.3, inplace=True),
+                        # modules.SpatialDropout(drop_prob=0.3, inplace=True),
                     ]
                     for i in range(1, len(channels_num))
                 ],
@@ -41,10 +43,11 @@ class CNN(modules.BaseModel):
                             linear_dims[i - 1],
                             linear_dims[i],
                             activation=None,
-                            include_bias=False,
+                            include_bias=True,
                         ),
+                        # modules.BatchNorm1d(linear_dims[i]),
                         modules.ReLU(inplace=True),
-                        modules.Dropout(drop_prob=0.3, inplace=True),
+                        # modules.Dropout(drop_prob=0.3, inplace=True),
                     ]
                     for i in range(1, len(linear_dims) - 1)
                 ],
@@ -75,7 +78,7 @@ def _test():
     eval_size = 128
     test_size = 128
     batch_size = 64
-    train_epochs = 10
+    train_epochs = 5
     learning_rate = 1e-4
     padding = "valid"
 
@@ -83,9 +86,9 @@ def _test():
     kernel_sizes = (2, 2) if padding == "valid" else (3, 3)
 
     linear_dims = (
-        (6 * 6 * channels_num[-1], 128, 10)
+        (6 * 6 * channels_num[-1], 512, 10)
         if padding == "valid"
-        else (8 * 8 * channels_num[-1], 128, 10)
+        else (8 * 8 * channels_num[-1], 512, 10)
     )
 
     X, y = sklearn.datasets.load_digits(return_X_y=True)
