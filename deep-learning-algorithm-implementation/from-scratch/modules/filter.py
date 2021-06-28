@@ -139,10 +139,13 @@ class LearnableFilter2d(_BaseFixedFilter):
         self,
         dim_in: int,
         kernel_size: t.Union[int, t.Tuple[int, ...]],
+        filter_num: int = 1,
         include_bias: bool = True,
         reduce_layer: t.Optional[base.BaseComponent] = None,
+        inverted_bias: bool = False,
     ):
         assert int(dim_in) > 0
+        assert int(filter_num) > 0
 
         super(LearnableFilter2d, self).__init__(
             num_spatial_dims=2,
@@ -150,15 +153,21 @@ class LearnableFilter2d(_BaseFixedFilter):
             kernel_size=kernel_size,
         )
 
+        inverted_bias = bool(inverted_bias)
+
+        std_reg = int(filter_num) if inverted_bias else int(dim_in)
+
         self.weights = base.Tensor.from_shape(
-            (1, *self.kernel_size, int(dim_in)),
+            (1, *self.kernel_size, int(dim_in), int(filter_num)),
             mode="uniform",
             std=("xavier", float(dim_in * np.prod(self.kernel_size))),
         )
         self.bias = base.Tensor()
 
         if include_bias:
-            self.bias = base.Tensor.from_shape((1,), mode="zeros")
+            self.bias = base.Tensor.from_shape(
+                (1, int(dim_in) if inverted_bias else int(filter_num)), mode="zeros"
+            )
             self.parameters = (self.weights, self.bias)
 
         else:
@@ -166,18 +175,28 @@ class LearnableFilter2d(_BaseFixedFilter):
 
         if reduce_layer is None:
             reduce_layer = base.Sum(
-                axis=tuple(range(1, len(self.weights.shape))),
-                enforce_batch_dim=False,
+                axis=(1, 2, 3),
+                enforce_batch_dim=True,
                 keepdims=False,
             )
 
         self.reduce_layer = reduce_layer
-
         self.mult = base.Multiply()
         self.add = base.Add()
+
         self.register_layers(self.reduce_layer, self.mult, self.add)
 
     def forward(self, X):
+        if X.ndim != 5:
+            X = np.expand_dims(X, -1)
+            self._store_in_cache(True)
+
+        else:
+            self._store_in_cache(False)
+
+        # X (shape): (batch, height, width, channels, 1)
+        # W (shape): (1, height, width, channels, num_filters)
+
         out = self.mult(X, self.weights.values)
         out = self.reduce_layer(out)
 
@@ -187,6 +206,8 @@ class LearnableFilter2d(_BaseFixedFilter):
         return out
 
     def backward(self, dout):
+        (squeeze_last_dim,) = self._pop_from_cache()
+
         if self.bias.size:
             dout, db = self.add.backward(dout)
             self.bias.update_grads(db)
@@ -195,6 +216,9 @@ class LearnableFilter2d(_BaseFixedFilter):
         dX, dW = self.mult.backward(dout)
 
         self.weights.update_grads(dW)
+
+        if squeeze_last_dim:
+            dX = np.squeeze(dX, -1)
 
         return dX
 
@@ -265,16 +289,14 @@ class Conv2d(_BaseConv):
             activation=activation,
         )
 
-        self.filters = [
-            LearnableFilter2d(
-                dim_in=self.channels_in,
-                kernel_size=self.kernel_size,
-                include_bias=include_bias,
-            )
-            for _ in range(self.channels_out)
-        ]
+        self.filters = LearnableFilter2d(
+            dim_in=self.channels_in,
+            kernel_size=self.kernel_size,
+            filter_num=self.channels_out,
+            include_bias=include_bias,
+        )
 
-        self.register_layers(*self.filters)
+        self.register_layers(self.filters)
 
     def forward(self, X):
         input_shape = X.shape
@@ -289,7 +311,7 @@ class Conv2d(_BaseConv):
 
         h_stride, w_stride = self.stride
         h_kernel, w_kernel = self.kernel_size
-        batch_size, h_dim, w_dim, d_dim = X.shape
+        batch_size, h_dim, w_dim, _ = X.shape
 
         out = np.empty(
             (batch_size, h_out_dim, w_out_dim, self.channels_out), dtype=float
@@ -301,9 +323,7 @@ class Conv2d(_BaseConv):
                 w_end = w_start + w_kernel
 
                 X_slice = X[:, h_start:h_end, w_start:w_end, :]
-
-                for f_ind, filter_ in enumerate(self.filters):
-                    out[:, r, c, f_ind] = filter_(X_slice)
+                out[:, r, c, :] = self.filters(X_slice)
 
         if self.activation is not None:
             out = self.activation(out)
@@ -322,7 +342,7 @@ class Conv2d(_BaseConv):
 
         h_stride, w_stride = self.stride
         h_kernel, w_kernel = self.kernel_size
-        _, h_dout, w_dout, d_dout = dout.shape
+        _, h_dout, w_dout, _ = dout.shape
 
         for r in reversed(range(h_dout)):
             h_start = r * h_stride
@@ -330,10 +350,9 @@ class Conv2d(_BaseConv):
             for c in reversed(range(w_dout)):
                 w_start = c * w_stride
                 w_end = w_start + w_kernel
-                for d in reversed(range(d_dout)):
-                    filter_ = self.filters[d]
-                    filter_grad = filter_.backward(dout[:, r, c, d])
-                    dout_b[:, h_start:h_end, w_start:w_end, :] += filter_grad
+
+                filter_grad = self.filters.backward(dout[:, r, c, :])
+                dout_b[:, h_start:h_end, w_start:w_end, :] += filter_grad
 
         if self.use_padding:
             dout_b = self.crop_center(dout_b, input_shape)
@@ -364,17 +383,16 @@ class ConvTranspose2d(_BaseConv):
             activation=activation,
         )
 
-        self.filters = [
-            LearnableFilter2d(
-                dim_in=self.channels_out,
-                kernel_size=self.kernel_size,
-                include_bias=include_bias,
-                reduce_layer=base.Identity(),
-            )
-            for _ in range(self.channels_in)
-        ]
+        self.filters = LearnableFilter2d(
+            dim_in=self.channels_out,
+            kernel_size=self.kernel_size,
+            filter_num=self.channels_in,
+            include_bias=include_bias,
+            reduce_layer=base.Sum(axis=-1, keepdims=False),
+            inverted_bias=True,
+        )
 
-        self.register_layers(*self.filters)
+        self.register_layers(self.filters)
 
     def forward(self, X):
         input_shape = X.shape
@@ -404,10 +422,9 @@ class ConvTranspose2d(_BaseConv):
                 w_start = c * w_stride
                 w_end = w_start + w_kernel
 
-                for d, filter_ in enumerate(self.filters):
-                    X_slice = np.expand_dims(X[:, r, c, d], (1, 2, 3))
-                    filter_act = filter_(X_slice)
-                    out[:, h_start:h_end, w_start:w_end, :] += filter_act
+                X_slice = np.expand_dims(X[:, r, c, :], (1, 2, 3))
+                filter_act = self.filters(X_slice)
+                out[:, h_start:h_end, w_start:w_end, :] += filter_act
 
         if self.activation is not None:
             out = self.activation(out)
@@ -422,7 +439,7 @@ class ConvTranspose2d(_BaseConv):
         if self.activation is not None:
             dout = self.activation.backward(dout)
 
-        dout_b = np.zeros(input_shape_padded, dtype=float)
+        dout_b = np.empty(input_shape_padded, dtype=float)
 
         _, h_X, w_X, d_X = input_shape_padded
         batch_dim, h_dout, w_dout, _ = dout.shape
@@ -443,11 +460,9 @@ class ConvTranspose2d(_BaseConv):
 
                 dout_slice = dout[:, h_start:h_end, w_start:w_end, :]
 
-                for d in reversed(range(d_X)):
-                    filter_ = self.filters[d]
-                    filter_grads = filter_.backward(dout_slice)
-                    filter_grads = np.squeeze(filter_grads)
-                    dout_b[:, r, c, d] += filter_grads
+                filter_grads = self.filters.backward(dout_slice)
+                filter_grads = np.squeeze(filter_grads)
+                dout_b[:, r, c, :] = filter_grads
 
         if self.use_padding:
             dout_b = self.crop_center(dout_b, input_shape)
@@ -479,7 +494,7 @@ class _Pool2d(_BaseMovingFilter):
 
         h_stride, w_stride = self.stride
         h_kernel, w_kernel = self.kernel_size
-        batch_size, h_dim, w_dim, d_dim = X.shape
+        batch_size, h_dim, w_dim, _ = X.shape
 
         out = np.empty((batch_size, h_out_dim, w_out_dim, d_dim), dtype=float)
 
@@ -502,7 +517,7 @@ class _Pool2d(_BaseMovingFilter):
 
         h_stride, w_stride = self.stride
         h_kernel, w_kernel = self.kernel_size
-        _, h_dout, w_dout, d_dout = dout.shape
+        _, h_dout, w_dout, _ = dout.shape
 
         for r in reversed(range(h_dout)):
             h_start = r * h_stride
