@@ -88,11 +88,7 @@ class _BaseNorm(base.BaseLayer):
         if self.affine:
             self.gamma = base.Tensor.from_shape(affine_shape, mode="constant", value=1)
             self.beta = base.Tensor.from_shape(affine_shape, mode="zeros")
-
-            self.parameters = (
-                self.gamma,
-                self.beta,
-            )
+            self.parameters = (self.gamma, self.beta)
 
         self.standardization = Standardization(
             axis=standardization_axis,
@@ -140,9 +136,9 @@ class BatchNorm1d(_BaseNorm):
     ):
         super(BatchNorm1d, self).__init__(
             dim_in=dim_in,
-            affine_shape=(1, dim_in),
+            affine_shape=(1, int(dim_in)),
             standardization_axis=0,
-            moving_avg_shape=dim_in if moving_avg_stats else None,
+            moving_avg_shape=int(dim_in) if moving_avg_stats else None,
             affine=affine,
             momentum=momentum,
         )
