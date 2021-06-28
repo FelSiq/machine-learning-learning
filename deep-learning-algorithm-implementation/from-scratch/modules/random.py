@@ -44,17 +44,32 @@ class AddNoiseGaussian(_AddNoiseBase):
         std: float = 1.0,
         noise_shape: t.Optional[t.Tuple[int, ...]] = None,
         disable_when_frozen: bool = True,
+        decay_std_max_iter: t.Optional[int] = None,
+        decay_std_min: float = 0.0,
     ):
         assert float(std) >= 0.0
+        assert 0.0 <= float(decay_std_min) <= float(std)
 
         super(AddNoiseGaussian, self).__init__(
             noise_shape=noise_shape, disable_when_frozen=disable_when_frozen
         )
 
         self.mean = float(mean)
-        self.std = float(std)
+        self.std = self.std_init = float(std)
+        self.std_min = float(decay_std_min)
+
+        self.D = decay_std_max_iter
+        self.d = 0
+
+        if self.D is not None:
+            self.D = int(self.D)
 
         def noise_func(noise_shape):
+            if self.D is not None and self.d < self.D:
+                self.d += 1
+                decay_factor = (self.D - self.d) / (self.D - self.std_init * self.d)
+                self.std = self.std_min + (self.std_init - self.std_min) * decay_factor
+
             return np.random.normal(loc=self.mean, scale=self.std, size=noise_shape)
 
         self.noise_func = noise_func
