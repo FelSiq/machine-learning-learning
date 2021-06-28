@@ -30,8 +30,9 @@ class Generator(modules.BaseModel):
         ret = modules.Sequential(
             [
                 modules.Linear(dim_in, dim_out),
-                # modules.BatchNorm1d(dim_out),
-                modules.LeakyReLU(0.01, inplace=True),
+                modules.BatchNorm1d(dim_out, momentum=0.99),
+                modules.LeakyReLU(0.02, inplace=True),
+                modules.Dropout(0.3, disable_when_frozen=False),
             ]
         )
 
@@ -57,7 +58,7 @@ class Generator(modules.BaseModel):
 
 
 class Discriminator(modules.BaseModel):
-    def __init__(self, dims: t.Sequence[int], noise_decay_iter: int = 4096):
+    def __init__(self, dims: t.Sequence[int], noise_decay_iter: int = 2048):
         super(Discriminator, self).__init__()
 
         self.weights = modules.Sequential(
@@ -86,8 +87,7 @@ class Discriminator(modules.BaseModel):
         ret = modules.Sequential(
             [
                 modules.Linear(dim_in, dim_out),
-                # modules.BatchNorm1d(dim_out),
-                modules.LeakyReLU(slope=0.2, inplace=True),
+                modules.LeakyReLU(slope=0.1, inplace=True),
             ]
         )
 
@@ -106,20 +106,20 @@ def _test():
     import sklearn.datasets
     import matplotlib.pyplot as plt
 
-    train_epochs = 200
+    train_epochs = 50
     batch_size = 32
 
     np.random.seed(16)
 
-    gen = Generator(dims=[16, 128, 64])
+    gen = Generator(dims=[16, 256, 128, 64])
 
     disc = Discriminator(dims=[64, 48, 1])
 
     X, _ = sklearn.datasets.load_digits(return_X_y=True)
     X = (X - np.min(X, axis=0)) / (1e-7 + np.ptp(X, axis=0)) * 2.0 - 1.0
 
-    optim_gen = optimizers.Nadam(gen.parameters, 2e-7)
-    optim_disc = optimizers.SGD(disc.parameters, 2e-7)
+    optim_gen = optimizers.Nadam(gen.parameters, 2e-6)
+    optim_disc = optimizers.Nadam(disc.parameters, 2e-6)
 
     criterion_gen = losses.BCELoss(with_logits=True)
     criterion_disc = losses.AverageLosses(
@@ -130,12 +130,9 @@ def _test():
 
     n = len(X)
     inds = np.arange(n)
-    freeze_disc = False
 
     for epoch in np.arange(1, 1 + train_epochs):
-        if not freeze_disc:
-            total_loss_disc = 0.0
-
+        total_loss_disc = 0.0
         total_loss_gen = 0.0
         total_it = 0
         np.random.shuffle(inds)
@@ -147,30 +144,29 @@ def _test():
             end = start + batch_size
             X_real = X[start:end, ...]
 
-            if not freeze_disc:
-                gen.eval()
-                X_fake = gen.generate_and_forward(X_real.shape[0])
+            gen.eval()
+            X_fake = gen.generate_and_forward(X_real.shape[0])
 
-                optim_disc.zero_grad()
-                y_disc_real = disc(X_real)
-                y_disc_fake = disc(X_fake)
+            optim_disc.zero_grad()
+            y_disc_real = disc(X_real)
+            y_disc_fake = disc(X_fake)
 
-                y_true_real = (np.random.random(y_disc_real.shape) <= 0.95).astype(
-                    int, copy=False
-                )
-                y_true_fake = (np.random.random(y_disc_fake.shape) >= 0.95).astype(
-                    int, copy=False
-                )
+            y_true_real = (np.random.random(y_disc_real.shape) <= 0.95).astype(
+                int, copy=False
+            )
+            y_true_fake = (np.random.random(y_disc_fake.shape) >= 0.95).astype(
+                int, copy=False
+            )
 
-                loss_disc, (loss_grad_disc_real, loss_grad_disc_fake) = criterion_disc(
-                    y=[y_true_real, y_true_fake],
-                    y_preds=[y_disc_real, y_disc_fake],
-                )
+            loss_disc, (loss_grad_disc_real, loss_grad_disc_fake) = criterion_disc(
+                y=[y_true_real, y_true_fake],
+                y_preds=[y_disc_real, y_disc_fake],
+            )
 
-                disc.backward(loss_grad_disc_fake)
-                disc.backward(loss_grad_disc_real)
+            disc.backward(loss_grad_disc_fake)
+            disc.backward(loss_grad_disc_real)
 
-                optim_disc.step()
+            optim_disc.step()
 
             gen.train()
             optim_gen.zero_grad()
@@ -185,27 +181,13 @@ def _test():
             total_it += 1
 
             total_loss_gen += loss_gen
-
-            if not freeze_disc:
-                total_loss_disc += loss_disc
+            total_loss_disc += loss_disc
 
             disc_fooled_rate = np.mean(y_disc_fake.ravel() >= 0.0)
-            pgbar.set_description(
-                f"{'(frozen) ' if freeze_disc else ''} Disc. fooled rate: {disc_fooled_rate:.3f}"
-            )
+            pgbar.set_description(f"Disc. fooled rate: {disc_fooled_rate:.3f}")
 
         total_loss_gen /= total_it
-
-        if not freeze_disc:
-            total_loss_disc /= total_it
-
-        """
-        if total_loss_gen >= total_loss_disc + 0.150:
-            freeze_disc = True
-
-        if total_loss_gen <= total_loss_disc - 0.080:
-            freeze_disc = False
-        """
+        total_loss_disc /= total_it
 
         print(f"Avg. generator loss     : {total_loss_gen:.3f}")
         print(f"Avg. discriminator loss : {total_loss_disc:.3f}")
