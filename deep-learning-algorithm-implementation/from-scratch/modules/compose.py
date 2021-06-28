@@ -1,3 +1,5 @@
+import typing as t
+
 from . import base
 from . import _utils
 
@@ -46,3 +48,58 @@ class Sequential(base.BaseLayer):
             strs.append(f" | {i}. {str(layer)}")
 
         return "\n".join(strs)
+
+
+class SkipConnection(base.BaseLayer):
+    def __init__(
+        self,
+        layer_main: base.BaseComponent,
+        activation: t.Optional[base.BaseComponent] = None,
+        layer_skip: t.Optional[base.BaseComponent] = None,
+    ):
+        super(SkipConnection, self).__init__(trainable=True)
+
+        self.layer_main = layer_main
+        self.add = base.Add()
+
+        self.layer_skip = None
+        self.activation = None
+
+        self.register_layers(self.layer_main, self.add)
+
+        if layer_skip is not None:
+            self.layer_skip = layer_skip
+            self.register_layers(self.layer_skip)
+
+        if activation is not None:
+            self.activation = activation
+            self.register_layers(self.activation)
+
+    def forward(self, X):
+        X_skip = X
+        X_main = self.layer_main(X)
+
+        if self.layer_skip is not None:
+            X_skip = self.layer_skip(X_skip)
+
+        out = self.add(X_main, X_skip)
+
+        if self.activation is not None:
+            out = self.activation(out)
+
+        return out
+
+    def backward(self, dout):
+        if self.activation is not None:
+            dout = self.activation.backward(dout)
+
+        dX_main, dX_skip = self.add.backward(dout)
+
+        dX = self.layer_main.backward(dX_main)
+
+        if self.layer_skip is not None:
+            dX_skip = self.layer_skip.backward(dX_skip)
+
+        dX += dX_skip
+
+        return dX
