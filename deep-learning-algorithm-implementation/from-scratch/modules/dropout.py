@@ -4,17 +4,20 @@ from . import base
 
 
 class _BaseDropout(base.BaseLayer):
-    def __init__(self, drop_prob: float, inplace: bool = False):
+    def __init__(
+        self, drop_prob: float, inplace: bool = False, disable_when_frozen: bool = True
+    ):
         assert 1.0 > float(drop_prob) >= 0.0
         super(_BaseDropout, self).__init__()
         self.drop_prob = float(drop_prob)
         self.keep_prob = 1.0 - self.drop_prob
         self.inplace = bool(inplace)
+        self.disable_when_frozen = bool(disable_when_frozen)
 
 
 class Dropout(_BaseDropout):
     def forward(self, X):
-        if self.frozen:
+        if self.frozen and self.disable_when_frozen:
             return X
 
         mask = np.random.random(X.shape) <= self.keep_prob
@@ -34,7 +37,7 @@ class Dropout(_BaseDropout):
 
 class SpatialDropout(_BaseDropout):
     def forward(self, X):
-        if self.frozen:
+        if self.frozen and self.disable_when_frozen:
             return X
 
         num_channels = X.shape[-1]
