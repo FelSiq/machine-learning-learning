@@ -564,7 +564,7 @@ class _BaseUpsample(base.BaseLayer):
     def __init__(
         self, num_spatial_dim: int, scale_factor: t.Union[float, t.Tuple[float, ...]]
     ):
-        assert float(scale_factor) >= 1.0
+        assert _utils.all_gte(scale_factor, 1.0)
         assert int(num_spatial_dim) > 0
 
         super(_BaseUpsample, self).__init__()
@@ -575,7 +575,7 @@ class _BaseUpsample(base.BaseLayer):
         scale_factor = (0, *scale_factor, 0)
 
         self.scale_factor = tuple(scale_factor)
-        self.scale_factor_ceil = tuple(np.ceil(scale_factor).astype(int, copy=False))
+        self.scale_factor_ceil = tuple(np.ceil(self.scale_factor).astype(int, copy=False))
         self.scale_factor_rem = tuple(
             np.subtract(self.scale_factor_ceil, self.scale_factor)
         )

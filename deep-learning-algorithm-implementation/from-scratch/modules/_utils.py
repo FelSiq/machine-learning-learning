@@ -3,10 +3,20 @@ import typing as t
 import numpy as np
 
 
-def all_positive(vals):
-    a = not isinstance(vals, int) or vals > 0
-    b = not hasattr(vals, "__len__") or all(map(lambda x: x > 0, vals))
+def all_gte(vals, threshold):
+    a = not isinstance(vals, int) or vals >= threshold
+    b = not hasattr(vals, "__len__") or all(map(lambda x: x >= threshold, vals))
     return a and b
+
+
+def all_gt(vals, threshold):
+    a = not isinstance(vals, int) or vals > threshold
+    b = not hasattr(vals, "__len__") or all(map(lambda x: x > threshold, vals))
+    return a and b
+
+
+def all_positive(vals):
+    return all_gt(vals, 0.0)
 
 
 def all_nonzero(vals):
