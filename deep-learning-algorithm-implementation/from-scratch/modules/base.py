@@ -509,7 +509,7 @@ class ScaleByConstant(BaseLayer):
 
 class WeightedAverage(BaseLayer):
     def __init__(self):
-        super(WeightedAverage).__init__()
+        super(WeightedAverage, self).__init__()
         self.add = Add()
         self.mult = Multiply()
         self.sub = Subtract()
@@ -525,7 +525,7 @@ class WeightedAverage(BaseLayer):
     def backward(self, dout):
         dout, dY_a = self.add.backward(dout)
         dout, dW = self.mult.backward(dout)
-        dX, dY_b = self.sub(dout)
+        dX, dY_b = self.sub.backward(dout)
         dY = dY_a + dY_b
         return dX, dY, dW
 
@@ -660,3 +660,19 @@ class Exp(BaseLayer):
     def backward(self, dout):
         (out,) = self._pop_from_cache()
         return out * dout
+
+
+class Flip(BaseLayer):
+    def __init__(self, axis: t.Optional[t.Union[int, t.Tuple[int, ...]]]):
+        super(Flip, self).__init__()
+
+        if not hasattr(axis, "__len__"):
+            axis = (axis,)
+
+        self.axis = tuple(map(int, axis))
+
+    def forward(self, X):
+        return np.flip(X, axis=self.axis)
+
+    def backward(self, X):
+        return np.flip(X, axis=self.axis)
