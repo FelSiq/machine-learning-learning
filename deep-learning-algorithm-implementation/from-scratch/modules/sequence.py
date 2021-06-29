@@ -206,7 +206,7 @@ class Bidirectional(base.BaseLayer):
         self.dim_in = self.rnn_l_to_r.dim_in
         self.dim_hidden = self.rnn_l_to_r.dim_hidden
 
-        self.register_layers(self.rnn_l_to_r, self.rnn_r_to_l)
+        self.register_layers(self.rnn_l_to_r, self.rnn_r_to_l, self.flip)
 
     def forward(self, X):
         # shape: (time, batch, dim_in)
@@ -222,8 +222,7 @@ class Bidirectional(base.BaseLayer):
         return outputs
 
     def backward(self, douts):
-        # if n_dim = 3: douts (time, batch, 2 * dim_hidden)
-        # if n_dim = 2: douts (batch, 2 * dim_hidden)
+        # shape: douts (time, batch, 2 * dim_hidden)
         douts_l_to_r = self.rnn_l_to_r.backward(douts[..., : self.dim_hidden])
         douts_r_to_l_reversed = self.rnn_r_to_l.backward(douts[..., self.dim_hidden :])
 
