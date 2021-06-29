@@ -663,7 +663,7 @@ class Exp(BaseLayer):
 
 
 class Flip(BaseLayer):
-    def __init__(self, axis: t.Optional[t.Union[int, t.Tuple[int, ...]]]):
+    def __init__(self, axis: t.Optional[t.Union[int, t.Tuple[int, ...]]] = None):
         super(Flip, self).__init__()
 
         if not hasattr(axis, "__len__"):
@@ -674,5 +674,5 @@ class Flip(BaseLayer):
     def forward(self, X):
         return np.flip(X, axis=self.axis)
 
-    def backward(self, X):
-        return np.flip(X, axis=self.axis)
+    def backward(self, dout):
+        return np.flip(dout, axis=self.axis)
