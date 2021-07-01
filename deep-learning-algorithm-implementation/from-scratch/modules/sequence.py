@@ -264,3 +264,64 @@ class DeepSequenceModel(base.BaseLayer):
 
     def backward(self, dout):
         return self.weights.backward(dout)
+
+
+class _BasePositionalEncoding(base.BaseLayer):
+    def __init__(
+        self, seq_len: t.Optional[int], emb_dim: t.Optional[int], trainable: bool
+    ):
+        assert seq_len is None or int(seq_len) > 0
+        assert emb_dim is None or int(emb_dim) > 0
+
+        super(_BasePositionalEncoding, self).__init__(trainable=trainable)
+
+        self.seq_len = int(seq_len) if seq_len is not None else None
+        self.emb_dim = int(emb_dim) if emb_dim is not None else None
+
+
+class PositionalEncodingSinCos(_BasePositionalEncoding):
+    def __init__(self, magic_base_period: float = 1e4):
+        assert float(magic_base_period) > 0
+
+        super(PositionalEncodingSinCos, self).__init__(trainable=False)
+
+        self.magic_base_period = float(magic_base_period)
+        self._cached_enc = np.empty((0, 0, 0), dtype=float)
+
+        self.add = base.Add()
+        self.register_layers(self.add)
+
+    def _compute_encoding(self, X):
+        cache_dim_seq, _, cache_dim_enc = self._cached_enc.shape
+        dim_seq, _, dim_enc = X.shape
+
+        if cache_dim_seq <= dim_seq and cache_dim_enc <= dim_enc:
+            return self._cached_enc[:dim_seq, :, :dim_enc]
+
+        e = np.arange(1, 1 + dim_enc // 2) * -2.0 / dim_enc
+        s = np.arange(1, 1 + dim_seq)
+
+        E, S = np.meshgrid(e, s, copy=False, sparse=False)
+        freqs = S * np.power(self.magic_base_period, E)
+
+        sin = np.sin(freqs)
+        cos = np.cos(freqs)
+
+        pos_enc = np.empty((dim_seq, dim_enc), dtype=float)
+        pos_enc[0:-1:2, :] = sin
+        pos_enc[1::2, :] = cos
+
+        pos_enc = np.expandims(pos_enc, 1)
+
+        self._cached_enc = pos_enc
+
+        return pos_enc
+
+    def forward(self, X):
+        pos_enc = self._compute_encoding(X)
+        out = self.add(X, pos_enc)
+        return out
+
+    def backward(self, dout):
+        dX, _ = self.add.backward(dout)
+        return dX
