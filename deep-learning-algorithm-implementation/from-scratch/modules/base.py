@@ -555,7 +555,7 @@ class Divide(BaseLayer):
 
 class ScaleByConstant(BaseLayer):
     def __init__(self, constant: float):
-        super(ScalerByConstant, self).__init__()
+        super(ScaleByConstant, self).__init__()
         self.constant = float(constant)
 
     def forward(self, X):
