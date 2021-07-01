@@ -1,4 +1,6 @@
 import numpy as np
+import scipy.special
+import scipy.stats
 
 from . import base
 
@@ -119,4 +121,35 @@ class Softmax(base.BaseLayer):
     def backward(self, dout):
         dX_logits = self.exp.backward(dout)
         dX = self.log_softmax.backward(dX_logits)
+        return dX
+
+
+class GELU(base.BaseLayer):
+    def __init__(self):
+        super(GELU, self).__init__()
+        self.mult = base.Multiply()
+        self.mult_const_ca = base.ScaleByConstant(0.5)
+        self.mult_const_cb = base.ScaleByConstant(np.sqrt(0.5))
+        self.register_layers(self.mult, self.mult_const_ca, self.mult_const_cb)
+        self._norm_pdf = scipy.stats.norm(loc=0.0, scale=np.sqrt(0.5)).pdf
+
+    def forward(self, X):
+        X_ca = self.mult_const_ca(X)
+        X_cb = self.mult_const_cb(X)
+        X_erf = 1.0 + scipy.special.erf(X_cb)
+        out = self.mult(X_ca, X_erf)
+        self._store_in_cache(X_cb)
+        return out
+
+    def backward(self, dout):
+        (X_cb,) = self._pop_from_cache()
+
+        dX_ca, dX_erf = self.mult.backward(dout)
+        dX_cb = 2.0 * self._norm_pdf(X_cb) * dX_erf
+
+        dX_b = self.mult_const_cb.backward(dX_cb)
+        dX_a = self.mult_const_ca.backward(dX_ca)
+
+        dX = dX_a + dX_b
+
         return dX
