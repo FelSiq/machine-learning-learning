@@ -289,17 +289,17 @@ class _BasePositionalEncoding(base.BaseLayer):
             self.add = base.Add()
             self.register_layers(self.add)
 
-    def _get_pos_enc(self, X):
-        raise NotImplementedError
+        self.pos_enc = base.Tensor.from_shape((0, 0, 0), requires_grad=False)
 
-    def _update_grads_pos_enc(self, dE):
-        raise NotImplementedError
+    def _prepare_pos_enc(self, X):
+        return self.pos_enc.values
 
     def forward(self, X):
-        pos_enc = self._get_pos_enc(X)
+        pos_enc = self._prepare_pos_enc(X)
 
         if self.concatenate:
-            out = self.concatenate((X, pos_enc), axis=-1)
+            pos_enc_bc = np.broadcast_to(pos_enc, X.shape)
+            out = np.concatenate((X, pos_enc_bc), axis=-1)
 
         else:
             out = self.add(X, pos_enc)
@@ -309,11 +309,13 @@ class _BasePositionalEncoding(base.BaseLayer):
     def backward(self, dout):
         if self.concatenate:
             dX, dE = np.split(dout, 2, axis=-1)
+            dE = np.sum(dE, axis=1, keepdims=True)
 
         else:
             dX, dE = self.add.backward(dout)
 
-        self._update_grads_pos_enc(dE)
+        if self.trainable:
+            self.pos_enc.update_grads(dE)
 
         return dX
 
@@ -323,18 +325,17 @@ class PositionalEncodingSinCos(_BasePositionalEncoding):
         assert float(magic_base_period) > 0
 
         super(PositionalEncodingSinCos, self).__init__(
-            trainable=False, concatenate=concatenate
+            trainable=False, max_seq_len=None, dim_in=None, concatenate=concatenate
         )
 
         self.magic_base_period = float(magic_base_period)
-        self._cached_enc = np.empty((0, 0, 0), dtype=float)
 
-    def _get_pos_enc(self, X):
-        cache_dim_seq, _, cache_dim_enc = self._cached_enc.shape
+    def _prepare_pos_enc(self, X):
+        cache_dim_seq, _, cache_dim_enc = self.pos_enc.shape
         dim_seq, _, dim_enc = X.shape
 
-        if cache_dim_seq <= dim_seq and cache_dim_enc <= dim_enc:
-            return self._cached_enc[:dim_seq, :, :dim_enc]
+        if dim_seq <= cache_dim_seq and dim_enc <= cache_dim_enc:
+            return self.pos_enc.values[:dim_seq, :, :dim_enc]
 
         e = np.arange(1, 1 + dim_enc // 2) * -2.0 / dim_enc
         s = np.arange(1, 1 + dim_seq)
@@ -346,17 +347,14 @@ class PositionalEncodingSinCos(_BasePositionalEncoding):
         cos = np.cos(freqs)
 
         pos_enc = np.empty((dim_seq, dim_enc), dtype=float)
-        pos_enc[0:-1:2, :] = sin
-        pos_enc[1::2, :] = cos
+        pos_enc[:, 0:-1:2] = sin
+        pos_enc[:, 1::2] = cos
 
         pos_enc = np.expand_dims(pos_enc, 1)
 
-        self._cached_enc = pos_enc
+        self.pos_enc = base.Tensor(pos_enc, requires_grad=False)
 
         return pos_enc
-
-    def _update_grads_pos_enc(self, _):
-        pass
 
 
 class PositionalEncodingLearnable(_BasePositionalEncoding):
@@ -369,9 +367,3 @@ class PositionalEncodingLearnable(_BasePositionalEncoding):
         )
 
         self.pos_enc = base.Tensor.from_shape((max_seq_len, 1, dim_in), mode="normal")
-
-    def _get_pos_enc(self, X):
-        return self.pos_enc.values
-
-    def _update_grads_pos_enc(self, dE):
-        self.pos_enc.update_grads(dE)
