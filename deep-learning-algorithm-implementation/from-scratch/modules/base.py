@@ -720,6 +720,16 @@ class Exp(BaseLayer):
         return out * dout
 
 
+class Log(BaseLayer):
+    def forward(self, X):
+        self._store_in_cache(X)
+        return np.log(X)
+
+    def backward(self, dout):
+        (X,) = self._pop_from_cache()
+        return dout / X
+
+
 class Flip(BaseLayer):
     def __init__(self, axis: t.Optional[t.Union[int, t.Tuple[int, ...]]] = None):
         super(Flip, self).__init__()
