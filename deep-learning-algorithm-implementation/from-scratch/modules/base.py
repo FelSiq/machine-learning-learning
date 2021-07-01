@@ -8,7 +8,7 @@ from . import _utils
 
 class Tensor:
     def __init__(
-        self, values: t.Optional[np.ndarray] = None, require_grads: bool = True
+        self, values: t.Optional[np.ndarray] = None, requires_grad: bool = True
     ):
         if values is None:
             values = np.empty(0, dtype=float)
@@ -17,7 +17,7 @@ class Tensor:
 
         self.grads = None
 
-        if require_grads:
+        if requires_grad:
             self.grads = np.zeros_like(self.values, dtype=float)
 
         self.frozen = False
