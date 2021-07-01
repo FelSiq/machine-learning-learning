@@ -77,19 +77,19 @@ class Sigmoid(base.BaseLayer):
 
 
 class Softmax(base.BaseLayer):
-    def __init__(self):
+    def __init__(self, axis: int = -1):
         super(Softmax, self).__init__()
 
-        raise NotImplementedError
-
         self.exp = base.Exp()
-        self.sum = base.Sum(axis=-1)
+        self.sum = base.Sum(axis=axis)
         self.divide = base.Divide()
+
+        self.axis = self.sum.axis
 
         self.register_layers(self.exp, self.sum, self.divide)
 
     def forward(self, X):
-        exp = self.exp(X - np.max(X, axis=-1, keepdims=True))
+        exp = self.exp(X - np.max(X, axis=self.axis, keepdims=True))
         sum_exp = self.sum(exp)
         probs = self.divide(exp, sum_exp)
         return probs
