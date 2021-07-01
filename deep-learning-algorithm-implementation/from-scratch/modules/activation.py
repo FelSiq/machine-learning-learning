@@ -76,27 +76,47 @@ class Sigmoid(base.BaseLayer):
         return dout
 
 
+class LogSoftmax(base.BaseLayer):
+    def __init__(self, axis: int = -1):
+        super(LogSoftmax, self).__init__()
+
+        self.exp = base.Exp()
+        self.sum = base.Sum(axis=axis)
+        self.log = base.Log()
+        self.sub = base.Subtract()
+
+        self.axis = self.sum.axis
+
+        self.register_layers(self.exp, self.sum, self.log, self.sub)
+
+    def forward(self, X):
+        X = X - np.max(X, axis=self.axis, keepdims=True)
+        X_lse = self.log(self.sum(self.exp(X)))
+        out = self.sub(X, X_lse)
+        return out
+
+    def backward(self, dout):
+        dX_a, dX_lse = self.sub.backward(dout)
+        dX_b = self.exp.backward(self.sum.backward(self.log.backward(dX_lse)))
+        dX = dX_a + dX_b
+        return dX
+
+
 class Softmax(base.BaseLayer):
     def __init__(self, axis: int = -1):
         super(Softmax, self).__init__()
 
+        self.log_softmax = LogSoftmax(axis=axis)
         self.exp = base.Exp()
-        self.sum = base.Sum(axis=axis)
-        self.divide = base.Divide()
 
-        self.axis = self.sum.axis
-
-        self.register_layers(self.exp, self.sum, self.divide)
+        self.register_layers(self.log_softmax, self.exp)
 
     def forward(self, X):
-        exp = self.exp(X - np.max(X, axis=self.axis, keepdims=True))
-        sum_exp = self.sum(exp)
-        probs = self.divide(exp, sum_exp)
-        return probs
+        X_logits = self.log_softmax(X)
+        out = self.exp(X_logits)
+        return out
 
     def backward(self, dout):
-        d_exp_a, d_sum_exp = self.divide.backward(dout)
-        d_exp_b = self.sum.backward(d_sum_exp)
-        d_exp = d_exp_a + d_exp_b
-        dX = self.exp.backward(d_exp)
+        dX_logits = self.exp.backward(dout)
+        dX = self.log_softmax.backward(dX_logits)
         return dX
