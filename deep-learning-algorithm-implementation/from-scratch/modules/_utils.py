@@ -88,8 +88,8 @@ _WEIGHT_INIT_PARAM = {
 def get_weight_init_dist_params(
     std: t.Union[str, float],
     dist: str,
-    shape: t.Union[int, int],
-    dims: t.Optional[t.Tuple[int, int]] = None,
+    shape: t.Tuple[int, ...],
+    dims: t.Optional[t.Union[int, t.Tuple[int, ...]]] = None,
 ):
     if np.isreal(std):
         assert dist == "normal"
@@ -99,10 +99,10 @@ def get_weight_init_dist_params(
     assert not isinstance(std, str) or std in {"he", "xavier", "xavier_norm"}
 
     if dims is not None:
-        dim_in, dim_out = dims if hasattr(dims, "__len__") else (dims, dims)
+        dim_in, dim_out = dims[:2] if hasattr(dims, "__len__") else (dims, dims)
 
     else:
-        dim_in, dim_out = shape
+        dim_in, dim_out = shape[:2]
 
     init_type = std
 

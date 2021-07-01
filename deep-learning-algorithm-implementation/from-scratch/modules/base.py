@@ -183,7 +183,10 @@ class MovingAverage(BaseComponent):
         momentum: float = 0.9,
         init_const: float = 0.0,
     ):
+        super(MovingAverage, self).__init__()
+
         assert 0.0 <= float(momentum) <= 1.0
+
         self.m = float(momentum)
         self.stat = np.full(stat_shape, fill_value=init_const, dtype=float)
 
@@ -260,12 +263,14 @@ class Linear(BaseLayer):
         self,
         dim_in: int,
         dim_out: int,
+        dim_channels: int = 1,
         include_bias: bool = True,
         activation: t.Optional[t.Callable[[np.ndarray], np.ndarray]] = None,
         weight_init_std: t.Union[t.Tuple[str, str], float] = ("normal", "he"),
     ):
-        assert dim_in > 0
-        assert dim_out > 0
+        assert int(dim_in) > 0
+        assert int(dim_out) > 0
+        assert int(dim_channels) > 0
 
         super(Linear, self).__init__(trainable=True)
 
@@ -275,8 +280,18 @@ class Linear(BaseLayer):
         else:
             mode, std = "normal", weight_init_std
 
+        dim_channels = int(dim_channels)
+
+        if dim_channels > 1:
+            weight_shape = (dim_channels, dim_in, dim_out)
+            bias_shape = (dim_channels, 1, dim_out)
+
+        else:
+            weight_shape = (dim_in, dim_out)
+            bias_shape = (dim_out,)
+
         self.weights = Tensor.from_shape(
-            shape=(dim_in, dim_out),
+            shape=weight_shape,
             mode=mode,
             std=std,
         )
@@ -284,7 +299,7 @@ class Linear(BaseLayer):
         self.bias = Tensor()
 
         if include_bias:
-            self.bias = Tensor.from_shape((dim_out), mode="zeros")
+            self.bias = Tensor.from_shape(bias_shape, mode="zeros")
             self.parameters = (self.weights, self.bias)
             self.add = Add()
             self.register_layers(self.add)
@@ -297,8 +312,11 @@ class Linear(BaseLayer):
         if self.activation is not None:
             self.register_layers(self.activation)
 
+        self.matmul = Matmul()
+        self.register_layers(self.matmul)
+
     def forward(self, X):
-        out = X @ self.weights.values
+        out = self.matmul(X, self.weights.values)
 
         if self.bias.size:
             out = self.add(out, self.bias.values)
@@ -320,9 +338,7 @@ class Linear(BaseLayer):
             dout, db = self.add.backward(dout)
             self.bias.update_grads(db)
 
-        dW = X.T @ dout
-        dX = dout @ self.weights.values.T
-
+        dX, dW = self.matmul.backward(dout)
         self.weights.update_grads(dW)
 
         return dX
@@ -333,6 +349,7 @@ class MultiLinear(BaseLayer):
         self,
         dims_in: t.Sequence[int],
         dim_out: int,
+        dim_channels: int = 1,
         include_bias: bool = True,
         activation: t.Optional[t.Callable[[np.ndarray], np.ndarray]] = None,
         weight_init_std: t.Union[t.Tuple[str, str], float] = ("normal", "he"),
@@ -344,8 +361,9 @@ class MultiLinear(BaseLayer):
 
         self.linear_transf = [
             Linear(
-                dim_in,
-                dim_out,
+                dim_in=dim_in,
+                dim_out=dim_out,
+                dim_channels=dim_channels,
                 include_bias=(i == len(dims_in) and include_bias),
                 activation=None,
                 weight_init_std=weight_init_std,
@@ -384,6 +402,46 @@ class MultiLinear(BaseLayer):
             d_outs.append(layer.backward(dout))
 
         return tuple(d_outs)
+
+
+class Matmul(BaseLayer):
+    def __init__(self, transpose_X: bool = False, transpose_Y: bool = False):
+        super(Matmul, self).__init__()
+        self.transpose_X = bool(transpose_X)
+        self.transpose_Y = bool(transpose_Y)
+
+    def __call__(self, X, Y):
+        return self.forward(X, Y)
+
+    def forward(self, X, Y):
+        if self.transpose_X:
+            X = np.swapaxes(X, -1, -2)
+
+        if self.transpose_Y:
+            Y = np.swapaxes(Y, -1, -2)
+
+        self._store_in_cache(X, Y)
+
+        out = np.matmul(X, Y)
+
+        return out
+
+    def backward(self, dout):
+        (X, Y) = self._pop_from_cache()
+
+        Xt = np.swapaxes(X, -1, -2)
+        Yt = np.swapaxes(Y, -1, -2)
+
+        dX = np.matmul(dout, Yt)
+        dY = np.matmul(Xt, dout)
+
+        if self.transpose_Y:
+            dY = np.swapaxes(dY, -1, -2)
+
+        if self.transpose_X:
+            dX = np.swapaxes(dX, -1, -2)
+
+        return dX, dY
 
 
 class Reshape(BaseLayer):
