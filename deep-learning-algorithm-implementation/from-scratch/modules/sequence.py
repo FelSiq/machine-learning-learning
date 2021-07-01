@@ -289,7 +289,14 @@ class _BasePositionalEncoding(base.BaseLayer):
             self.add = base.Add()
             self.register_layers(self.add)
 
-        self.pos_enc = base.Tensor.from_shape((0, 0, 0), requires_grad=False)
+        if self.trainable:
+            assert max_seq_len is not None
+            assert dim_in is not None
+            self.pos_enc = base.Tensor.from_shape((max_seq_len, 1, dim_in))
+            self.parameters = (self.pos_enc,)
+
+        else:
+            self.pos_enc = base.Tensor.from_shape((0, 0, 0), requires_grad=False)
 
     def _prepare_pos_enc(self, X):
         return self.pos_enc.values
@@ -365,5 +372,3 @@ class PositionalEncodingLearnable(_BasePositionalEncoding):
             dim_in=dim_in,
             concatenate=concatenate,
         )
-
-        self.pos_enc = base.Tensor.from_shape((max_seq_len, 1, dim_in), mode="normal")
