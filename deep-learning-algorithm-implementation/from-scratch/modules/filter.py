@@ -223,47 +223,81 @@ class LearnableFilter2d(_BaseFixedFilter):
         return dX
 
 
-class MaxFilter2d(_BaseFixedFilter):
-    def __init__(
-        self,
-        kernel_size: t.Union[int, t.Tuple[int, ...]],
-    ):
-        super(MaxFilter2d, self).__init__(
-            kernel_size=kernel_size,
+class ChannelMaxPool2d(_BaseFixedFilter):
+    def __init__(self):
+        super(ChannelMaxPool2d, self).__init__(
+            kernel_size=1,
             num_spatial_dims=2,
             trainable=False,
         )
 
     def forward(self, X):
-        input_shape = X.shape
-
-        _, h_dim, w_dim, d_dim = input_shape
+        _, h_dim, w_dim, d_dim = input_shape = X.shape
 
         X = X.reshape(-1, h_dim * w_dim, d_dim)
 
-        max_indices = np.argmax(X, axis=1)
-        out = np.take_along_axis(X, np.expand_dims(max_indices, 1), axis=1)
+        max_inds = np.expand_dims(np.argmax(X, axis=1), 1)
+        out = np.take_along_axis(X, max_inds, axis=1)
         out = np.squeeze(out)
 
         if out.ndim == 1:
             out = np.expand_dims(out, -1)
 
-        self._store_in_cache(max_indices, input_shape)
+        self._store_in_cache(max_inds, input_shape)
 
         return out
 
     def backward(self, dout):
-        (max_indices, input_shape) = self._pop_from_cache()
+        (max_inds, input_shape) = self._pop_from_cache()
+        _, h_dim, w_dim, _ = input_shape
 
-        _, h_dim, w_dim, d_dim = input_shape
-
-        max_indices = max_indices.reshape(-1, 1, d_dim)
-
-        dout_b = max_indices == np.arange(h_dim * w_dim).reshape(1, -1, 1)
-        dout = np.expand_dims(dout, (1, 2))
-        dout_b = dout_b.astype(float, copy=False).reshape(input_shape) * dout
+        dout_b = max_inds == np.arange(h_dim * w_dim).reshape(1, -1, 1)
+        dout_b = dout_b.astype(float, copy=False).reshape(input_shape)
+        dout_b *= np.expand_dims(dout, (1, 2))
 
         return dout_b
+
+
+class ChannelAvgPool2d(base.BaseLayer):
+    def __init__(self):
+        self.avg = base.Average(axis=(1, 2), keepdims=True)
+        self.register_layers(self.avg)
+
+    def forward(self, X):
+        return self.avg(X)
+
+    def backward(self, dout):
+        return self.avg.backward(dout)
+
+
+class GlobalMaxPool2d(base.BaseLayer):
+    def forward(self, X):
+        _, _, _, d_dim = X.shape
+        max_inds = np.expand_dims(np.argmax(X, axis=3), 3)
+        out = np.take_along_axis(X, max_inds, axis=3)
+        self._store_in_cache(max_inds, d_dim)
+        return out
+
+    def backward(self, dout):
+        (max_inds, d_dim) = self._pop_from_cache()
+        dX = (max_inds == np.arange(d_dim).reshape(1, 1, 1, -1)).astype(
+            float, copy=False
+        )
+        dX *= dout
+        return dX
+
+
+class GlobalAvgPool2d(base.BaseLayer):
+    def __init__(self):
+        super(GlobalAvgPool2d, self).__init__()
+        self.mean = base.Mean(axis=3, keepdims=True)
+        self.register_layers(self.mean)
+
+    def forward(self, X):
+        return self.mean(X)
+
+    def backward(self, dout):
+        return self.mean.backward(dout)
 
 
 class Conv2d(_BaseConv):
@@ -494,7 +528,7 @@ class _Pool2d(_BaseMovingFilter):
 
         h_stride, w_stride = self.stride
         h_kernel, w_kernel = self.kernel_size
-        batch_size, h_dim, w_dim, _ = X.shape
+        batch_size, h_dim, w_dim, d_dim = X.shape
 
         out = np.empty((batch_size, h_out_dim, w_out_dim, d_dim), dtype=float)
 
@@ -540,7 +574,7 @@ class MaxPool2d(_Pool2d):
     ):
         super(MaxPool2d, self).__init__(
             trainable=False,
-            filter_=MaxFilter2d(kernel_size=kernel_size),
+            filter_=ChannelMaxPool2d(),
             kernel_size=kernel_size,
             stride=stride,
         )
