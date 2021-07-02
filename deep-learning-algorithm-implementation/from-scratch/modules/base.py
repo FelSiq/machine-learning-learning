@@ -744,3 +744,32 @@ class Flip(BaseLayer):
 
     def backward(self, dout):
         return np.flip(dout, axis=self.axis)
+
+
+class Stack(BaseLayer):
+    def __init__(self, axis: int):
+        super(Stack, self).__init__()
+        self.axis = int(axis)
+
+    def forward(self, tensors):
+        return np.stack(tensors, axis=self.axis)
+
+    def backward(self, dout):
+        num_tensors = dout.shape[self.axis]
+        return np.split(dout, num_tensors, axis=self.axis)
+
+
+class Concatenate(BaseLayer):
+    def __init__(self, axis: int):
+        super(Concatenate, self).__init__()
+        self.axis = int(axis)
+
+    def forward(self, tensors):
+        tensor_lens = tuple(ts.shape[self.axis] for ts in tensors[1:])
+        self._store_in_cache(tensor_lens)
+        return np.concatenate(tensors, axis=self.axis)
+
+    def backward(self, dout):
+        (tensor_lens,) = self._pop_from_cache()
+        split_inds = np.cumsum(tensor_lens)
+        return np.array_split(dout, split_inds, axis=self.axis)
