@@ -112,6 +112,7 @@ class ConvChannelAttention2d(base.BaseLayer):
             self.mlp,
             self.global_pool_max,
             self.global_pool_avg,
+            self.add,
             self.sigmoid,
             self.multiply,
         )
@@ -237,7 +238,7 @@ class ConvBlockAttention2d(base.BaseLayer):
             ]
         )
 
-        self.register_layers(self.skip_channel, self.skip_spatial)
+        self.register_layers(self.weights)
 
     def forward(self, X):
         return self.weights(X)
