@@ -260,6 +260,7 @@ class ChannelMaxPool2d(_BaseFixedFilter):
 
 class ChannelAvgPool2d(base.BaseLayer):
     def __init__(self):
+        super(ChannelAvgPool2d, self).__init__()
         self.avg = base.Average(axis=(1, 2), keepdims=True)
         self.register_layers(self.avg)
 
@@ -290,14 +291,14 @@ class GlobalMaxPool2d(base.BaseLayer):
 class GlobalAvgPool2d(base.BaseLayer):
     def __init__(self):
         super(GlobalAvgPool2d, self).__init__()
-        self.mean = base.Mean(axis=3, keepdims=True)
-        self.register_layers(self.mean)
+        self.avg = base.Average(axis=3, keepdims=True)
+        self.register_layers(self.avg)
 
     def forward(self, X):
-        return self.mean(X)
+        return self.avg(X)
 
     def backward(self, dout):
-        return self.mean.backward(dout)
+        return self.avg.backward(dout)
 
 
 class Conv2d(_BaseConv):
