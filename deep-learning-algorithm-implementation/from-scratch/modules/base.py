@@ -746,23 +746,26 @@ class Flip(BaseLayer):
         return np.flip(dout, axis=self.axis)
 
 
-class Stack(BaseLayer):
-    def __init__(self, axis: int):
-        super(Stack, self).__init__()
+class _BaseCombineTensorLayer(BaseLayer):
+    def __init__(
+        self,
+        axis: int,
+        combine_fun: t.Callable,
+        debug_ignore_axes: t.Optional[t.Tuple[int, ...]] = None,
+    ):
+        super(_BaseCombineTensorLayer, self).__init__()
+
         self.axis = int(axis)
+        self.combine_fun = combine_fun
 
-    def forward(self, tensors):
-        return np.stack(tensors, axis=self.axis)
+        self.debug_ignore_axes = None
 
-    def backward(self, dout):
-        num_tensors = dout.shape[self.axis]
-        return np.split(dout, num_tensors, axis=self.axis)
+        if debug_ignore_axes is not None:
 
+            if not hasattr(debug_ignore_axes, "__len__"):
+                debug_ignore_axes = (debug_ignore_axes,)
 
-class Concatenate(BaseLayer):
-    def __init__(self, axis: int):
-        super(Concatenate, self).__init__()
-        self.axis = int(axis)
+            self.debug_ignore_axes = tuple(debug_ignore_axes)
 
     def __call__(self, *tensors):
         return self.forward(*tensors)
@@ -770,7 +773,50 @@ class Concatenate(BaseLayer):
     def forward(self, *tensors):
         self._store_in_cache(tuple(ts.shape for ts in tensors))
         tensors = np.broadcast_arrays(*tensors)
-        return np.concatenate(tensors, axis=self.axis)
+        return self.combine_fun(tensors, axis=self.axis)
+
+    def backward(self, dout):
+        raise NotImplementedError
+
+
+class Stack(_BaseCombineTensorLayer):
+    def __init__(
+        self,
+        axis: int,
+        debug_ignore_axes: t.Optional[t.Tuple[int, ...]] = None,
+    ):
+        super(Stack, self).__init__(
+            axis=axis, combine_fun=np.stack, debug_ignore_axes=debug_ignore_axes
+        )
+
+    def backward(self, dout):
+        (tensor_shapes,) = self._pop_from_cache()
+        num_tensors = len(tensor_shapes)
+
+        douts = np.split(dout, num_tensors, axis=self.axis)
+        douts = tuple(
+            _utils.reduce_grad_broadcasting(
+                np.squeeze(dX, axis=self.axis),
+                dout,
+                X_shape,
+                debug_ignore_axes=self.debug_ignore_axes,
+            )
+            for dX, X_shape in zip(dtensors, tensor_shapes)
+        )
+
+        return douts
+
+
+class Concatenate(_BaseCombineTensorLayer):
+    def __init__(
+        self,
+        axis: int,
+        debug_ignore_axes: t.Optional[t.Tuple[int, ...]] = None,
+    ):
+        super(Concatenate, self).__init__(
+            axis=axis, combine_fun=np.concatenate, debug_ignore_axes=debug_ignore_axes
+        )
+        self.axis = int(axis)
 
     def backward(self, dout):
         (tensor_shapes,) = self._pop_from_cache()
@@ -781,7 +827,9 @@ class Concatenate(BaseLayer):
         dtensors = np.array_split(dout, split_inds, axis=self.axis)
 
         douts = tuple(
-            _utils.reduce_grad_broadcasting(dX, dout, X_shape, debug_ignore_axes=0)
+            _utils.reduce_grad_broadcasting(
+                dX, dout, X_shape, debug_ignore_axes=self.debug_ignore_axes
+            )
             for dX, X_shape in zip(dtensors, tensor_shapes)
         )
 

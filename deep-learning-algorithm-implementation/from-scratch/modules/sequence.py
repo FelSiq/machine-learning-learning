@@ -204,7 +204,7 @@ class Bidirectional(base.BaseLayer):
         self.rnn_l_to_r = model
         self.rnn_r_to_l = model.copy()
         self.flip = base.Flip(axis=0)
-        self.dconcat = base.Concatenate(axis=2)
+        self.dconcat = base.Concatenate(axis=2, debug_ignore_axes=0)
 
         self.dim_in = self.rnn_l_to_r.dim_in
         self.dim_hidden = self.rnn_l_to_r.dim_hidden
@@ -289,7 +289,9 @@ class _BasePositionalEncoding(base.BaseLayer):
 
         self.concatenate = bool(concatenate)
         self.combine_layer = (
-            base.Concatenate(axis=2) if self.concatenate else base.Add()
+            base.Concatenate(axis=2, debug_ignore_axes=0)
+            if self.concatenate
+            else base.Add()
         )
         self.register_layers(self.combine_layer)
 
