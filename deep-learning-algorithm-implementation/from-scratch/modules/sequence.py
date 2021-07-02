@@ -288,16 +288,13 @@ class _BasePositionalEncoding(base.BaseLayer):
         self.dim_in = int(dim_in) if dim_in is not None else None
 
         self.concatenate = bool(concatenate)
-        self.dconcat = base.Concatenate(axis=2)
-        self.register_layers(self.dconcat)
-
-        if not self.concatenate:
-            self.add = base.Add()
-            self.register_layers(self.add)
+        self.combine_layer = (
+            base.Concatenate(axis=2) if self.concatenate else base.Add()
+        )
+        self.register_layers(self.combine_layer)
 
         if self.trainable:
-            assert max_seq_len is not None
-            assert dim_in is not None
+            assert max_seq_len is not None and dim_in is not None
             self.pos_enc = base.Tensor.from_shape((max_seq_len, 1, dim_in))
             self.parameters = (self.pos_enc,)
 
@@ -309,21 +306,11 @@ class _BasePositionalEncoding(base.BaseLayer):
 
     def forward(self, X):
         pos_enc = self._prepare_pos_enc(X)
-
-        if self.concatenate:
-            out = self.dconcat(X, pos_enc)
-
-        else:
-            out = self.add(X, pos_enc)
-
+        out = self.combine_layer(X, pos_enc)
         return out
 
     def backward(self, dout):
-        if self.concatenate:
-            dX, dE = self.dconcat.backward(dout)
-
-        else:
-            dX, dE = self.add.backward(dout)
+        dX, dE = self.combine_layer.backward(dout)
 
         if self.trainable:
             self.pos_enc.update_grads(dE)
