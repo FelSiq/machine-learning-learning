@@ -54,22 +54,31 @@ class SkipConnection(base.BaseLayer):
     def __init__(
         self,
         layer_main: base.BaseComponent,
-        activation: t.Optional[base.BaseComponent] = None,
         layer_skip: t.Optional[base.BaseComponent] = None,
+        layer_combine: t.Optional[base.BaseComponent] = None,
+        activation: t.Optional[base.BaseComponent] = None,
     ):
         super(SkipConnection, self).__init__(trainable=True)
 
         self.layer_main = layer_main
-        self.add = base.Add()
 
+        self.layer_combine = None
         self.layer_skip = None
         self.activation = None
 
-        self.register_layers(self.layer_main, self.add)
+        self.register_layers(self.layer_main)
 
         if layer_skip is not None:
             self.layer_skip = layer_skip
             self.register_layers(self.layer_skip)
+
+        if layer_combine is not None:
+            self.layer_combine = layer_combine
+
+        else:
+            self.layer_combine = base.Add()
+
+        self.register_layers(self.layer_combine)
 
         if activation is not None:
             self.activation = activation
@@ -82,7 +91,7 @@ class SkipConnection(base.BaseLayer):
         if self.layer_skip is not None:
             X_skip = self.layer_skip(X_skip)
 
-        out = self.add(X_main, X_skip)
+        out = self.layer_combine(X_main, X_skip)
 
         if self.activation is not None:
             out = self.activation(out)
@@ -93,7 +102,7 @@ class SkipConnection(base.BaseLayer):
         if self.activation is not None:
             dout = self.activation.backward(dout)
 
-        dX_main, dX_skip = self.add.backward(dout)
+        dX_main, dX_skip = self.layer_combine.backward(dout)
 
         dX = self.layer_main.backward(dX_main)
 
