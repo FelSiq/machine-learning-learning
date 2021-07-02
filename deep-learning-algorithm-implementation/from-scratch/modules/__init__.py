@@ -6,3 +6,4 @@ from .filter import *
 from .norm import *
 from .dropout import *
 from .random import *
+from .attention import *
