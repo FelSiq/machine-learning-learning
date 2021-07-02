@@ -204,11 +204,12 @@ class Bidirectional(base.BaseLayer):
         self.rnn_l_to_r = model
         self.rnn_r_to_l = model.copy()
         self.flip = base.Flip(axis=0)
+        self.dconcat = base.Concatenate(axis=2)
 
         self.dim_in = self.rnn_l_to_r.dim_in
         self.dim_hidden = self.rnn_l_to_r.dim_hidden
 
-        self.register_layers(self.rnn_l_to_r, self.rnn_r_to_l, self.flip)
+        self.register_layers(self.rnn_l_to_r, self.rnn_r_to_l, self.flip, self.dconcat)
 
     def forward(self, X):
         # shape: (time, batch, dim_in)
@@ -218,15 +219,17 @@ class Bidirectional(base.BaseLayer):
         out_r_to_l = self.rnn_r_to_l(X_reversed)
         # shape (both): (time, batch, dim_hidden)
 
-        outputs = np.dstack((out_l_to_r, out_r_to_l))
+        outputs = self.dconcat((out_l_to_r, out_r_to_l))
         # shape: (time, batch, 2 * dim_hidden)
 
         return outputs
 
     def backward(self, douts):
         # shape: douts (time, batch, 2 * dim_hidden)
-        douts_l_to_r = self.rnn_l_to_r.backward(douts[..., : self.dim_hidden])
-        douts_r_to_l_reversed = self.rnn_r_to_l.backward(douts[..., self.dim_hidden :])
+        douts_a, douts_b = self.dconcat.backward(douts)
+
+        douts_l_to_r = self.rnn_l_to_r.backward(douts_a)
+        douts_r_to_l_reversed = self.rnn_r_to_l.backward(douts_b)
 
         douts_r_to_l = self.flip.backward(douts_r_to_l_reversed)
 
