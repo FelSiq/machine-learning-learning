@@ -764,12 +764,25 @@ class Concatenate(BaseLayer):
         super(Concatenate, self).__init__()
         self.axis = int(axis)
 
-    def forward(self, tensors):
-        tensor_lens = tuple(ts.shape[self.axis] for ts in tensors[1:])
-        self._store_in_cache(tensor_lens)
+    def __call__(self, *tensors):
+        return self.forward(*tensors)
+
+    def forward(self, *tensors):
+        self._store_in_cache(tuple(ts.shape for ts in tensors))
+        tensors = np.broadcast_arrays(*tensors)
         return np.concatenate(tensors, axis=self.axis)
 
     def backward(self, dout):
-        (tensor_lens,) = self._pop_from_cache()
+        (tensor_shapes,) = self._pop_from_cache()
+
+        tensor_lens = tuple(ts[self.axis] for ts in tensor_shapes[1:])
         split_inds = np.cumsum(tensor_lens)
-        return np.array_split(dout, split_inds, axis=self.axis)
+
+        dtensors = np.array_split(dout, split_inds, axis=self.axis)
+
+        douts = tuple(
+            _utils.reduce_grad_broadcasting(dX, dout, X_shape, debug_ignore_axes=0)
+            for dX, X_shape in zip(dtensors, tensor_shapes)
+        )
+
+        return douts
