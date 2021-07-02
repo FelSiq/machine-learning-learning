@@ -219,7 +219,7 @@ class Bidirectional(base.BaseLayer):
         out_r_to_l = self.rnn_r_to_l(X_reversed)
         # shape (both): (time, batch, dim_hidden)
 
-        outputs = self.dconcat((out_l_to_r, out_r_to_l))
+        outputs = self.dconcat(out_l_to_r, out_r_to_l)
         # shape: (time, batch, 2 * dim_hidden)
 
         return outputs
@@ -286,7 +286,10 @@ class _BasePositionalEncoding(base.BaseLayer):
 
         self.max_seq_len = int(max_seq_len) if max_seq_len is not None else None
         self.dim_in = int(dim_in) if dim_in is not None else None
+
         self.concatenate = bool(concatenate)
+        self.dconcat = base.Concatenate(axis=2)
+        self.register_layers(self.dconcat)
 
         if not self.concatenate:
             self.add = base.Add()
@@ -308,8 +311,7 @@ class _BasePositionalEncoding(base.BaseLayer):
         pos_enc = self._prepare_pos_enc(X)
 
         if self.concatenate:
-            pos_enc_bc = np.broadcast_to(pos_enc, X.shape)
-            out = np.concatenate((X, pos_enc_bc), axis=-1)
+            out = self.dconcat(X, pos_enc)
 
         else:
             out = self.add(X, pos_enc)
@@ -318,8 +320,7 @@ class _BasePositionalEncoding(base.BaseLayer):
 
     def backward(self, dout):
         if self.concatenate:
-            dX, dE = np.split(dout, 2, axis=-1)
-            dE = np.sum(dE, axis=1, keepdims=True)
+            dX, dE = self.dconcat.backward(dout)
 
         else:
             dX, dE = self.add.backward(dout)
