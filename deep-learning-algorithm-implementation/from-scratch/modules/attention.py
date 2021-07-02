@@ -79,8 +79,72 @@ class MultiheadAttention(base.BaseLayer):
 class ConvChannelAttention2d(base.BaseLayer):
     def __init__(
         self,
+        dim_in: int,
+        bottleneck_ratio: float = 0.25,
+        mlp_activation: t.Optional[base.BaseComponent] = None,
     ):
+        assert 0.0 < float(bottleneck_ratio) <= 1.0
+
         super(ConvChannelAttention2d, self).__init__(trainable=True)
+
+        bottleneck_size = max(1, int(dim_in * bottleneck_ratio))
+
+        if mlp_activation is None:
+            mlp_activation = mlp_activations.ReLU(inplace=True)
+
+        self.mlp = compose.Sequential(
+            [
+                base.Flatten(),
+                base.Linear(dim_in, bottleneck_size),
+                mlp_activation,
+                base.Linear(bottleneck_size, dim_in),
+                base.Reshape(shape=(1, 1, dim_in)),
+            ]
+        )
+
+        self.global_pool_max = filters.GlobalMaxPool2d()
+        self.global_pool_avg = filters.GlobalAvgPool2d()
+        self.add = base.Add()
+        self.sigmoid = activation.Sigmoid()
+        self.multiply = base.Multiply()
+
+        self.register_layers(
+            self.mlp,
+            self.global_pool_max,
+            self.global_pool_avg,
+            self.sigmoid,
+            self.multiply,
+        )
+
+    def forward(self, X):
+        C_p_max = self.global_pool_max(X)
+        C_p_avg = self.global_pool_avg(X)
+
+        mlp_max = self.mlp(X_p_max)
+        mlp_avg = self.mlp(X_p_avg)
+
+        logits = self.add(mlp_max, mlp_avg)
+        weights = self.sigmoid(logits)
+
+        out = self.multiply(X, weights)
+
+        return out
+
+    def backward(self, dout):
+        dX_a, dW = self.multiply.backward(dout)
+
+        dlogits = self.sigmoid.backward(dW)
+        dmlp_max, dmlp_avg = self.add.backward(dlogits)
+
+        dX_p_avg = self.mlp.backward(dmlp_avg)
+        dX_p_max = self.mlp.backward(dmlp_max)
+
+        dX_b = self.global_pool_avg.backward(dX_p_avg)
+        dX_c = self.global_pool_max.backward(dX_p_max)
+
+        dX = dX_a + dX_b + dX_c
+
+        return dX
 
 
 class ConvSpatialAttention2d(base.BaseLayer):
@@ -145,17 +209,29 @@ class ConvSpatialAttention2d(base.BaseLayer):
 class ConvBlockAttention2d(base.BaseLayer):
     def __init__(
         self,
+        dim_in: int,
+        channel_bottleneck_ratio: float = 0.25,
+        channel_mlp_activation: t.Optional[base.BaseComponent] = None,
+        spatial_activation_conv: t.Optional[base.BaseComponent] = None,
+        spatial_norm_layer_after_conv: t.Optional[base.BaseComponent] = None,
     ):
         super(ConvBlockAttention2d, self).__init__(trainable=True)
 
         self.weights = compose.Sequential(
             [
                 compose.SkipConnection(
-                    layer_main=ConvChannelAttention2d(...),
+                    layer_main=ConvChannelAttention2d(
+                        dim_in=dim_in,
+                        bottleneck_ratio=channel_bottleneck_ratio,
+                        mlp_activation=channel_mlp_activation,
+                    ),
                     layer_combine=base.Multiply(),
                 ),
                 compose.SkipConnection(
-                    layer_main=ConvSpatialAttention2d(...),
+                    layer_main=ConvSpatialAttention2d(
+                        activation_conv=spatial_activation_conv,
+                        norm_layer_after_conv=spatial_norm_layer_after_conv,
+                    ),
                     layer_combine=base.Multiply(),
                 ),
             ]
@@ -171,17 +247,27 @@ class ConvBlockAttention2d(base.BaseLayer):
 
 
 class SqueezeExcite(base.BaseLayer):
-    def __init__(self, dim_in: int, bottleneck_ratio: float = 0.5):
+    def __init__(
+        self,
+        dim_in: int,
+        bottleneck_ratio: float = 0.25,
+        mlp_activation: t.Optional[base.BaseComponent] = None,
+    ):
         assert 0.0 < float(bottleneck_ratio) <= 1.0
         super(SqueezeExcite, self).__init__(trainable=True)
 
+        dim_in = int(dim_in)
         bottleneck_size = max(1, int(dim_in * bottleneck_ratio))
+
+        if mlp_activation is None:
+            mlp_activation = activations.ReLU(inplace=True)
 
         self.weights = compose.SkipConnection(
             layer_main=compose.Sequential(
                 [
                     filters.GlobalAvgPool2d(squeeze=True),
                     base.Linear(dim_in, bottleneck_size),
+                    mlp_activation,
                     base.Linear(bottleneck_size, dim_in),
                     base.Reshape(shape=(1, 1, dim_in)),
                     activation.Sigmoid(),
