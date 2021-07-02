@@ -114,7 +114,7 @@ def get_weight_init_dist_params(
     return -param, param
 
 
-def reduce_grad_broadcasting(dX, dout, X_orig_shape):
+def reduce_grad_broadcasting(dX, dout, X_orig_shape, debug_ignore_axes=tuple()):
     if X_orig_shape == dX.shape:
         return dX
 
@@ -129,6 +129,13 @@ def reduce_grad_broadcasting(dX, dout, X_orig_shape):
     )
 
     # TODO: remove this assert after debugging
-    assert dX.shape == X_orig_shape, (dX.shape, X_orig_shape)
+    grad_have_correct_shape = np.all(
+        np.logical_or(
+            np.equal(dX.shape, X_orig_shape),
+            np.isin(np.arange(dX.ndim), debug_ignore_axes),
+        )
+    )
+
+    assert grad_have_correct_shape, (dX.shape, X_orig_shape)
 
     return dX
