@@ -13,7 +13,7 @@ class AttentionCNN(modules.BaseModel):
         channels_num: t.Sequence[int],
         kernel_sizes: t.Sequence[int],
         linear_dims: t.Sequence[int],
-        padding: str = "same",
+        padding: str = "valid",
     ):
         assert len(channels_num) - 1 == len(kernel_sizes)
         super(AttentionCNN, self).__init__()
@@ -80,54 +80,37 @@ def _test():
 
     np.random.seed(32)
 
-    eval_size = 128
-    test_size = 128
-    batch_size = 64
-    train_epochs = 5
+    batch_size = 512
+    train_epochs = 2
     learning_rate = 1e-4
-    padding = "valid"
 
-    channels_num = (1, 32, 32)
-    kernel_sizes = (2, 2) if padding == "valid" else (3, 3)
+    channels_num = (1, 8, 8)
+    kernel_sizes = (3, 3)
 
-    linear_dims = (
-        (6 * 6 * channels_num[-1], 512, 10)
-        if padding == "valid"
-        else (8 * 8 * channels_num[-1], 512, 10)
+    linear_dims = (4608, 128, 10)
+
+    X, y = sklearn.datasets.fetch_openml(
+        "mnist_784", version=1, return_X_y=True, as_frame=False
     )
+    X += 64 * np.random.randn(*X.shape)
+    X = (X / 255.0).reshape(-1, 28, 28, 1)
 
-    X, y = sklearn.datasets.load_digits(return_X_y=True)
-    X = X.reshape(-1, 8, 8, 1)
-
-    out_shape = (8, 8)
-
-    inds = np.arange(X.shape[0])
-    np.random.shuffle(inds)
+    inds = np.arange(y.size)
     X = X[inds, :]
     y = y[inds]
 
-    X_test, X = X[:test_size, :], X[test_size:, :]
-    y_test, y = y[:test_size], y[test_size:]
-
-    X_eval, X_train = X[:eval_size, :], X[eval_size:, :]
-    y_eval, y_train = y[:eval_size], y[eval_size:]
-
-    X_train_max = np.max(X_train)
-
-    X_train /= X_train_max
-    X_eval /= X_train_max
-    X_test /= X_train_max
+    X_train, X_eval, X_test = X[:5000], X[5000:6000], X[6000:7000]
+    y_train, y_eval, y_test = y[:5000], y[5000:6000], y[6000:7000]
 
     print("Train shape :", X_train.shape)
     print("Eval shape  :", X_eval.shape)
+    print("Test shape  :", X_test.shape)
 
     n = X_train.shape[0]
-    model = AttentionCNN(channels_num, kernel_sizes, linear_dims, padding=padding)
-    criterion = losses.CrossEntropyLoss()
 
-    optim = optimizers.RMSProp(
-        model.parameters, learning_rate=learning_rate, clip_grad_val=0.1
-    )
+    model = AttentionCNN(channels_num, kernel_sizes, linear_dims)
+    criterion = losses.CrossEntropyLoss()
+    optim = optimizers.Nadam(model.parameters, learning_rate=learning_rate)
 
     inds = np.arange(X_train.shape[0])
 
@@ -168,11 +151,30 @@ def _test():
         print(f"Total loss (train) : {total_loss_train:.3f}")
         print(f"Total loss (eval)  : {total_loss_eval:.3f}")
 
-    model.eval()
+    model.train()
     y_preds_logits = model(X_test)
+    loss, loss_grad = criterion(y_test, y_preds_logits)
+    dX = model.backward(loss_grad)
     y_preds = y_preds_logits.argmax(axis=-1)
     test_acc = float(np.mean(y_preds == y_test))
     print(f"Test acc: {test_acc:.3f}")
+
+    X_test_plot = X_test[:10, ...]
+    dX_test_plot = dX[:10, ...]
+    fig, axes = plt.subplots(
+        3, X_test_plot.shape[0], figsize=(15, 10), sharex=True, sharey=True
+    )
+
+    for i, (X, dX) in enumerate(zip(X_test_plot, dX_test_plot)):
+        A = np.squeeze(X)
+        B = np.squeeze(dX)
+        W = A * (B - np.min(B)) / (1e-7 + np.ptp(B))
+        axes[0][i].imshow(A, cmap="hot")
+        axes[1][i].imshow(B, cmap="gray")
+        axes[2][i].imshow(W, cmap="hot")
+
+    plt.tight_layout()
+    plt.show()
 
 
 if __name__ == "__main__":
