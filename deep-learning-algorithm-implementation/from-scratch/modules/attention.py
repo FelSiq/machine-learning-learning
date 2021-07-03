@@ -179,6 +179,8 @@ class ConvSpatialAttention2d(base.BaseLayer):
             self.conv2d,
         )
 
+        self.norm_layer_after_conv = None
+
         if norm_layer_after_conv is not None:
             self.norm_layer_after_conv = norm_layer_after_conv
             self.register_layers(self.norm_layer_after_conv)
