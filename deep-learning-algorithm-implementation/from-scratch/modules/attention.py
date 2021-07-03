@@ -271,12 +271,12 @@ class SqueezeExcite(base.BaseLayer):
         bottleneck_size = max(1, int(channels_in * bottleneck_ratio))
 
         if mlp_activation is None:
-            mlp_activation = activations.ReLU(inplace=True)
+            mlp_activation = activation.ReLU(inplace=True)
 
         self.weights = compose.SkipConnection(
             layer_main=compose.Sequential(
                 [
-                    filter_.GlobalAvgPool2d(squeeze=True),
+                    filter_.GlobalAvgPool2d(keepdims=False),
                     base.Linear(channels_in, bottleneck_size),
                     mlp_activation,
                     base.Linear(bottleneck_size, channels_in),

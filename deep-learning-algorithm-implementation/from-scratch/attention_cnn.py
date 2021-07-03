@@ -32,6 +32,7 @@ class AttentionCNN(modules.BaseModel):
                         ),
                         modules.BatchNorm2d(channels_num[i]),
                         modules.ReLU(inplace=True),
+                        # modules.SqueezeExcite(channels_num[i]),
                         modules.ConvBlockAttention2d(
                             channels_in=channels_num[i],
                             kernel_size=kernel_sizes[i - 1],
