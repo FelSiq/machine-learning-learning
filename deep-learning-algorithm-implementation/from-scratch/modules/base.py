@@ -448,7 +448,7 @@ class Reshape(BaseLayer):
     def __init__(self, out_shape: t.Tuple[int, ...]):
         assert len(out_shape)
         super(Reshape, self).__init__()
-        self.out_shape = tuple(out_shape)
+        self.out_shape = (-1, *out_shape)
 
     def forward(self, X):
         self._store_in_cache(X.shape)
@@ -463,7 +463,7 @@ class Reshape(BaseLayer):
 class Flatten(BaseLayer):
     def forward(self, X):
         self._store_in_cache(X.shape)
-        return X.reshape(-1, np.prod(X.shape[1:]))
+        return X.reshape(X.shape[0], -1)
 
     def backward(self, dout):
         (shape,) = self._pop_from_cache()
