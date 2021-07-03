@@ -64,9 +64,6 @@ class BCELoss(_BaseLoss):
 
 
 class CrossEntropyLoss(_BaseLoss):
-    def __init__(self, average: bool = True):
-        super(CrossEntropyLoss, self).__init__(average)
-
     def __call__(self, y, y_logits):
         y = y.reshape(-1, 1).astype(int, copy=False)
 
