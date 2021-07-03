@@ -1,9 +1,11 @@
+import typing as t
+
 import numpy as np
 
 from . import base
 from . import compose
 from . import activation
-from . import filters
+from . import filter
 
 
 # TODO: maybe add different forms of attention?
@@ -79,31 +81,31 @@ class MultiheadAttention(base.BaseLayer):
 class ConvChannelAttention2d(base.BaseLayer):
     def __init__(
         self,
-        dim_in: int,
-        bottleneck_ratio: float = 0.25,
+        channels_in: int,
+        bottleneck_ratio: float = 0.20,
         mlp_activation: t.Optional[base.BaseComponent] = None,
     ):
         assert 0.0 < float(bottleneck_ratio) <= 1.0
 
         super(ConvChannelAttention2d, self).__init__(trainable=True)
 
-        bottleneck_size = max(1, int(dim_in * bottleneck_ratio))
+        bottleneck_size = max(1, int(channels_in * bottleneck_ratio))
 
         if mlp_activation is None:
-            mlp_activation = mlp_activations.ReLU(inplace=True)
+            mlp_activation = activation.ReLU(inplace=True)
 
         self.mlp = compose.Sequential(
             [
                 base.Flatten(),
-                base.Linear(dim_in, bottleneck_size),
+                base.Linear(channels_in, bottleneck_size),
                 mlp_activation,
-                base.Linear(bottleneck_size, dim_in),
-                base.Reshape(shape=(1, 1, dim_in)),
+                base.Linear(bottleneck_size, channels_in),
+                base.Reshape(out_shape=(1, 1, channels_in)),
             ]
         )
 
-        self.global_pool_max = filters.GlobalMaxPool2d()
-        self.global_pool_avg = filters.GlobalAvgPool2d()
+        self.global_pool_max = filter.GlobalMaxPool2d()
+        self.global_pool_avg = filter.GlobalAvgPool2d()
         self.add = base.Add()
         self.sigmoid = activation.Sigmoid()
         self.multiply = base.Multiply()
@@ -121,8 +123,8 @@ class ConvChannelAttention2d(base.BaseLayer):
         C_p_max = self.global_pool_max(X)
         C_p_avg = self.global_pool_avg(X)
 
-        mlp_max = self.mlp(X_p_max)
-        mlp_avg = self.mlp(X_p_avg)
+        mlp_max = self.mlp(C_p_max)
+        mlp_avg = self.mlp(C_p_avg)
 
         logits = self.add(mlp_max, mlp_avg)
         weights = self.sigmoid(logits)
@@ -137,11 +139,11 @@ class ConvChannelAttention2d(base.BaseLayer):
         dlogits = self.sigmoid.backward(dW)
         dmlp_max, dmlp_avg = self.add.backward(dlogits)
 
-        dX_p_avg = self.mlp.backward(dmlp_avg)
-        dX_p_max = self.mlp.backward(dmlp_max)
+        dC_p_avg = self.mlp.backward(dmlp_avg)
+        dC_p_max = self.mlp.backward(dmlp_max)
 
-        dX_b = self.global_pool_avg.backward(dX_p_avg)
-        dX_c = self.global_pool_max.backward(dX_p_max)
+        dX_b = self.global_pool_avg.backward(dC_p_avg)
+        dX_c = self.global_pool_max.backward(dC_p_max)
 
         dX = dX_a + dX_b + dX_c
 
@@ -151,17 +153,20 @@ class ConvChannelAttention2d(base.BaseLayer):
 class ConvSpatialAttention2d(base.BaseLayer):
     def __init__(
         self,
+        kernel_size: t.Union[int, t.Tuple[int, ...]],
         activation_conv: t.Optional[base.BaseComponent] = None,
         norm_layer_after_conv: t.Optional[base.BaseComponent] = None,
     ):
         super(ConvSpatialAttention2d, self).__init__(trainable=True)
-        self.chan_pool_max = filters.ChannelMaxPool2d()
-        self.chan_pool_avg = filters.ChannelAvgPool2d()
-        self.dconcat = filters.Concatenate(axis=2)
-        self.conv2d = filters.Conv2d(
+
+        self.chan_pool_max = filter.ChannelMaxPool2d()
+        self.chan_pool_avg = filter.ChannelAvgPool2d()
+        self.chan_concat = base.Concatenate(axis=3)
+        self.conv2d = filter.Conv2d(
             channels_in=2,
             channels_out=1,
-            padding_mode="same",
+            kernel_size=kernel_size,
+            padding_type="same",
             activation=activation_conv,
         )
         self.sigmoid = activation.Sigmoid()
@@ -169,7 +174,7 @@ class ConvSpatialAttention2d(base.BaseLayer):
         self.register_layers(
             self.chan_pool_max,
             self.chan_pool_avg,
-            self.dconcat,
+            self.chan_concat,
             self.sigmoid,
             self.conv2d,
         )
@@ -181,7 +186,8 @@ class ConvSpatialAttention2d(base.BaseLayer):
     def forward(self, X):
         C_p_max = self.chan_pool_max(X)
         C_p_avg = self.chan_pool_avg(X)
-        C = self.dconcat(C_p_max, C_p_avg)
+
+        C = self.chan_concat(C_p_max, C_p_avg)
         logits = self.conv2d(C)
 
         if self.norm_layer_after_conv is not None:
@@ -198,9 +204,9 @@ class ConvSpatialAttention2d(base.BaseLayer):
             dlogits = self.norm_layer_after_conv.backward(dlogits)
 
         dC = self.conv2d.backward(dlogits)
-        dC_p_max, dC_p_avg = self.dconcat.backward(dC)
+        dC_p_max, dC_p_avg = self.chan_concat.backward(dC)
         dX_a = self.chan_pool_avg.backward(dC_p_avg)
-        dX_b = self.chan_pool_max.backward(dX_p_max)
+        dX_b = self.chan_pool_max.backward(dC_p_max)
 
         dX = dX_a + dX_b
 
@@ -210,8 +216,9 @@ class ConvSpatialAttention2d(base.BaseLayer):
 class ConvBlockAttention2d(base.BaseLayer):
     def __init__(
         self,
-        dim_in: int,
-        channel_bottleneck_ratio: float = 0.25,
+        channels_in: int,
+        kernel_size: int,
+        channel_bottleneck_ratio: float = 0.20,
         channel_mlp_activation: t.Optional[base.BaseComponent] = None,
         spatial_activation_conv: t.Optional[base.BaseComponent] = None,
         spatial_norm_layer_after_conv: t.Optional[base.BaseComponent] = None,
@@ -222,7 +229,7 @@ class ConvBlockAttention2d(base.BaseLayer):
             [
                 compose.SkipConnection(
                     layer_main=ConvChannelAttention2d(
-                        dim_in=dim_in,
+                        channels_in=channels_in,
                         bottleneck_ratio=channel_bottleneck_ratio,
                         mlp_activation=channel_mlp_activation,
                     ),
@@ -230,6 +237,7 @@ class ConvBlockAttention2d(base.BaseLayer):
                 ),
                 compose.SkipConnection(
                     layer_main=ConvSpatialAttention2d(
+                        kernel_size=kernel_size,
                         activation_conv=spatial_activation_conv,
                         norm_layer_after_conv=spatial_norm_layer_after_conv,
                     ),
@@ -250,15 +258,15 @@ class ConvBlockAttention2d(base.BaseLayer):
 class SqueezeExcite(base.BaseLayer):
     def __init__(
         self,
-        dim_in: int,
-        bottleneck_ratio: float = 0.25,
+        channels_in: int,
+        bottleneck_ratio: float = 0.20,
         mlp_activation: t.Optional[base.BaseComponent] = None,
     ):
         assert 0.0 < float(bottleneck_ratio) <= 1.0
         super(SqueezeExcite, self).__init__(trainable=True)
 
-        dim_in = int(dim_in)
-        bottleneck_size = max(1, int(dim_in * bottleneck_ratio))
+        channels_in = int(channels_in)
+        bottleneck_size = max(1, int(channels_in * bottleneck_ratio))
 
         if mlp_activation is None:
             mlp_activation = activations.ReLU(inplace=True)
@@ -266,11 +274,11 @@ class SqueezeExcite(base.BaseLayer):
         self.weights = compose.SkipConnection(
             layer_main=compose.Sequential(
                 [
-                    filters.GlobalAvgPool2d(squeeze=True),
-                    base.Linear(dim_in, bottleneck_size),
+                    filter.GlobalAvgPool2d(squeeze=True),
+                    base.Linear(channels_in, bottleneck_size),
                     mlp_activation,
-                    base.Linear(bottleneck_size, dim_in),
-                    base.Reshape(shape=(1, 1, dim_in)),
+                    base.Linear(bottleneck_size, channels_in),
+                    base.Reshape(out_shape=(1, 1, channels_in)),
                     activation.Sigmoid(),
                 ]
             ),
