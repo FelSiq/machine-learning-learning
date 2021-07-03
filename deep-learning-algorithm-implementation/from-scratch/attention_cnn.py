@@ -48,7 +48,7 @@ class AttentionCNN(modules.BaseModel):
                             linear_dims[i - 1],
                             linear_dims[i],
                             activation=None,
-                            include_bias=True,
+                            include_bias=False,
                         ),
                         modules.BatchNorm1d(linear_dims[i]),
                         modules.ReLU(inplace=True),

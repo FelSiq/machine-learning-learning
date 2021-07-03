@@ -5,7 +5,7 @@ import numpy as np
 from . import base
 from . import compose
 from . import activation
-from . import filter
+from . import filter as filter_
 
 
 # TODO: maybe add different forms of attention?
@@ -104,8 +104,8 @@ class ConvChannelAttention2d(base.BaseLayer):
             ]
         )
 
-        self.global_pool_max = filter.GlobalMaxPool2d()
-        self.global_pool_avg = filter.GlobalAvgPool2d()
+        self.global_pool_max = filter_.GlobalMaxPool2d()
+        self.global_pool_avg = filter_.GlobalAvgPool2d()
         self.add = base.Add()
         self.sigmoid = activation.Sigmoid()
         self.multiply = base.Multiply()
@@ -159,10 +159,10 @@ class ConvSpatialAttention2d(base.BaseLayer):
     ):
         super(ConvSpatialAttention2d, self).__init__(trainable=True)
 
-        self.chan_pool_max = filter.ChannelMaxPool2d()
-        self.chan_pool_avg = filter.ChannelAvgPool2d()
+        self.chan_pool_max = filter_.ChannelMaxPool2d()
+        self.chan_pool_avg = filter_.ChannelAvgPool2d()
         self.chan_concat = base.Concatenate(axis=3)
-        self.conv2d = filter.Conv2d(
+        self.conv2d = filter_.Conv2d(
             channels_in=2,
             channels_out=1,
             kernel_size=kernel_size,
@@ -276,7 +276,7 @@ class SqueezeExcite(base.BaseLayer):
         self.weights = compose.SkipConnection(
             layer_main=compose.Sequential(
                 [
-                    filter.GlobalAvgPool2d(squeeze=True),
+                    filter_.GlobalAvgPool2d(squeeze=True),
                     base.Linear(channels_in, bottleneck_size),
                     mlp_activation,
                     base.Linear(bottleneck_size, channels_in),
