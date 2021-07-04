@@ -68,8 +68,8 @@ class AttentionQKV(base.BaseLayer):
         return out
 
     def backward(self, dout):
-        dout = self.permute_seq_first.backward(dout)
-        dV_batch_first, datt_scores = self.matmul_scores_V.backward(dout)
+        dout_batch_first = self.permute_seq_first.backward(dout)
+        dV_batch_first, datt_scores = self.matmul_scores_V.backward(dout_batch_first)
         datt_logits = self.softmax.backward(datt_scores)
 
         if self.add.has_stored_grads:
