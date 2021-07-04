@@ -162,14 +162,16 @@ class BatchNorm2d(_BaseNorm):
         )
 
 
-class GroupNorm2d(_BaseNorm):
+class _BaseGroupNorm(_BaseNorm):
     def __init__(
         self,
+        num_spatial_dim: int,
         dim_in: int,
         num_groups: int,
         affine: bool = True,
         affine_shape: t.Optional[t.Tuple[int, ...]] = None,
     ):
+        assert int(num_spatial_dim) > 0
         assert int(num_groups) > 0
         assert int(dim_in) > 0
         assert int(dim_in) % int(num_groups) == 0
@@ -180,13 +182,13 @@ class GroupNorm2d(_BaseNorm):
         affine_shape = (
             (1, *affine_shape)
             if affine_shape is not None
-            else (1, 1, 1, self.num_groups, self.dim_per_group)
+            else (1, *([1] * num_spatial_dim), self.num_groups, self.dim_per_group)
         )
 
-        super(GroupNorm2d, self).__init__(
+        super(_BaseGroupNorm, self).__init__(
             dim_in=dim_in,
             affine_shape=affine_shape,
-            standardization_axis=(1, 2, 3),
+            standardization_axis=tuple(range(1, 2 + num_spatial_dim)),
             moving_avg_shape=None,
             affine=affine,
         )
@@ -194,16 +196,33 @@ class GroupNorm2d(_BaseNorm):
     def forward(self, X):
         inp_shape = X.shape
         X = X.reshape(*inp_shape[:-1], self.num_groups, self.dim_per_group)
-        out = super(GroupNorm2d, self).forward(X)
+        out = super(_BaseGroupNorm, self).forward(X)
         out = out.reshape(inp_shape)
         return out
 
     def backward(self, dout):
         shape = dout.shape
         dout = dout.reshape(*dout.shape[:-1], self.num_groups, self.dim_per_group)
-        dout = super(GroupNorm2d, self).backward(dout)
+        dout = super(_BaseGroupNorm, self).backward(dout)
         dout = dout.reshape(shape)
         return dout
+
+
+class GroupNorm2d(_BaseGroupNorm):
+    def __init__(
+        self,
+        dim_in: int,
+        num_groups: int,
+        affine: bool = True,
+        affine_shape: t.Optional[t.Tuple[int, ...]] = None,
+    ):
+        super(GroupNorm2d, self).__init__(
+            num_spatial_dim=2,
+            dim_in=dim_in,
+            num_groups=num_groups,
+            affine=affine,
+            affine_shape=affine_shape,
+        )
 
 
 class InstanceNorm2d(GroupNorm2d):
