@@ -73,7 +73,7 @@ class AttentionQKV(base.BaseLayer):
         datt_logits = self.softmax.backward(datt_scores)
 
         if self.add.has_stored_grads:
-            datt_logits = self.add.backward(datt_logits)
+            datt_logits, _ = self.add.backward(datt_logits)
 
         if self.scale_query_key_prod:
             (query_dim,) = self._pop_from_cache()
@@ -111,6 +111,9 @@ class MultiheadAttentionQKV(base.BaseLayer):
             self.weights_out,
             self.attentionQKV,
         )
+
+    def __call__(self, X, Y=None, mask=None):
+        return self.forward(X, Y, mask)
 
     def forward(self, X, Y=None, mask=None):
         self._store_in_cache(Y is None)
@@ -150,6 +153,38 @@ class MultiheadAttentionQKV(base.BaseLayer):
             return dX
 
         return dX, dY
+
+
+class MultiheadMaskedSelfAttentionQKV(base.BaseLayer):
+    def __init__(
+        self,
+        dim_in: int,
+        n_heads: int,
+        scale_query_key_prod: bool = True,
+        mask_type: str = "lower",
+    ):
+        assert str(mask_type) in {"lower", "upper"}
+        super(MultiheadMaskedSelfAttentionQKV, self).__init__(trainable=True)
+        self.mha_qkv = MultiheadAttentionQKV(
+            dim_in=dim_in, n_heads=n_heads, scale_query_key_prod=scale_query_key_prod
+        )
+        self.register_layers(self.mha_qkv)
+        self.mask_lower = str(mask_type) == "lower"
+
+    def forward(self, X):
+        # X shape: (T, N, E)
+        dim_seq, _, _ = X.shape
+        mask = np.zeros((dim_seq, dim_seq), dtype=float)
+        # mask shape: (T, T)
+        mask_fun, offset = (
+            (np.tril_indices_from, -1) if self.mask_lower else (np.triu_indices_from, 1)
+        )
+        mask[mask_fun(mask, k=offset)] = -np.inf
+        out = self.mha_qkv(X, mask=mask)
+        return out
+
+    def backward(self, dout):
+        return self.mha_qkv.backward(dout)
 
 
 class ConvChannelAttention2d(base.BaseLayer):
