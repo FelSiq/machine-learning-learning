@@ -438,6 +438,9 @@ class Matmul(BaseLayer):
         dX = np.matmul(dout, Yt)
         dY = np.matmul(Xt, dout)
 
+        dX = _utils.reduce_grad_broadcasting(dX, dout, X.shape)
+        dY = _utils.reduce_grad_broadcasting(dY, dout, Y.shape)
+
         if self.transpose_Y:
             dY = np.swapaxes(dY, -1, -2)
 
@@ -837,3 +840,16 @@ class Concatenate(_BaseCombineTensorLayer):
         )
 
         return douts
+
+
+class PermuteAxes(BaseLayer):
+    def __init__(self, permutation: t.Tuple[int, ...]):
+        super(PermuteAxes, self).__init__()
+        self.permutation = tuple(permutation)
+        self.inv_permutation = tuple(np.argsort(self.permutation))
+
+    def forward(self, X):
+        return np.transpose(X, self.permutation)
+
+    def backward(self, dout):
+        return np.transpose(dout, self.inv_permutation)
