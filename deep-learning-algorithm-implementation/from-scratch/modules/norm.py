@@ -165,6 +165,7 @@ class BatchNorm2d(_BaseNorm):
 class _BaseGroupNorm(_BaseNorm):
     def __init__(
         self,
+        standardization_axis: t.Union[int, t.Tuple[int, ...]],
         num_spatial_dim: int,
         dim_in: int,
         num_groups: int,
@@ -182,13 +183,18 @@ class _BaseGroupNorm(_BaseNorm):
         affine_shape = (
             (1, *affine_shape)
             if affine_shape is not None
-            else (1, *([1] * num_spatial_dim), self.num_groups, self.dim_per_group)
+            else (
+                1,
+                *([1] * num_spatial_dim),
+                self.num_groups,
+                self.dim_per_group,
+            )
         )
 
         super(_BaseGroupNorm, self).__init__(
             dim_in=dim_in,
             affine_shape=affine_shape,
-            standardization_axis=tuple(range(1, 2 + num_spatial_dim)),
+            standardization_axis=standardization_axis,
             moving_avg_shape=None,
             affine=affine,
         )
@@ -217,7 +223,26 @@ class GroupNorm2d(_BaseGroupNorm):
         affine_shape: t.Optional[t.Tuple[int, ...]] = None,
     ):
         super(GroupNorm2d, self).__init__(
+            standardization_axis=(1, 2, 3),
             num_spatial_dim=2,
+            dim_in=dim_in,
+            num_groups=num_groups,
+            affine=affine,
+            affine_shape=affine_shape,
+        )
+
+
+class GroupNorm1d(_BaseGroupNorm):
+    def __init__(
+        self,
+        dim_in: int,
+        num_groups: int,
+        affine: bool = True,
+        affine_shape: t.Optional[t.Tuple[int, ...]] = None,
+    ):
+        super(GroupNorm1d, self).__init__(
+            standardization_axis=-1,
+            num_spatial_dim=1,
             dim_in=dim_in,
             num_groups=num_groups,
             affine=affine,
@@ -234,6 +259,15 @@ class InstanceNorm2d(GroupNorm2d):
         )
 
 
+class InstanceNorm1d(GroupNorm1d):
+    def __init__(self, dim_in: int, affine: bool = True):
+        super(InstanceNorm1d, self).__init__(
+            dim_in=dim_in,
+            num_groups=dim_in,
+            affine=affine,
+        )
+
+
 class LayerNorm2d(GroupNorm2d):
     def __init__(self, input_shape: t.Tuple[int, ...], affine: bool = True):
         dim_in = input_shape[-1]
@@ -244,4 +278,14 @@ class LayerNorm2d(GroupNorm2d):
             num_groups=1,
             affine=affine,
             affine_shape=(*dims_spatial, 1, dim_in),
+        )
+
+
+class LayerNorm1d(GroupNorm1d):
+    def __init__(self, dim_in: int, affine: bool = True):
+        super(LayerNorm1d, self).__init__(
+            dim_in=dim_in,
+            num_groups=1,
+            affine=affine,
+            affine_shape=(1, 1, 1, dim_in),
         )
