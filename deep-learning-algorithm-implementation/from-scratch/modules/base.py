@@ -251,11 +251,14 @@ class Identity(BaseLayer):
     def __init__(self, *args, **kwargs):
         super(Identity, self).__init__()
 
-    def forward(self, X):
-        return X
+    def __call__(self, *args):
+        return self.forward(*args)
 
-    def backward(self, dout):
-        return dout
+    def forward(self, *args):
+        return args if len(args) > 1 else args[0]
+
+    def backward(self, *dout):
+        return dout if len(dout) > 1 else dout[0]
 
 
 class Linear(BaseLayer):
