@@ -8,74 +8,148 @@ from . import activation
 from . import filter as filter_
 
 
-# TODO: maybe add different forms of attention?
-
-
-class Attention(base.BaseLayer):
-    def __init__(
-        self, mask: t.Optional[np.ndarray] = None, scale_query_key_prod: bool = True
-    ):
-        super(_BaseAttention, self).__init__()
-
-        self.mask = None
-
-        if mask is not None:
-            self.mask = np.asfarray(mask)
+class AttentionQKV(base.BaseLayer):
+    def __init__(self, scale_query_key_prod: bool = True):
+        super(AttentionQKV, self).__init__()
 
         self.scale_query_key_prod = bool(scale_query_key_prod)
 
-        self.softmax = activation.Softmax()
-        self.multiply = base.Multiply()
-        self.sum = base.Sum(axis=-1)
-        self.matmul = base.Matmul(transpose_X=True)
+        self.softmax = activation.Softmax(axis=2)
+        self.matmul_Q_K = base.Matmul(transpose_X=True)
+        self.matmul_scores_V = base.Matmul(transpose_X=False)
         self.add = base.Add()
+        self.permute_batch_first = base.PermuteAxes((1, 2, 0))
+        self.permute_seq_first = base.PermuteAxes((2, 0, 1))
 
         self.register_layers(
-            self.softmax, self.multiply, self.sum, self.matmul, self.add
+            self.softmax,
+            self.matmul_Q_K,
+            self.matmul_scores_V,
+            self.add,
+            self.permute_batch_first,
+            self.permute_seq_first,
         )
 
-    def forward(self, Q, K, V):
-        # Q shape: (???)
-        # K shape: (???)
-        # V shape: (???)
-        att_logits = self.matmul(Q, K)
+    def __call__(self, Q, K, V, mask: t.Optional[np.ndarray] = None):
+        return self.forward(Q, K, V, mask=mask)
+
+    def forward(
+        self,
+        Q: np.ndarray,
+        K: np.ndarray,
+        V: np.ndarray,
+        mask: t.Optional[np.ndarray] = None,
+    ):
+        # Q shape: (L, N, E)
+        # K shape: (S, N, E)
+        # V shape: (S, N, E)
+
+        Q_batch_first = self.permute_batch_first(Q)
+        K_batch_first = self.permute_batch_first(K)
+        V_batch_first = self.permute_batch_first(V)
+
+        att_logits = self.matmul_Q_K(Q_batch_first, K_batch_first)
+        # att_Logits shape: (N, E, L) . (N, E, S) = (N, L, S)
 
         if self.scale_query_key_prod:
-            # TODO: is this right??
-            att_logits /= K.shape[-1]
-            self._store_in_cache(K.shape[-1])
+            query_dim = Q.shape[-1]
+            att_logits /= query_dim
+            self._store_in_cache(query_dim)
 
-        if self.mask is not None:
-            att_logits = self.add(att_logits, self.mask)
+        if mask is not None:
+            # mask shape: (L, S)
+            att_logits = self.add(att_logits, mask)
 
         att_scores = self.softmax(att_logits)
-        out = self.multiply(att_scores, V)
-        out = self.sum(out)
+        out_batch_first = self.matmul_scores_V(V_batch_first, att_scores)
+        out = self.permute_seq_first(out_batch_first)
+        # out shape: (S, N, E)
+
         return out
 
     def backward(self, dout):
-        dout = self.sum.backward(dout)
-        d_att_scores, dV = self.multiply.backward(dout)
-        d_att_logits = self.softmax.backward(d_att_scores)
+        dout = self.permute_seq_first.backward(dout)
+        dV_batch_first, datt_scores = self.matmul_scores_V.backward(dout)
+        datt_logits = self.softmax.backward(datt_scores)
 
-        if self.mask is not None:
-            d_att_logits = self.add.backward(d_att_logits)
+        if self.add.has_stored_grads:
+            datt_logits = self.add.backward(datt_logits)
 
         if self.scale_query_key_prod:
-            key_dim = self._pop_from_cache()
-            d_att_logits /= key_dim
+            (query_dim,) = self._pop_from_cache()
+            datt_logits /= query_dim
 
-        dQ, dK = self.matmul.backward(d_att_logits)
+        dQ_batch_first, dK_batch_first = self.matmul_Q_K.backward(datt_logits)
+
+        dQ = self.permute_batch_first.backward(dQ_batch_first)
+        dK = self.permute_batch_first.backward(dK_batch_first)
+        dV = self.permute_batch_first.backward(dV_batch_first)
 
         return dQ, dK, dV
 
 
-class MultiheadAttention(base.BaseLayer):
-    def __init__(self, dim: int, num_heads: int):
-        super(MultiheadAttention, self).__init__(trainable=True)
+class MultiheadAttentionQKV(base.BaseLayer):
+    def __init__(self, dim_in: int, n_heads: int, scale_query_key_prod: bool = True):
+        assert int(n_heads) > 0
 
-        self.weights = base.Linear(dim, dim, num_heads)
-        # TODO: finish this.
+        super(MultiheadAttentionQKV, self).__init__(trainable=True)
+
+        dtnh = dim_in * n_heads
+
+        self.n_heads = int(n_heads)
+
+        self.weights_query = base.Linear(dim_in, dtnh)
+        self.weights_key = base.Linear(dim_in, dtnh)
+        self.weights_value = base.Linear(dim_in, dtnh)
+        self.weights_out = base.Linear(dtnh, dim_in)
+        self.attentionQKV = AttentionQKV(scale_query_key_prod=scale_query_key_prod)
+
+        self.register_layers(
+            self.weights_query,
+            self.weights_key,
+            self.weights_value,
+            self.weights_out,
+            self.attentionQKV,
+        )
+
+    def forward(self, X, Y=None, mask=None):
+        self._store_in_cache(Y is None)
+
+        if Y is None:
+            Y = X
+
+        # X shape: (seq, batch, emb)
+        # Y shape: (seq, batch, emb)
+
+        Q = self.weights_query(Y)
+        K = self.weights_key(X)
+        V = self.weights_value(X)
+
+        # Q shape: (seq, batch, n_heads * emb)
+        # K shape: (seq, batch, n_heads * emb)
+        # V shape: (seq, batch, n_heads * emb)
+
+        out = self.attentionQKV(Q, K, V, mask=mask)
+        out = self.weights_out(out)
+
+        return out
+
+    def backward(self, dout):
+        (is_self_attention,) = self._pop_from_cache()
+
+        dout = self.weights_out.backward(dout)
+        dQ, dK, dV = self.attentionQKV.backward(dout)
+        dX_a = self.weights_value.backward(dV)
+        dX_b = self.weights_key.backward(dK)
+        dY = self.weights_query.backward(dQ)
+
+        dX = dX_a + dX_b
+
+        if is_self_attention:
+            dX += dY
+            return dX
+
+        return dX, dY
 
 
 class ConvChannelAttention2d(base.BaseLayer):
