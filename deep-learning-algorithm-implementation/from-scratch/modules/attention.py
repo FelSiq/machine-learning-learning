@@ -16,7 +16,7 @@ class AttentionQKV(base.BaseLayer):
 
         self.softmax = activation.Softmax(axis=2)
         self.matmul_Q_K = base.Matmul(transpose_X=True)
-        self.matmul_scores_V = base.Matmul(transpose_X=False)
+        self.matmul_scores_V = base.Matmul(transpose_Y=True)
         self.add = base.Add()
         self.permute_batch_first = base.PermuteAxes((1, 2, 0))
         self.permute_seq_first = base.PermuteAxes((2, 0, 1))
@@ -48,6 +48,10 @@ class AttentionQKV(base.BaseLayer):
         K_batch_first = self.permute_batch_first(K)
         V_batch_first = self.permute_batch_first(V)
 
+        # Q_batch_first shape: (N, E, L)
+        # K_batch_first shape: (N, E, S)
+        # V_batch_first shape: (N, E, S)
+
         att_logits = self.matmul_Q_K(Q_batch_first, K_batch_first)
         # att_Logits shape: (N, E, L) . (N, E, S) = (N, L, S)
 
@@ -62,8 +66,9 @@ class AttentionQKV(base.BaseLayer):
 
         att_scores = self.softmax(att_logits)
         out_batch_first = self.matmul_scores_V(V_batch_first, att_scores)
+        # out_batch_first shape: (N, E, L)
         out = self.permute_seq_first(out_batch_first)
-        # out shape: (S, N, E)
+        # out shape: (L, N, E)
 
         return out
 
@@ -121,16 +126,16 @@ class MultiheadAttentionQKV(base.BaseLayer):
         if Y is None:
             Y = X
 
-        # X shape: (seq, batch, emb)
-        # Y shape: (seq, batch, emb)
+        # X shape: (L, batch, emb)
+        # Y shape: (S, batch, emb)
 
-        Q = self.weights_query(Y)
-        K = self.weights_key(X)
-        V = self.weights_value(X)
+        Q = self.weights_query(X)
+        K = self.weights_key(Y)
+        V = self.weights_value(Y)
 
-        # Q shape: (seq, batch, n_heads * emb)
-        # K shape: (seq, batch, n_heads * emb)
-        # V shape: (seq, batch, n_heads * emb)
+        # Q shape: (S, batch, n_heads * emb)
+        # K shape: (L, batch, n_heads * emb)
+        # V shape: (L, batch, n_heads * emb)
 
         out = self.attentionQKV(Q, K, V, mask=mask)
         out = self.weights_out(out)
@@ -142,15 +147,16 @@ class MultiheadAttentionQKV(base.BaseLayer):
 
         dout = self.weights_out.backward(dout)
         dQ, dK, dV = self.attentionQKV.backward(dout)
-        dX_a = self.weights_value.backward(dV)
-        dX_b = self.weights_key.backward(dK)
-        dY = self.weights_query.backward(dQ)
 
-        dX = dX_a + dX_b
+        dY_a = self.weights_value.backward(dV)
+        dY_b = self.weights_key.backward(dK)
+        dY = dY_a + dY_b
+
+        dX = self.weights_query.backward(dQ)
 
         if is_self_attention:
-            dX += dY
-            return dX
+            dY += dX
+            return dY
 
         return dX, dY
 
