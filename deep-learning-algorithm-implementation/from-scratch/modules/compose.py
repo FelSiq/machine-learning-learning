@@ -15,17 +15,26 @@ class Sequential(base.BaseLayer):
         )
         self.register_layers(*layers)
 
-    def forward(self, X):
-        out = X
+    def __call__(self, *X):
+        return self.forward(*X)
+
+    def forward(self, *X):
+        out = X if len(X) > 1 else X[0]
 
         for layer in self.layers:
-            out = layer(out)
+            if isinstance(out, tuple):
+                out = layer(*out)
+            else:
+                out = layer(out)
 
         return out
 
     def backward(self, dout):
         for layer in reversed(self.layers):
-            dout = layer.backward(dout)
+            if isinstance(dout, tuple):
+                dout = layer.backward(*dout)
+            else:
+                dout = layer.backward(dout)
 
         return dout
 
@@ -84,9 +93,12 @@ class SkipConnection(base.BaseLayer):
             self.activation = activation
             self.register_layers(self.activation)
 
-    def forward(self, X):
-        X_skip = X
-        X_main = self.layer_main(X)
+    def __call__(self, *X):
+        return self.forward(*X)
+
+    def forward(self, *X):
+        X_skip = X[0]
+        X_main = self.layer_main(*X)
 
         if self.layer_skip is not None:
             X_skip = self.layer_skip(X_skip)
@@ -109,6 +121,11 @@ class SkipConnection(base.BaseLayer):
         if self.layer_skip is not None:
             dX_skip = self.layer_skip.backward(dX_skip)
 
-        dX += dX_skip
+        if isinstance(dX, tuple):
+            first_grad_view = dX[0]
+            first_grad_view += dX_skip
+
+        else:
+            dX += dX_skip
 
         return dX
