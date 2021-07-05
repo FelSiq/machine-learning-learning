@@ -287,5 +287,5 @@ class LayerNorm1d(GroupNorm1d):
             dim_in=dim_in,
             num_groups=1,
             affine=affine,
-            affine_shape=(1, 1, 1, dim_in),
+            affine_shape=(dim_in,),
         )
