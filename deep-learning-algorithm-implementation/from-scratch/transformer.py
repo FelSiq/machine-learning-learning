@@ -1,3 +1,5 @@
+import typing as t
+
 import numpy as np
 
 import modules
@@ -147,24 +149,30 @@ class TransformerDecoder(_BaseTransformerBlock):
         for b_start, b_end, X_as in zip(
             self.blocks_start, self.blocks_end, X_attention_scores
         ):
-            out = block_end(block_start(out), X_as)
+            out = b_end(b_start(out), X_as)
 
-        return outs
+        return out
 
     def backward(self, dout):
-        num_blocks = len(self.blocks_start)
-        dX_attention_scores = np.empty((num_blocks, *dout.shape), dtype=float)
+        dX_attention_scores = None
 
-        for i, (b_start, b_end, X_as) in reversed(
-            list(enumerate(zip(self.blocks_start, self.blocks_end, X_attention_scores)))
+        for i, (b_start, b_end) in reversed(
+            list(enumerate(zip(self.blocks_start, self.blocks_end)))
         ):
-            dout, dout_X_as = block_end.backward(dout)
-            dout = block_start.backward(dout)
+            dout, dout_X_as = b_end.backward(dout)
+            dout = b_start.backward(dout)
+
+            if dX_attention_scores is None:
+                num_blocks = len(self.blocks_start)
+                dX_attention_scores = np.empty(
+                    (num_blocks, *dout_X_as.shape), dtype=float
+                )
+
             dX_attention_scores[i, :, :, :] = dout_X_as
 
-        dout = self.preprocessing.backward(dout)
+        self.preprocessing.backward(dout)
 
-        return dout
+        return dX_attention_scores
 
     @staticmethod
     def _create_block(
@@ -215,10 +223,11 @@ class Transformer(modules.BaseModel):
     def __init__(
         self,
         dim_embed: int,
-        num_embed_tokens: int,
         dim_feedforward: int,
         max_seq_len: int,
         dim_out: int,
+        num_embed_tokens_encoder: int,
+        num_embed_tokens_decoder: t.Optional[int] = None,
         num_attention_heads: int = 8,
         num_blocks: int = 3,
         dropout: float = 0.3,
@@ -230,7 +239,7 @@ class Transformer(modules.BaseModel):
 
         self.encoder = TransformerEncoder(
             dim_embed=dim_embed,
-            num_embed_tokens=num_embed_tokens,
+            num_embed_tokens=num_embed_tokens_encoder,
             dim_feedforward=dim_feedforward,
             max_seq_len=max_seq_len,
             num_blocks=num_blocks,
@@ -243,7 +252,7 @@ class Transformer(modules.BaseModel):
         if include_decoder:
             self.decoder = TransformerDecoder(
                 dim_embed=dim_embed,
-                num_embed_tokens=num_embed_tokens,
+                num_embed_tokens=num_embed_tokens_decoder,
                 dim_feedforward=dim_feedforward,
                 max_seq_len=max_seq_len,
                 num_blocks=num_blocks,
@@ -254,7 +263,9 @@ class Transformer(modules.BaseModel):
 
         self.lin_output = modules.Linear(dim_embed, dim_out)
         self.register_layers(self.encoder, self.lin_output)
-        self._cache = []
+
+    def __call__(self, X, Y=None):
+        return self.forward(X, Y)
 
     def forward(self, X, Y=None):
         out = self.encoder(X)
@@ -263,30 +274,18 @@ class Transformer(modules.BaseModel):
             out = self.decoder(Y, out)
 
         out = self.lin_output(out)
-        self._cache.append(out.shape)
         return out
 
     def backward(self, dout):
-        # TODO: FIX THIS -----------------
-        # (broadcasting bug)
-        out_shape = self._cache.pop()
-        dout_b = np.zeros(out_shape, dtype=float)
-        dout_b[-1, -1, :, :] = dout
-        dout = dout_b
-        # -------------------------------
-
         dout = self.lin_output.backward(dout)
 
         if self.decoder is not None:
-            dY, dout = self.decoder.backward(dout)
-            dX = self.encoder.backward(dout)
-            return dX, dY
+            dout = self.decoder.backward(dout)
 
-        dout = self.encoder.backward(dout)
-        return dout
+        self.encoder.backward(dout)
 
 
-def _test():
+def _test_sentiment_analysis():
     import tqdm.auto
     from test import tweets_utils
 
@@ -371,10 +370,13 @@ def _test():
 
             model.train()
             y_logits = model(X_batch.T)
+            y_logits_shape = y_logits.shape
             y_logits = y_logits[-1][-1]
             loss, loss_grad = criterion(y_batch, y_logits)
             loss_grad = np.expand_dims(loss_grad, (0, 1))
-            model.backward(loss_grad)
+            loss_grad_b = np.zeros(y_logits_shape, dtype=float)
+            loss_grad_b[-1, -1, :, :] = loss_grad
+            model.backward(loss_grad_b)
             total_loss_train += loss
 
             optim.clip_grads_val()
@@ -409,5 +411,147 @@ def _test():
     print(f"Test acc: {test_acc:.3f}")
 
 
+def _test_data_translation():
+    import test.seq_to_seq
+    import tqdm.auto
+
+    def decode(model, sentence, human, machine, inv_machine):
+        model.eval()
+        prepared, _ = test.seq_to_seq.prepare_data([(sentence, "")], human, inv_machine)
+        print("Test input:", sentence)
+        print(prepared)
+        out = np.zeros((1, 11), dtype=int)
+        out[0][0] = human["<pad>"]
+
+        out = np.swapaxes(out, 0, 1)
+        prepared = np.swapaxes(prepared, 0, 1)
+
+        for i in range(1, 1 + 10):
+            pred = model(prepared, out)
+            ind = pred[i - 1].squeeze().argmax(axis=-1)
+            out[i][0] = ind
+
+        out = out.squeeze().detach().cpu().numpy()
+
+        print("Output (raw):", out)
+        print("Output:", "".join([inv_machine[i.item()] for i in out[1:]]))
+
+    data_size = 4000
+    eval_size = 500
+    train_epochs = 5
+    train_batch_size = 128
+    eval_batch_size = 128
+
+    max_seq_len = 80
+    dim_feedforward = 256
+    dim_embed = 16
+    nhead = 8
+    insert_noise = False
+
+    X_train, human, machine, inv_machine = test.seq_to_seq.load_dataset(
+        data_size, insert_noise
+    )
+    print("Train samples:")
+    print(X_train[:3])
+    X_train, Y_train = test.seq_to_seq.prepare_data(
+        X_train, human, inv_machine, max_seq_len
+    )
+
+    X_eval = test.seq_to_seq.load_dataset(eval_size, insert_noise)[0]
+    print("Eval samples:")
+    print(X_eval[:3])
+    X_eval, Y_eval = test.seq_to_seq.prepare_data(
+        X_eval, human, inv_machine, max_seq_len
+    )
+
+    model = Transformer(
+        num_embed_tokens_encoder=len(human),
+        num_embed_tokens_decoder=len(machine),
+        dim_embed=dim_embed,
+        num_attention_heads=nhead,
+        dim_feedforward=dim_feedforward,
+        num_blocks=2,
+        max_seq_len=max_seq_len,
+        dim_out=len(machine),
+    )
+
+    optim = optimizers.Nadam(model.parameters, 1e-4)
+
+    criterion = losses.CrossEntropyLoss(ignore_index=inv_machine["<pad>"])
+
+    n = X_train.shape[0]
+    m = X_eval.shape[0]
+    inds = np.arange(n)
+
+    for epoch in range(1, 1 + train_epochs):
+        X_train = X_train[inds, :]
+        Y_train = Y_train[inds, :]
+
+        train_batch_loss = train_acc = 0.0
+        total_batches = 0
+        model.train()
+
+        for start in tqdm.auto.tqdm(np.arange(0, n, train_batch_size)):
+            end = start + train_batch_size
+            X_batch = X_train[start:end, :]
+            Y_batch = Y_train[start:end, :]
+
+            optim.zero_grad()
+
+            X_batch = np.swapaxes(X_batch, 0, 1)
+            Y_batch = np.swapaxes(Y_batch, 0, 1)
+
+            y_preds = model(X_batch, Y_batch)
+            y_preds_shape = y_preds.shape
+            y_preds = y_preds[:-1].reshape(-1, len(machine))
+            Y_batch = Y_batch[1:].reshape(-1)
+            loss, loss_grad = criterion(Y_batch, y_preds)
+            loss_grad = loss_grad.reshape((y_preds_shape[0] - 1, *y_preds_shape[1:]))
+            loss_grad_b = np.zeros(y_preds_shape, dtype=float)
+            loss_grad_b[:-1, :, :] = loss_grad
+            model.backward(loss_grad_b)
+            optim.clip_grads_val()
+            optim.step()
+
+            train_batch_loss += loss
+            train_acc += (y_preds.argmax(axis=-1) == Y_batch).mean()
+            total_batches += 1
+
+        train_batch_loss /= total_batches
+        train_acc /= total_batches
+
+        eval_batch_loss = eval_acc = 0.0
+        total_batches = 0
+        model.eval()
+
+        for start in tqdm.auto.tqdm(np.arange(0, m, eval_batch_size)):
+            end = start + eval_batch_size
+            X_batch = X_eval[start:end, :]
+            Y_batch = Y_eval[start:end, :]
+            X_batch = np.swapaxes(X_batch, 0, 1)
+            Y_batch = np.swapaxes(Y_batch, 0, 1)
+
+            y_preds = model(X_batch, Y_batch)
+
+            y_preds = y_preds[:-1].reshape(-1, len(machine))
+            Y_batch = Y_batch[1:].reshape(-1)
+
+            loss, _ = criterion(Y_batch, y_preds)
+
+            eval_batch_loss += loss
+            eval_acc += (y_preds.argmax(axis=-1) == Y_batch).mean()
+            total_batches += 1
+
+        eval_batch_loss /= total_batches
+        eval_acc /= total_batches
+
+        print(f"train loss : {train_batch_loss:4.4f} - train acc: {train_acc:4.4f}")
+        print(f"eval loss : {eval_batch_loss:4.4f} - eval acc: {eval_acc:4.4f}")
+
+    test_input = "Tuesday, January 19, 2021"
+    decode(model, test_input, human, machine, inv_machine)
+
+
 if __name__ == "__main__":
-    _test()
+    # _test_sentiment_analysis()
+    _test_data_translation()
