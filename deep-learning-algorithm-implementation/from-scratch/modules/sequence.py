@@ -304,7 +304,10 @@ class _BasePositionalEncoding(base.BaseLayer):
             self.pos_enc = base.Tensor.from_shape((0, 0, 0), requires_grad=False)
 
     def _prepare_pos_enc(self, X):
-        return self.pos_enc.values
+        # X shape: (L, N, E)
+        # pos_enc shape: (T, 1, E), L <= T
+        X_len = X.shape[0]
+        return self.pos_enc.values[:X_len, ...]
 
     def forward(self, X):
         pos_enc = self._prepare_pos_enc(X)
@@ -312,9 +315,12 @@ class _BasePositionalEncoding(base.BaseLayer):
         return out
 
     def backward(self, dout):
-        dX, dE = self.combine_layer.backward(dout)
+        dX, dE_slice = self.combine_layer.backward(dout)
 
         if self.trainable:
+            extra_len = self.pos_enc.shape[0] - dout.shape[0]
+            dE_pad = np.zeros((extra_len, *dE_slice.shape[1:]), dtype=float)
+            dE = np.concatenate((dE_slice, dE_pad), axis=0)
             self.pos_enc.update_grads(dE)
 
         return dX
