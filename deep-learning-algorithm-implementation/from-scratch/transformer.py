@@ -330,7 +330,7 @@ def _test_sentiment_analysis():
     X_eval = pad_batch(X_eval)
 
     model = Transformer(
-        num_embed_tokens=1 + len(token_dictionary),
+        num_embed_tokens_encoder=1 + len(token_dictionary),
         dim_embed=16,
         dim_feedforward=128,
         max_seq_len=64,
@@ -421,7 +421,7 @@ def _test_data_translation():
         print("Test input:", sentence)
         print(prepared)
         out = np.zeros((1, 11), dtype=int)
-        out[0][0] = human["<pad>"]
+        out[0][0] = inv_machine["<pad>"]
 
         out = np.swapaxes(out, 0, 1)
         prepared = np.swapaxes(prepared, 0, 1)
@@ -431,14 +431,14 @@ def _test_data_translation():
             ind = pred[i - 1].squeeze().argmax(axis=-1)
             out[i][0] = ind
 
-        out = out.squeeze().detach().cpu().numpy()
+        out = out.squeeze()
 
         print("Output (raw):", out)
-        print("Output:", "".join([inv_machine[i.item()] for i in out[1:]]))
+        print("Output:", "".join([machine[i] for i in out[1:]]))
 
     data_size = 4000
     eval_size = 500
-    train_epochs = 5
+    train_epochs = 10
     train_batch_size = 128
     eval_batch_size = 128
 
@@ -475,7 +475,7 @@ def _test_data_translation():
         dim_out=len(machine),
     )
 
-    optim = optimizers.Nadam(model.parameters, 1e-4)
+    optim = optimizers.Nadam(model.parameters, 1e-2)
 
     criterion = losses.CrossEntropyLoss(ignore_index=inv_machine["<pad>"])
 
@@ -553,5 +553,5 @@ def _test_data_translation():
 
 
 if __name__ == "__main__":
-    # _test_sentiment_analysis()
-    _test_data_translation()
+    _test_sentiment_analysis()
+    # _test_data_translation()
