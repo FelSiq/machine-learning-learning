@@ -64,20 +64,30 @@ class BCELoss(_BaseLoss):
 
 
 class CrossEntropyLoss(_BaseLoss):
+    def __init__(self, average: bool = True, ignore_index: int = -100):
+        super(CrossEntropyLoss, self).__init__(average=average)
+        self.ignore_index = int(ignore_index)
+
     def __call__(self, y, y_logits):
         y = y.reshape(-1, 1).astype(int, copy=False)
 
         assert y.size == y_logits.shape[0]
 
+        ignored_inds = (y == self.ignore_index).ravel()
+
         grads = scipy.special.softmax(y_logits, axis=-1)
         grads[np.arange(y.size), y.ravel()] -= 1.0
+        grads[ignored_inds, :] = 0.0
 
         log_probs = y_logits - scipy.special.logsumexp(y_logits, axis=-1, keepdims=True)
-        ce_loss = -float(np.sum(np.take_along_axis(log_probs, y, axis=-1)))
+        ce_loss = np.take_along_axis(log_probs, y, axis=-1)
+        ce_loss[ignored_inds] = 0.0
+        ce_loss = -float(np.sum(ce_loss))
 
         if self.average:
-            ce_loss /= y.size
-            grads /= y.size
+            valid_tokens_num = int(np.sum(~ignored_inds)) + 1e-7
+            ce_loss /= valid_tokens_num
+            grads /= valid_tokens_num
 
         return ce_loss, grads
 
