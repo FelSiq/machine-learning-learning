@@ -52,9 +52,9 @@ class AttentionQKV(base.BaseLayer):
         # att_Logits shape: (N, E, L) . (N, E, S) = (N, L, S)
 
         if self.scale_query_key_prod:
-            query_dim = Q.shape[-1]
-            att_logits /= query_dim
-            self._store_in_cache(query_dim)
+            sqrt_key_dim = np.sqrt(K.shape[-1])
+            att_logits /= sqrt_key_dim
+            self._store_in_cache(sqrt_key_dim)
 
         if mask is not None:
             # mask shape: (L, S)
@@ -76,8 +76,8 @@ class AttentionQKV(base.BaseLayer):
             datt_logits, _ = self.add.backward(datt_logits)
 
         if self.scale_query_key_prod:
-            (query_dim,) = self._pop_from_cache()
-            datt_logits /= query_dim
+            (sqrt_key_dim,) = self._pop_from_cache()
+            datt_logits /= sqrt_key_dim
 
         dQ_batch_first, dK_batch_first = self.matmul_Q_K.backward(datt_logits)
 
