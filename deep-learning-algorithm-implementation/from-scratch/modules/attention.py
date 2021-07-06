@@ -167,7 +167,7 @@ class MultiheadMaskedSelfAttentionQKV(base.BaseLayer):
         dim_in: int,
         n_heads: int,
         scale_query_key_prod: bool = True,
-        mask_type: str = "lower",
+        mask_type: str = "upper",
     ):
         assert str(mask_type) in {"lower", "upper"}
         super(MultiheadMaskedSelfAttentionQKV, self).__init__(trainable=True)

@@ -435,19 +435,21 @@ def _test_data_translation():
         print("Output (raw):", out)
         print("Output:", "".join([machine[i] for i in out[1:]]))
 
-    data_size = 40000
+    data_size = 20000
     eval_size = 5000
     train_epochs = 20
-    train_batch_size = 128
+    train_batch_size = 64
     eval_batch_size = 128
 
     max_seq_len = 32
-    dim_feedforward = 32
+    dim_feedforward = 48
     dim_embed = 8
-    nhead = 8
+    nhead = 4
     num_blocks = 2
-    dropout = 0.4
+    dropout = 0.2
     insert_noise = False
+
+    np.random.seed(16)
 
     X_train, human, machine, inv_machine = test.seq_to_seq.load_dataset(
         data_size, insert_noise
@@ -522,7 +524,7 @@ def _test_data_translation():
             loss_grad_b[:-1, :, :] = loss_grad
             model.backward(loss_grad_b)
 
-            optim.clip_grads_norm(0.5)
+            optim.clip_grads_norm()
             optim.step()
 
             train_batch_loss += loss
