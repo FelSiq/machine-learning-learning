@@ -461,6 +461,7 @@ class ConvAttentionQKV2d(base.BaseLayer):
             self.attention_qkv,
             self.reshape_collapse,
             self.reshape_expand,
+            self.chan_swap_axes,
         )
 
     def forward(self, X):
