@@ -842,6 +842,20 @@ class Concatenate(_BaseCombineTensorLayer):
         return douts
 
 
+class Split(BaseLayer):
+    def __init__(self, num_slices: int, axis: int):
+        assert int(num_slices) > 1
+        super(Split, self).__init__()
+        self.num_slices = int(num_slices)
+        self.axis = int(axis)
+
+    def forward(self, X):
+        return np.split(X, self.num_slices, axis=self.axis)
+
+    def backward(self, dout):
+        return np.concatenate(dout, axis=self.axis)
+
+
 class PermuteAxes(BaseLayer):
     def __init__(self, permutation: t.Tuple[int, ...]):
         super(PermuteAxes, self).__init__()
