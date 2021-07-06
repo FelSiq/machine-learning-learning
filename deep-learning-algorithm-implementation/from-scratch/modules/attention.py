@@ -434,14 +434,16 @@ class SqueezeExcite(base.BaseLayer):
 
 
 class ConvAttentionQKV2d(base.BaseLayer):
-    def __init__(self, dim_in: int, n_heads: int, scale_query_key_prod: bool = True):
+    def __init__(
+        self, channels_in: int, n_heads: int, scale_query_key_prod: bool = True
+    ):
         super(ConvAttentionQKV2d, self).__init__(trainable=True)
 
         self.conv_in = filter_.Conv2d(
-            channels_in=dim_in, channels_out=3 * n_heads, kernel_size=1
+            channels_in=channels_in, channels_out=3 * n_heads, kernel_size=1
         )
         self.conv_out = filter_.Conv2d(
-            channels_in=n_heads, channels_out=dim_in, kernel_size=1
+            channels_in=n_heads, channels_out=channels_in, kernel_size=1
         )
         self.chan_split = base.Split(3, axis=1)
         self.attention_qkv = AttentionQKV(
@@ -452,7 +454,7 @@ class ConvAttentionQKV2d(base.BaseLayer):
 
         self.chan_swap_axes = base.PermuteAxes((0, 2, 1))
 
-        self.dim_in = int(dim_in)
+        self.channels_in = int(channels_in)
 
         self.register_layers(
             self.conv_in,
@@ -465,7 +467,7 @@ class ConvAttentionQKV2d(base.BaseLayer):
         )
 
     def forward(self, X):
-        # aux shape: (batch, height, width, dim_in)
+        # aux shape: (batch, height, width, channels_in)
         aux = self.conv_in(X)
         # aux shape: (batch, height, width, 3 * n_heads)
         aux_collapsed = self.reshape_collapse(aux)
@@ -483,7 +485,7 @@ class ConvAttentionQKV2d(base.BaseLayer):
         )
         # att_heads_out shape: (batch_first, height, width, n_heads)
         out = self.conv_out(att_heads_out)
-        # out shape: (batch_first, height, width, dim_in)
+        # out shape: (batch_first, height, width, channels_in)
         return out
 
     def backward(self, dout):
