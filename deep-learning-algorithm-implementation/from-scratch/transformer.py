@@ -72,9 +72,7 @@ class TransformerEncoder(_BaseTransformerBlock):
 
             dout_a = block.backward(dout_a)
 
-        dout = self.preprocessing.backward(dout_a)
-
-        return dout
+        self.preprocessing.backward(dout_a)
 
     @staticmethod
     def _create_block(
@@ -344,7 +342,6 @@ def _test_sentiment_analysis():
     optim = optimizers.Nadam(
         model.parameters,
         learning_rate=1e-3,
-        clip_grad_val=0.1,
         demon_min_mom=0.1,
         demon_iter_num=train_epochs * (len(X_train)) / batch_size,
     )
@@ -379,7 +376,7 @@ def _test_sentiment_analysis():
             model.backward(loss_grad_b)
             total_loss_train += loss
 
-            optim.clip_grads_val()
+            optim.clip_grads_norm()
             optim.step()
 
             model.eval()
@@ -415,9 +412,11 @@ def _test_data_translation():
     import test.seq_to_seq
     import tqdm.auto
 
-    def decode(model, sentence, human, machine, inv_machine):
+    def decode(model, sentence, human, machine, inv_machine, max_seq_len):
         model.eval()
-        prepared, _ = test.seq_to_seq.prepare_data([(sentence, "")], human, inv_machine)
+        prepared, _ = test.seq_to_seq.prepare_data(
+            [(sentence, "")], human, inv_machine, max_seq_len
+        )
         print("Test input:", sentence)
         print(prepared)
         out = np.zeros((1, 11), dtype=int)
@@ -436,26 +435,31 @@ def _test_data_translation():
         print("Output (raw):", out)
         print("Output:", "".join([machine[i] for i in out[1:]]))
 
-    data_size = 4000
-    eval_size = 500
-    train_epochs = 10
+    data_size = 40000
+    eval_size = 5000
+    train_epochs = 20
     train_batch_size = 128
     eval_batch_size = 128
 
-    max_seq_len = 80
-    dim_feedforward = 256
-    dim_embed = 16
+    max_seq_len = 32
+    dim_feedforward = 32
+    dim_embed = 8
     nhead = 8
+    num_blocks = 2
+    dropout = 0.4
     insert_noise = False
 
     X_train, human, machine, inv_machine = test.seq_to_seq.load_dataset(
         data_size, insert_noise
     )
+
     print("Train samples:")
     print(X_train[:3])
     X_train, Y_train = test.seq_to_seq.prepare_data(
         X_train, human, inv_machine, max_seq_len
     )
+    print(X_train[:2])
+    print(Y_train[:2])
 
     X_eval = test.seq_to_seq.load_dataset(eval_size, insert_noise)[0]
     print("Eval samples:")
@@ -470,12 +474,18 @@ def _test_data_translation():
         dim_embed=dim_embed,
         num_attention_heads=nhead,
         dim_feedforward=dim_feedforward,
-        num_blocks=2,
+        num_blocks=num_blocks,
         max_seq_len=max_seq_len,
         dim_out=len(machine),
+        dropout=dropout,
     )
 
-    optim = optimizers.Nadam(model.parameters, 1e-2)
+    optim = optimizers.Nadam(
+        model.parameters,
+        learning_rate=3e-4,
+        demon_iter_num=train_epochs * data_size * 0.95,
+        demon_min_mom=0.0,
+    )
 
     criterion = losses.CrossEntropyLoss(ignore_index=inv_machine["<pad>"])
 
@@ -484,6 +494,7 @@ def _test_data_translation():
     inds = np.arange(n)
 
     for epoch in range(1, 1 + train_epochs):
+        np.random.shuffle(inds)
         X_train = X_train[inds, :]
         Y_train = Y_train[inds, :]
 
@@ -510,11 +521,12 @@ def _test_data_translation():
             loss_grad_b = np.zeros(y_preds_shape, dtype=float)
             loss_grad_b[:-1, :, :] = loss_grad
             model.backward(loss_grad_b)
-            optim.clip_grads_val()
+
+            optim.clip_grads_norm(0.5)
             optim.step()
 
             train_batch_loss += loss
-            train_acc += (y_preds.argmax(axis=-1) == Y_batch).mean()
+            train_acc += (y_preds.argmax(axis=-1).ravel() == Y_batch).mean()
             total_batches += 1
 
         train_batch_loss /= total_batches
@@ -539,7 +551,7 @@ def _test_data_translation():
             loss, _ = criterion(Y_batch, y_preds)
 
             eval_batch_loss += loss
-            eval_acc += (y_preds.argmax(axis=-1) == Y_batch).mean()
+            eval_acc += (y_preds.argmax(axis=-1).ravel() == Y_batch).mean()
             total_batches += 1
 
         eval_batch_loss /= total_batches
@@ -549,9 +561,9 @@ def _test_data_translation():
         print(f"eval loss : {eval_batch_loss:4.4f} - eval acc: {eval_acc:4.4f}")
 
     test_input = "Tuesday, January 19, 2021"
-    decode(model, test_input, human, machine, inv_machine)
+    decode(model, test_input, human, machine, inv_machine, max_seq_len)
 
 
 if __name__ == "__main__":
-    _test_sentiment_analysis()
-    # _test_data_translation()
+    # _test_sentiment_analysis()
+    _test_data_translation()
