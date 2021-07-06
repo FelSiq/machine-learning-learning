@@ -567,5 +567,5 @@ def _test_data_translation():
 
 
 if __name__ == "__main__":
-    # _test_sentiment_analysis()
+    _test_sentiment_analysis()
     _test_data_translation()
