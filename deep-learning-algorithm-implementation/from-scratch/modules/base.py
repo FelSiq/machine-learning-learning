@@ -877,14 +877,14 @@ class CollapseAdjacentAxes(BaseLayer):
         is_nonneg_first = bool(np.heaviside(axis_first, 1))
         is_nonneg_last = bool(np.heaviside(axis_first, 1))
 
-        if is_nonneg_first == is_nonneng_last:
+        if is_nonneg_first == is_nonneg_last:
             assert 1 <= axis_last - axis_first
 
         else:
             is_neg_last = not is_nonneg_last
             assert is_nonneg_first and is_neg_last
 
-        super(CollapseAxes, self).__init__()
+        super(CollapseAdjacentAxes, self).__init__()
 
         self.axis_first = axis_first
         self.axis_last = axis_last
