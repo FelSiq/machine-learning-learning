@@ -259,15 +259,6 @@ class InstanceNorm2d(GroupNorm2d):
         )
 
 
-class InstanceNorm1d(GroupNorm1d):
-    def __init__(self, dim_in: int, affine: bool = True):
-        super(InstanceNorm1d, self).__init__(
-            dim_in=dim_in,
-            num_groups=dim_in,
-            affine=affine,
-        )
-
-
 class LayerNorm2d(GroupNorm2d):
     def __init__(self, input_shape: t.Tuple[int, ...], affine: bool = True):
         dim_in = input_shape[-1]
