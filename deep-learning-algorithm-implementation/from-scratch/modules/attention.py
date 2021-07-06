@@ -9,22 +9,23 @@ from . import filter as filter_
 
 
 class AttentionQKV(base.BaseLayer):
-    def __init__(self, scale_query_key_prod: bool = True):
+    def __init__(self, scale_query_key_prod: bool = True, batch_first: bool = False):
         super(AttentionQKV, self).__init__()
 
         self.scale_query_key_prod = bool(scale_query_key_prod)
 
         self.softmax = activation.Softmax(axis=2)
         self.matmul_Q_K = base.Matmul(transpose_X=True)
-        self.matmul_scores_V = base.Matmul(transpose_Y=True)
+        self.matmul_V_scores = base.Matmul(transpose_Y=True)
         self.add = base.Add()
         self.permute_batch_first = base.PermuteAxes((1, 2, 0))
         self.permute_seq_first = base.PermuteAxes((2, 0, 1))
+        self.batch_first = bool(batch_first)
 
         self.register_layers(
             self.softmax,
             self.matmul_Q_K,
-            self.matmul_scores_V,
+            self.matmul_V_scores,
             self.add,
             self.permute_batch_first,
             self.permute_seq_first,
@@ -40,13 +41,18 @@ class AttentionQKV(base.BaseLayer):
         V: np.ndarray,
         mask: t.Optional[np.ndarray] = None,
     ):
-        # Q shape: (L, N, E)
-        # K shape: (S, N, E)
-        # V shape: (S, N, E)
+        if self.batch_first:
+            Q_batch_first = Q
+            K_batch_first = K
+            V_batch_first = V
 
-        Q_batch_first = self.permute_batch_first(Q)
-        K_batch_first = self.permute_batch_first(K)
-        V_batch_first = self.permute_batch_first(V)
+        else:
+            # Q shape: (L, N, E)
+            # K shape: (S, N, E)
+            # V shape: (S, N, E)
+            Q_batch_first = self.permute_batch_first(Q)
+            K_batch_first = self.permute_batch_first(K)
+            V_batch_first = self.permute_batch_first(V)
 
         # Q_batch_first shape: (N, E, L)
         # K_batch_first shape: (N, E, S)
@@ -65,16 +71,26 @@ class AttentionQKV(base.BaseLayer):
             att_logits = self.add(att_logits, mask)
 
         att_scores = self.softmax(att_logits)
-        out_batch_first = self.matmul_scores_V(V_batch_first, att_scores)
-        # out_batch_first shape: (N, E, L)
-        out = self.permute_seq_first(out_batch_first)
-        # out shape: (L, N, E)
+        out_batch_first = self.matmul_V_scores(V_batch_first, att_scores)
 
+        if self.batch_first:
+            out = out_batch_first
+
+        else:
+            # out_batch_first shape: (N, E, L)
+            out = self.permute_seq_first(out_batch_first)
+
+        # out shape: (L, N, E)
         return out
 
     def backward(self, dout):
-        dout_batch_first = self.permute_seq_first.backward(dout)
-        dV_batch_first, datt_scores = self.matmul_scores_V.backward(dout_batch_first)
+        if self.batch_first:
+            dout_batch_first = dout
+
+        else:
+            dout_batch_first = self.permute_seq_first.backward(dout)
+
+        dV_batch_first, datt_scores = self.matmul_V_scores.backward(dout_batch_first)
         datt_logits = self.softmax.backward(datt_scores)
 
         if self.add.has_stored_grads:
@@ -86,9 +102,15 @@ class AttentionQKV(base.BaseLayer):
 
         dQ_batch_first, dK_batch_first = self.matmul_Q_K.backward(datt_logits)
 
-        dQ = self.permute_batch_first.backward(dQ_batch_first)
-        dK = self.permute_batch_first.backward(dK_batch_first)
-        dV = self.permute_batch_first.backward(dV_batch_first)
+        if self.batch_first:
+            dQ = dQ_batch_first
+            dK = dK_batch_first
+            dV = dV_batch_first
+
+        else:
+            dQ = self.permute_batch_first.backward(dQ_batch_first)
+            dK = self.permute_batch_first.backward(dK_batch_first)
+            dV = self.permute_batch_first.backward(dV_batch_first)
 
         return dQ, dK, dV
 
@@ -409,3 +431,58 @@ class SqueezeExcite(base.BaseLayer):
 
     def backward(self, dout):
         return self.weights.backward(dout)
+
+
+class ConvAttentionQKV2d(base.BaseLayer):
+    def __init__(self, dim_in: int, n_heads: int, scale_query_key_prod: bool = True):
+        super(ConvAttentionQKV2d, self).__init__(trainable=True)
+
+        self.conv_in = filter_.Conv2d(
+            channels_in=dim_in, channels_out=3 * n_heads, kernel_size=1
+        )
+        self.conv_out = filter_.Conv2d(
+            channels_in=n_heads, channels_out=dim_in, kernel_size=1
+        )
+        self.chan_split = base.Split(3, axis=2)
+        self.attention_qkv = AttentionQKV(
+            scale_query_key_prod=scale_query_key_prod, batch_first=True
+        )
+        self.reshape_collapse = base.CollapseAdjacentAxes(axis_first=1, axis_last=2)
+        self.reshape_expand = base.Reshape()
+
+        self.dim_in = int(dim_in)
+
+        self.register_layers(
+            self.conv_in,
+            self.conv_out,
+            self.chan_split,
+            self.attention_qkv,
+            self.reshape_collapse,
+            self.reshape_expand,
+        )
+
+    def forward(self, X):
+        # aux shape: (batch, height, width, dim_in)
+        aux = self.conv_in(X)
+        # aux shape: (batch, height, width, 3 * n_heads)
+        aux_collapsed = self.reshape_collapse(aux)
+        # aux_collapsed shape: (batch, height * width, 3 * n_heads)
+        Q, K, V = self.chan_split(aux_collapsed)
+        att_heads_out_collapsed = self.attention_qkv(Q, K, V)
+        # att_heads_out_collapsed shape: (batch, height * width, n_heads)
+        att_heads_out = self.reshape_expand(
+            att_heads_out_collapsed, (*X.shape[:3], Q.shape[2])
+        )
+        # att_heads_out shape: (batch_first, height, width, n_heads)
+        out = self.conv_out(att_heads_out)
+        # out shape: (batch_first, height, width, dim_in)
+        return out
+
+    def backward(self, dout):
+        datt_heads_out = self.conv_out.backward(dout)
+        datt_heads_out_collapsed = self.reshape_expand.backward(datt_heads_out)
+        dQdKdV = self.attention_qkv.backward(datt_heads_out_collapsed)
+        daux_collapsed = self.chan_split.backward(dQdKdV)
+        daux = self.reshape_collapse.backward(daux_collapsed)
+        dX = self.conv_in.backward(daux)
+        return dX
