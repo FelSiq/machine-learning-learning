@@ -464,8 +464,8 @@ class Reshape(BaseLayer):
     def __call__(self, X, out_shape=None):
         return self.forward(X, out_shape)
 
-    def forward(self, X, out_shape=None):
-        assert out_shape is None ^ self.out_shape is None
+    def forward(self, X, out_shape: t.Optional[t.Tuple[int, ...]] = None):
+        assert (out_shape is None) != (self.out_shape is None)
 
         if out_shape is None:
             out_shape = self.out_shape
