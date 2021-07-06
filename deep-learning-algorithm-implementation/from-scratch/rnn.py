@@ -235,7 +235,6 @@ def _test_nlp():
     optim = optimizers.Nadam(
         model.parameters,
         learning_rate=5e-3,
-        clip_grad_val=0.1,
         demon_min_mom=0.1,
         demon_iter_num=train_epochs * (len(X_train)) / batch_size,
     )
@@ -267,7 +266,7 @@ def _test_nlp():
             model.backward(loss_grad)
             total_loss_train += loss
 
-            optim.clip_grads_val()
+            optim.clip_grads_val(0.1)
             optim.step()
 
             model.eval()
@@ -326,7 +325,7 @@ def _test_forecasting():
     )
 
     criterion = losses.MSELoss()
-    optim = optimizers.Nadam(model.parameters, learning_rate=1e-2, clip_grad_val=0.1)
+    optim = optimizers.Nadam(model.parameters, learning_rate=1e-2)
 
     batch_inds = np.arange(len(X_train))
 
@@ -351,7 +350,7 @@ def _test_forecasting():
             model.backward(loss_grad)
             total_loss_train += loss
 
-            optim.clip_grads_val()
+            optim.clip_grads_val(0.1)
             optim.step()
 
             model.eval()

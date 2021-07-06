@@ -121,7 +121,7 @@ def _test():
     criterion = losses.CrossEntropyLoss()
 
     optim = optimizers.RMSProp(
-        model.parameters, learning_rate=learning_rate, clip_grad_val=0.1
+        model.parameters, learning_rate=learning_rate
     )
 
     inds = np.arange(X_train.shape[0])
@@ -147,7 +147,7 @@ def _test():
             model.backward(loss_grad)
             total_loss_train += loss
 
-            optim.clip_grads_val()
+            optim.clip_grads_val(0.1)
             optim.step()
 
             model.eval()
