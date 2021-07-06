@@ -48,7 +48,7 @@ class BCELoss(_BaseLoss):
 
         bce_loss = -float(
             np.sum(np.log(self.eps + y_preds[pos_inds]))
-            + np.sum(np.log(self.eps + 1.0 - y_preds[~pos_inds]))
+            + np.sum(np.log1p(-y_preds[~pos_inds] + self.eps))
         )
 
         grads = (y_preds - y) / (self.eps + y_preds * (1.0 - y_preds))
