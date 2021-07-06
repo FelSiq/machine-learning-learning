@@ -451,14 +451,27 @@ class Matmul(BaseLayer):
 
 
 class Reshape(BaseLayer):
-    def __init__(self, out_shape: t.Tuple[int, ...]):
-        assert len(out_shape)
-        super(Reshape, self).__init__()
-        self.out_shape = (-1, *out_shape)
+    def __init__(self, out_shape: t.Optional[t.Tuple[int, ...]] = None):
+        assert out_shape is None or len(out_shape)
 
-    def forward(self, X):
+        super(Reshape, self).__init__()
+
+        self.out_shape = None
+
+        if out_shape is not None:
+            self.out_shape = (-1, *out_shape)
+
+    def __call__(self, X, out_shape=None):
+        return self.forward(X, out_shape)
+
+    def forward(self, X, out_shape=None):
+        assert out_shape is None ^ self.out_shape is None
+
+        if out_shape is None:
+            out_shape = self.out_shape
+
         self._store_in_cache(X.shape)
-        return X.reshape(self.out_shape)
+        return X.reshape(out_shape)
 
     def backward(self, dout):
         (shape,) = self._pop_from_cache()
@@ -854,6 +867,40 @@ class Split(BaseLayer):
 
     def backward(self, dout):
         return np.concatenate(dout, axis=self.axis)
+
+
+class CollapseAdjacentAxes(BaseLayer):
+    def __init__(self, axis_first: int, axis_last: int):
+        axis_first = int(axis_first)
+        axis_last = int(axis_last)
+
+        is_nonneg_first = bool(np.heaviside(axis_first, 1))
+        is_nonneg_last = bool(np.heaviside(axis_first, 1))
+
+        if is_nonneg_first == is_nonneng_last:
+            assert 1 <= axis_last - axis_first
+
+        else:
+            is_neg_last = not is_nonneg_last
+            assert is_nonneg_first and is_neg_last
+
+        super(CollapseAxes, self).__init__()
+
+        self.axis_first = axis_first
+        self.axis_last = axis_last
+
+    def forward(self, X):
+        self._store_in_cache(X.shape)
+        shape_bef, shape_middle, shape_after = np.array_split(
+            X.shape, (self.axis_first, self.axis_last + 1)
+        )
+        new_shape = (*shape_bef, float(np.prod(shape_middle)), *shape_after)
+        out = X.reshape(new_shape)
+        return out
+
+    def backward(self, dout):
+        (input_shape,) = self._pop_from_cache()
+        return dout.reshape(input_shape)
 
 
 class PermuteAxes(BaseLayer):
