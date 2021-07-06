@@ -81,9 +81,9 @@ def _test():
 
     np.random.seed(32)
 
-    batch_size = 512
-    train_epochs = 2
-    learning_rate = 1e-4
+    batch_size = 256
+    train_epochs = 4
+    learning_rate = 2e-4
 
     channels_num = (1, 8, 8)
     kernel_sizes = (3, 3)
@@ -97,11 +97,14 @@ def _test():
     X = (X / 255.0).reshape(-1, 28, 28, 1)
 
     inds = np.arange(y.size)
+    np.random.shuffle(inds)
     X = X[inds, :]
     y = y[inds]
 
-    X_train, X_eval, X_test = X[:5000], X[5000:6000], X[6000:7000]
-    y_train, y_eval, y_test = y[:5000], y[5000:6000], y[6000:7000]
+    y = y.astype(int, copy=False)
+
+    X_train, X_eval, X_test = X[:6000], X[6000:7000], X[8000:9000]
+    y_train, y_eval, y_test = y[:6000], y[6000:7000], y[8000:9000]
 
     print("Train shape :", X_train.shape)
     print("Eval shape  :", X_eval.shape)
@@ -156,8 +159,11 @@ def _test():
     y_preds_logits = model(X_test)
     loss, loss_grad = criterion(y_test, y_preds_logits)
     dX = model.backward(loss_grad)
-    y_preds = y_preds_logits.argmax(axis=-1)
-    test_acc = float(np.mean(y_preds == y_test))
+
+    y_preds = y_preds_logits.argmax(axis=-1).ravel()
+    print(y_preds[:10])
+    print(y_test[:10])
+    test_acc = float(np.mean(y_preds == y_test.ravel()))
     print(f"Test acc: {test_acc:.3f}")
 
     X_test_plot = X_test[:10, ...]

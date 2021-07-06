@@ -166,6 +166,7 @@ def _test():
             disc.backward(loss_grad_disc_fake)
             disc.backward(loss_grad_disc_real)
 
+            optim_disc.clip_grads_norm()
             optim_disc.step()
 
             gen.train()
@@ -176,6 +177,8 @@ def _test():
                 y=np.ones_like(y_disc_fake), y_preds=y_disc_fake
             )
             gen.backward(disc.backward(loss_grad_gen))
+
+            optim_disc.clip_grads_norm()
             optim_gen.step()
 
             total_it += 1
