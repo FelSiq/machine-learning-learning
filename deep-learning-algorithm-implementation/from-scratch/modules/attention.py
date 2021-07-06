@@ -443,12 +443,14 @@ class ConvAttentionQKV2d(base.BaseLayer):
         self.conv_out = filter_.Conv2d(
             channels_in=n_heads, channels_out=dim_in, kernel_size=1
         )
-        self.chan_split = base.Split(3, axis=2)
+        self.chan_split = base.Split(3, axis=1)
         self.attention_qkv = AttentionQKV(
             scale_query_key_prod=scale_query_key_prod, batch_first=True
         )
         self.reshape_collapse = base.CollapseAdjacentAxes(axis_first=1, axis_last=2)
         self.reshape_expand = base.Reshape()
+
+        self.chan_swap_axes = base.PermuteAxes((0, 2, 1))
 
         self.dim_in = int(dim_in)
 
@@ -467,11 +469,16 @@ class ConvAttentionQKV2d(base.BaseLayer):
         # aux shape: (batch, height, width, 3 * n_heads)
         aux_collapsed = self.reshape_collapse(aux)
         # aux_collapsed shape: (batch, height * width, 3 * n_heads)
-        Q, K, V = self.chan_split(aux_collapsed)
-        att_heads_out_collapsed = self.attention_qkv(Q, K, V)
+        aux_chan_first = self.chan_swap_axes(aux_collapsed)
+        # aux_collapsed shape: (batch, 3 * n_heads, height * width)
+        Q, K, V = self.chan_split(aux_chan_first)
+        # Q shape = K shape = V shape: (batch, n_heads, height * width)
+        att_heads_out_chan_first = self.attention_qkv(Q, K, V)
+        # att_heads_out_chan_first shape: (batch, n_heads, height * width)
+        att_heads_out_collapsed = self.chan_swap_axes(att_heads_out_chan_first)
         # att_heads_out_collapsed shape: (batch, height * width, n_heads)
         att_heads_out = self.reshape_expand(
-            att_heads_out_collapsed, (*X.shape[:3], Q.shape[2])
+            att_heads_out_collapsed, (*X.shape[:3], Q.shape[1])
         )
         # att_heads_out shape: (batch_first, height, width, n_heads)
         out = self.conv_out(att_heads_out)
@@ -481,8 +488,12 @@ class ConvAttentionQKV2d(base.BaseLayer):
     def backward(self, dout):
         datt_heads_out = self.conv_out.backward(dout)
         datt_heads_out_collapsed = self.reshape_expand.backward(datt_heads_out)
-        dQdKdV = self.attention_qkv.backward(datt_heads_out_collapsed)
-        daux_collapsed = self.chan_split.backward(dQdKdV)
+        datt_heads_out_chan_first = self.chan_swap_axes.backward(
+            datt_heads_out_collapsed
+        )
+        dQdKdV = self.attention_qkv.backward(datt_heads_out_chan_first)
+        daux_chan_first = self.chan_split.backward(dQdKdV)
+        daux_collapsed = self.chan_swap_axes.backward(daux_chan_first)
         daux = self.reshape_collapse.backward(daux_collapsed)
         dX = self.conv_in.backward(daux)
         return dX
