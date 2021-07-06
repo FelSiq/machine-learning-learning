@@ -147,7 +147,7 @@ def _test():
             model.backward(loss_grad)
             total_loss_train += loss
 
-            optim.clip_grads_val(0.1)
+            optim.clip_grads_norm()
             optim.step()
 
             model.eval()

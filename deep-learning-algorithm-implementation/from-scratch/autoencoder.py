@@ -98,7 +98,7 @@ def _test():
             loss, loss_grad = criterion(X_batch, X_preds)
             model.backward(loss_grad)
 
-            optim.clip_grads_val()
+            optim.clip_grads_norm()
             optim.step()
 
             total_loss += loss
