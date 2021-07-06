@@ -894,7 +894,7 @@ class CollapseAdjacentAxes(BaseLayer):
         shape_bef, shape_middle, shape_after = np.array_split(
             X.shape, (self.axis_first, self.axis_last + 1)
         )
-        new_shape = (*shape_bef, float(np.prod(shape_middle)), *shape_after)
+        new_shape = (*shape_bef, int(np.prod(shape_middle)), *shape_after)
         out = X.reshape(new_shape)
         return out
 
