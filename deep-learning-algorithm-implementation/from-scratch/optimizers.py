@@ -48,7 +48,7 @@ class _BaseOptim:
         norm = 0.0
 
         for param in self.parameters:
-            norm += float(np.sum(np.square(param)))
+            norm += float(np.sum(np.square(param.grads)))
 
         clip_coef = float(clip_grad_norm) / (1e-6 + float(np.sqrt(norm)))
 
