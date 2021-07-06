@@ -435,7 +435,7 @@ def _test_data_translation():
         print("Output (raw):", out)
         print("Output:", "".join([machine[i] for i in out[1:]]))
 
-    data_size = 5000
+    data_size = 20000
     eval_size = 1000
     train_epochs = 30
     train_batch_size = 64
