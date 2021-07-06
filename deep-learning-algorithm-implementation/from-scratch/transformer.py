@@ -435,18 +435,18 @@ def _test_data_translation():
         print("Output (raw):", out)
         print("Output:", "".join([machine[i] for i in out[1:]]))
 
-    data_size = 20000
-    eval_size = 5000
-    train_epochs = 20
+    data_size = 5000
+    eval_size = 1000
+    train_epochs = 30
     train_batch_size = 64
     eval_batch_size = 128
 
     max_seq_len = 32
-    dim_feedforward = 48
-    dim_embed = 8
-    nhead = 4
+    dim_feedforward = 128
+    dim_embed = 16
+    nhead = 8
     num_blocks = 2
-    dropout = 0.2
+    dropout = 0.1
     insert_noise = False
 
     np.random.seed(16)
@@ -484,7 +484,7 @@ def _test_data_translation():
 
     optim = optimizers.Nadam(
         model.parameters,
-        learning_rate=3e-4,
+        learning_rate=5e-4,
         demon_iter_num=train_epochs * data_size * 0.95,
         demon_min_mom=0.0,
     )
@@ -524,7 +524,7 @@ def _test_data_translation():
             loss_grad_b[:-1, :, :] = loss_grad
             model.backward(loss_grad_b)
 
-            optim.clip_grads_norm()
+            optim.clip_grads_norm(0.2)
             optim.step()
 
             train_batch_loss += loss
