@@ -96,3 +96,49 @@ class AddNoiseUniform(_AddNoiseBase):
             return np.random.uniform(low=self.low, high=self.high, size=noise_shape)
 
         self.noise_func = noise_func
+
+
+class SampleGaussianNoise(base.BaseLayer):
+    def __init__(self, mean: t.Optional[int] = None, std: t.Optional[int] = None):
+        assert std is None or float(std) >= 0
+        super(SampleGaussianNoise, self).__init__()
+
+        self.mean = float(mean) if mean is not None else None
+        self.std = float(std) if std is not None else None
+
+        self.multiply = base.Multiply()
+        self.add = base.Add()
+
+        self.register_layers(self.multiply, self.add)
+
+    def __call__(
+        self,
+        shape: t.Tuple[int, ...],
+        mean: t.Optional[int] = None,
+        std: t.Optional[int] = None,
+    ):
+        return self.forward(shape, mean, std)
+
+    def forward(
+        self,
+        shape: t.Tuple[int, ...],
+        mean: t.Optional[int] = None,
+        std: t.Optional[int] = None,
+    ):
+        if mean is None:
+            assert self.mean is not None
+            mean = self.mean
+
+        if std is None:
+            assert self.std is not None
+            std = self.std
+
+        noise = np.random.randn(shape)
+        noise = self.multiply(noise, std)
+        noise = self.add(noise, mean)
+        return noise
+
+    def backward(self, dout):
+        dout, dmean = self.add.backward(dout)
+        _, dstd = self.multiply.backward(dout)
+        return dmean, dstd
