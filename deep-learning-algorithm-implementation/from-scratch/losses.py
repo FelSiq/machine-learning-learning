@@ -20,7 +20,7 @@ class MSELoss(_BaseLoss):
 
         diff = y_preds - y
 
-        mse = float(np.sum(diff * diff))
+        mse = 0.5 * float(np.sum(diff * diff))
         grads = diff
 
         if self.average:
@@ -143,3 +143,63 @@ class AverageLosses:
             grads.append(weight * cur_grads)
 
         return loss, tuple(grads)
+
+
+class _BaseRegularizer:
+    def __init__(self, parameters: t.Sequence[modules.BaseComponent], loss: _BaseLoss):
+        self.parameters = parameters
+        self.loss = loss
+
+
+class RegularizerL1(_BaseRegularizer):
+    def __init__(
+        self,
+        parameters: t.Sequence[modules.BaseComponent],
+        loss: _BaseLoss,
+        weight: float = 1.0,
+    ):
+        assert float(weight) >= 0.0
+        super(RegularizerL1, self).__init__(parameters=parameters, loss=loss)
+        self.weight = float(weight)
+
+    def __call__(self, *args):
+        loss, loss_grads = self.loss(*args)
+
+        l1_loss = 0.0
+
+        for param in self.parameters:
+            l1_loss += float(np.sum(np.abs(param.values)))
+            l1_loss_grads = self.weight * np.sign(param.values)
+            param.update_grads(l1_loss_grads)
+
+        l1_loss *= self.weight
+        loss += l1_loss
+
+        return loss, loss_grads
+
+
+class RegularizerL2(_BaseRegularizer):
+    def __init__(
+        self,
+        parameters: t.Sequence[modules.BaseComponent],
+        loss: _BaseLoss,
+        weight: float = 1.0,
+    ):
+        assert float(weight) >= 0.0
+        super(RegularizerL2, self).__init__(parameters=parameters, loss=loss)
+        self.weight = float(weight)
+
+    def __call__(self, *args):
+        loss, loss_grads = self.loss(*args)
+
+        l2_loss = 0.0
+
+        for param in self.parameters:
+            l2_loss += float(np.sum(np.square(param.values)))
+            l2_loss_grads = self.weight * param.values
+            param.update_grads(l2_loss_grads)
+
+        l2_loss *= 0.5 * self.weight
+        loss += l2_loss
+
+        return loss, loss_grads
