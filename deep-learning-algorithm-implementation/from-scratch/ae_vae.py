@@ -151,7 +151,9 @@ def _test():
     n = X_train.shape[0]
     model_ae = Autoencoder(layer_dims_ae_encoder, layer_dims_ae_decoder)
     model_vae = VAE(layer_dims_vae_encoder, layer_dims_vae_decoder)
-    criterion = losses.MSELoss()
+
+    criterion_ae = losses.MSELoss()
+    criterion_vae = losses.MSELoss()
 
     optim_ae = optimizers.Nadam(
         model_ae.parameters,
@@ -180,13 +182,13 @@ def _test():
             X_batch = X_train[start:end, :]
 
             X_preds = model_ae(X_batch)
-            loss_ae, loss_grad = criterion(X_batch, X_preds)
+            loss_ae, loss_grad = criterion_ae(X_batch, X_preds)
             model_ae.backward(loss_grad)
             optim_ae.clip_grads_norm()
             optim_ae.step()
 
             X_preds = model_vae(X_batch)
-            loss_vae, loss_grad = criterion(X_batch, X_preds)
+            loss_vae, loss_grad = criterion_vae(X_batch, X_preds)
             model_vae.backward(loss_grad)
             optim_vae.clip_grads_norm()
             optim_vae.step()
