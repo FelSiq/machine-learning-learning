@@ -1043,3 +1043,23 @@ class NormalizeVector(BaseLayer):
         dX_b = self.norm_p.backward(dX_norm)
         dX = dX_a + dX_b
         return dX
+
+
+class Cos(BaseLayer):
+    def forward(self, X):
+        self._store_in_cache(X)
+        return np.cos(X)
+
+    def backward(self, dout):
+        (X,) = self._pop_from_cache()
+        return -np.sin(X) * dout
+
+
+class Sin(BaseLayer):
+    def forward(self, X):
+        self._store_in_cache(X)
+        return np.sin(X)
+
+    def backward(self, dout):
+        (X,) = self._pop_from_cache()
+        return np.cos(X) * dout
