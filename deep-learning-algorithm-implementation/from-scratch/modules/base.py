@@ -914,3 +914,129 @@ class PermuteAxes(BaseLayer):
 
     def backward(self, dout):
         return np.transpose(dout, self.inv_permutation)
+
+
+class Abs(BaseLayer):
+    def forward(self, X):
+        self._store_in_cache(X)
+        return np.abs(X)
+
+    def backward(self, dout):
+        (X,) = self._pop_from_cache()
+        return np.sign(X) * dout
+
+
+class CrossEntropy(BaseLayer):
+    def __init__(self, axis: t.Union[int, t.Tuple[int, ...]]):
+        super(CrossEntropy, self).__init__()
+        self.neg = ScaleByConstant(-1.0)
+        self.log = Log()
+        self.sum = Sum(axis=axis)
+        self.mult = Multiply()
+
+        self.register_layers(self.neg, self.log, self.sum, self.mult)
+
+    def __call__(self, X, Y):
+        return self.forward(X, Y)
+
+    def forward(self, X, Y):
+        Y_log = self.log(Y)
+        out = self.neg(self.sum(self.multiply(X, Y_log)))
+        return out
+
+    def backward(self, dout):
+        dout = self.neg.backward(dout)
+        dout = self.sum.backward(dout)
+        dX, dY_log = self.multiply.backward(dout)
+        dY = self.log.backward(dY_log)
+        return dX, dY
+
+
+class Entropy(BaseLayer):
+    def __init__(self, axis: t.Union[int, t.Tuple[int, ...]]):
+        super(Entropy, self).__init__()
+        self.ce = CrossEntropy(axis=axis)
+        self.register_layers(self.ce)
+
+    def forward(self, X):
+        return self.ce(X, X)
+
+    def backward(self, dout):
+        dX_a, dX_b = self.ce.backward(dout)
+        dX = dX_a + dX_b
+        return dX
+
+
+class NormP(BaseLayer):
+    def __init__(
+        self,
+        p: t.Union[int, float],
+        axis: t.Union[int, t.Tuple[int, ...]],
+        root: bool = True,
+    ):
+        super(NormP, self).__init__()
+
+        self.p = float(p)
+        self.not_l1_norm = not np.isclose(1.0, self.p)
+        self.use_abs = not (np.isclose(int(p), p) and p % 2 == 0)
+
+        self.root = bool(root)
+
+        self.sum = Sum(axis=axis)
+        self.abs = Abs()
+
+        if self.not_l1_norm:
+            self.power = Power(power=p)
+            self.power_inv = Power(power=1.0 / p)
+
+        else:
+            self.power = self.power_inv = Identity()
+
+        self.register_layers(self.sum, self.abs, self.power, self.power_inv)
+
+    def forward(self, X):
+        out = np.abs(X) if self.use_abs else X
+        out = self.power(out)
+        out = self.sum(out)
+
+        if self.root:
+            out = self.power_inv(out)
+
+        return out
+
+    def backward(self, dout):
+        if self.root:
+            dout = self.power_inv.backward(dout)
+
+        dout = self.sum.backward(dout)
+        dout = self.power.backward(dout)
+        dX = self.abs.backward(dout) if self.use_abs else dout
+        return dX
+
+
+class NormL2(NormP):
+    def __init__(self, axis: t.Union[int, t.Tuple[int, ...]], root: bool = True):
+        super(NormL2, self).__init__(p=2, axis=axis, root=root)
+
+
+class NormL1(NormP):
+    def __init__(self, axis: t.Union[int, t.Tuple[int, ...]]):
+        super(NormL2, self).__init__(p=1, axis=axis)
+
+
+class NormalizeVector(BaseLayer):
+    def __init__(self, p: t.Union[int, float], axis: t.Union[int, t.Tuple[int, ...]]):
+        self.norm_p = NormP(p=p, axis=axis)
+        self.div = Divide()
+        self.register_layers(self.norm_p, self.div)
+
+    def forward(self, X):
+        X_norm = self.norm_p(X)
+        out = self.div(X, X_norm)
+        return out
+
+    def backward(self, dout):
+        dX_a, dX_norm = self.div.backward(dout)
+        dX_b = self.norm_p.backward(dX_norm)
+        dX = dX_a + dX_b
+        return dX
