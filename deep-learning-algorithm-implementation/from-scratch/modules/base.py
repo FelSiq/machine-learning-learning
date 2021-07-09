@@ -626,6 +626,82 @@ class _BaseReduce(BaseLayer):
         self.keepdims = bool(keepdims)
 
 
+class _BaseAxisIndexGatherer(_BaseReduce):
+    def __init__(
+        self,
+        indices_gather_func,
+        axis: int = -1,
+        enforce_batch_dim: bool = True,
+        keepdims: bool = True,
+    ):
+        assert isinstance(axis, int)
+        super(_BaseAxisIndexGatherer, self).__init__(
+            axis=axis, enforce_batch_dim=enforce_batch_dim, keepdims=keepdims
+        )
+        self.axis = int(self.axis[0])
+        self.indices_gather_func = indices_gather_func
+
+    def forward(self, X):
+        inds_chosen = np.argmax(X, axis=self.axis)
+        inds_chosen = np.expand_dims(inds_chosen, self.axis)
+        out = np.take_along_axis(X, inds_chosen, axis=self.axis)
+
+        self._store_in_cache(inds_chosen, X.shape)
+
+        if not self.keepdims:
+            out = out.squeeze(self.axis)
+
+        if self.enforce_batch_dim and out.ndim == 1:
+            out = out.reshape(-1, 1)
+
+        return out
+
+    def backward(self, dout):
+        (inds_chosen, input_shape) = self._pop_from_cache()
+
+        if not self.keepdims:
+            dout = np.expand_dims(dout, self.axis)
+
+        aux_shape = [1] * len(input_shape)
+        aux_shape[self.axis] = -1
+        aux = np.arange(input_shape[self.axis]).reshape(aux_shape)
+
+        dout_b = (inds_chosen == aux).astype(float, copy=False)
+        dout_b *= dout
+
+        return dout_b
+
+
+class Max(_BaseAxisIndexGatherer):
+    def __init__(
+        self,
+        axis: int = -1,
+        enforce_batch_dim: bool = True,
+        keepdims: bool = True,
+    ):
+        super(Max, self).__init__(
+            indices_gather_func=np.argmax,
+            axis=axis,
+            enforce_batch_dim=enforce_batch_dim,
+            keepdims=keepdims,
+        )
+
+
+class Min(_BaseAxisIndexGatherer):
+    def __init__(
+        self,
+        axis: int = -1,
+        enforce_batch_dim: bool = True,
+        keepdims: bool = True,
+    ):
+        super(Min, self).__init__(
+            indices_gather_func=np.argmin,
+            axis=axis,
+            enforce_batch_dim=enforce_batch_dim,
+            keepdims=keepdims,
+        )
+
+
 class Sum(_BaseReduce):
     def forward(self, X):
         self._store_in_cache(X.shape)
