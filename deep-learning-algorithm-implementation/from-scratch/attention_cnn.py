@@ -14,6 +14,7 @@ class AttentionCNN(modules.BaseModel):
         kernel_sizes: t.Sequence[int],
         linear_dims: t.Sequence[int],
         padding: str = "valid",
+        dropout: float = 0.1,
     ):
         assert len(channels_num) - 1 == len(kernel_sizes)
         super(AttentionCNN, self).__init__()
@@ -38,7 +39,7 @@ class AttentionCNN(modules.BaseModel):
                             kernel_size=kernel_sizes[i - 1],
                             spatial_norm_layer_after_conv=modules.BatchNorm2d(1),
                         ),
-                        modules.SpatialDropout(drop_prob=0.1, inplace=True),
+                        modules.SpatialDropout(drop_prob=dropout, inplace=True),
                     ]
                     for i in range(1, len(channels_num))
                 ],
@@ -53,7 +54,7 @@ class AttentionCNN(modules.BaseModel):
                         ),
                         modules.BatchNorm1d(linear_dims[i]),
                         modules.ReLU(inplace=True),
-                        modules.Dropout(drop_prob=0.3, inplace=True),
+                        modules.Dropout(drop_prob=dropout, inplace=True),
                     ]
                     for i in range(1, len(linear_dims) - 1)
                 ],
