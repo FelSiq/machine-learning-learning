@@ -34,6 +34,7 @@ class BCELoss(_BaseLoss):
     def __init__(
         self, average: bool = True, with_logits: bool = False, eps: float = 1e-7
     ):
+        assert float(eps) > 0.0
         super(BCELoss, self).__init__(average)
         self.sigmoid = modules.Sigmoid() if bool(with_logits) else None
         self.eps = float(eps)

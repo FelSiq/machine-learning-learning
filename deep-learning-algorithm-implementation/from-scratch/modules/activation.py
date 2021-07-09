@@ -157,6 +157,7 @@ class GELU(base.BaseLayer):
 
 class CosineSimilarity(base.BaseLayer):
     def __init__(self):
+        super(CosineSimilarity, self).__init__()
         self.mult = base.Multiply()
         self.norm_vec = base.NormalizeVector(p=2)
         self.register_layer(self.mult, self.norm_vec)
