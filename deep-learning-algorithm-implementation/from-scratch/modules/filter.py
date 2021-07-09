@@ -232,39 +232,26 @@ class GlobalMaxPool2d(_BaseFixedFilter):
         )
         self.keepdims = bool(keepdims)
 
+        self.collapse_spatial_axes = base.CollapseAdjacentAxes(1, 2)
+        self.max = base.Max(keepdims=keepdims, enforce_batch_dim=True, axis=1)
+
     def forward(self, X):
-        _, h_dim, w_dim, d_dim = input_shape = X.shape
+        input_shape = X.shape
+        out = self.collapse_spatial_axes(X)
+        out = self.max(out)
 
-        X = X.reshape(-1, h_dim * w_dim, d_dim)
-
-        max_inds = np.expand_dims(np.argmax(X, axis=1), 1)
-        out = np.take_along_axis(X, max_inds, axis=1)
-
-        if not self.keepdims:
-            out = np.squeeze(out)
-
-            if out.ndim == 1:
-                out = np.expand_dims(out, -1)
-
-        else:
-            out = out.reshape(-1, 1, 1, d_dim)
-
-        self._store_in_cache(max_inds, input_shape)
+        if self.keepdims:
+            out = np.expand_dims(out, 1)
 
         return out
 
     def backward(self, dout):
-        (max_inds, input_shape) = self._pop_from_cache()
-        _, h_dim, w_dim, _ = input_shape
+        if self.keepdims:
+            dout = np.squeeze(dout, 1)
 
-        if not self.keepdims:
-            dout = np.expand_dims(dout, (1, 2))
-
-        dout_b = max_inds == np.arange(h_dim * w_dim).reshape(1, -1, 1)
-        dout_b = dout_b.astype(float, copy=False).reshape(input_shape)
-        dout_b *= dout
-
-        return dout_b
+        dout = self.max.backward(dout)
+        dout = self.collapse_spatial_axes.backward(dout)
+        return dout
 
 
 class GlobalAvgPool2d(base.BaseLayer):
