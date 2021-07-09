@@ -971,7 +971,7 @@ class NormP(BaseLayer):
     def __init__(
         self,
         p: t.Union[int, float],
-        axis: t.Union[int, t.Tuple[int, ...]],
+        axis: t.Union[int, t.Tuple[int, ...]] = -1,
         root: bool = True,
     ):
         super(NormP, self).__init__()
@@ -995,7 +995,7 @@ class NormP(BaseLayer):
         self.register_layers(self.sum, self.abs, self.power, self.power_inv)
 
     def forward(self, X):
-        out = np.abs(X) if self.use_abs else X
+        out = self.abs(X) if self.use_abs else X
         out = self.power(out)
         out = self.sum(out)
 
@@ -1015,17 +1015,20 @@ class NormP(BaseLayer):
 
 
 class NormL2(NormP):
-    def __init__(self, axis: t.Union[int, t.Tuple[int, ...]], root: bool = True):
+    def __init__(self, axis: t.Union[int, t.Tuple[int, ...]] = -1, root: bool = True):
         super(NormL2, self).__init__(p=2, axis=axis, root=root)
 
 
 class NormL1(NormP):
-    def __init__(self, axis: t.Union[int, t.Tuple[int, ...]]):
+    def __init__(self, axis: t.Union[int, t.Tuple[int, ...]] = -1):
         super(NormL2, self).__init__(p=1, axis=axis)
 
 
 class NormalizeVector(BaseLayer):
-    def __init__(self, p: t.Union[int, float], axis: t.Union[int, t.Tuple[int, ...]]):
+    def __init__(
+        self, p: t.Union[int, float] = 2, axis: t.Union[int, t.Tuple[int, ...]] = -1
+    ):
+        super(NormalizeVector, self).__init__()
         self.norm_p = NormP(p=p, axis=axis)
         self.div = Divide()
         self.register_layers(self.norm_p, self.div)
