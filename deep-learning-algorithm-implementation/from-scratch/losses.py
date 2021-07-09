@@ -10,11 +10,18 @@ class _BaseLoss:
     def __init__(self, average: bool = True):
         self.average = bool(average)
 
+
+class _BasePairedLoss(_BaseLoss):
     def __call__(self, y, y_preds):
         raise NotImplementedError
 
 
-class MSELoss(_BaseLoss):
+class _BaseTripleLoss(_BaseLoss):
+    def __call__(self, emb_anchor, emb_positive, emb_negative):
+        raise NotImplementedError
+
+
+class MSELoss(_BasePairedLoss):
     def __call__(self, y, y_preds):
         y = y.reshape(y_preds.shape)
 
@@ -30,7 +37,7 @@ class MSELoss(_BaseLoss):
         return mse, grads
 
 
-class BCELoss(_BaseLoss):
+class BCELoss(_BasePairedLoss):
     def __init__(
         self, average: bool = True, with_logits: bool = False, eps: float = 1e-7
     ):
@@ -64,7 +71,7 @@ class BCELoss(_BaseLoss):
         return bce_loss, grads
 
 
-class CrossEntropyLoss(_BaseLoss):
+class CrossEntropyLoss(_BasePairedLoss):
     def __init__(self, average: bool = True, ignore_index: int = -100):
         super(CrossEntropyLoss, self).__init__(average=average)
         self.ignore_index = int(ignore_index)
@@ -93,10 +100,37 @@ class CrossEntropyLoss(_BaseLoss):
         return ce_loss, grads
 
 
+class TripletLoss(_BaseTripleLoss):
+    def __init__(self, margin: float, average: bool = True):
+        assert float(margin) >= 0.0
+        super(TripletLoss, self).__init__(average=average)
+        self.margin = float(margin)
+        self.relu = base.Relu()
+        self.sum = base.Sum(axis=0, keepdims=False, enforce_batch_dim=False)
+        self.sub = base.Subtract()
+
+    def __call__(self, sim_anchor_pos, sim_anchor_neg):
+        diff_dist = self.sub(dist_neg, dist_pos)
+        act = self.relu(diff_dist + margin)
+        loss = float(self.sum(act))
+
+        dact = self.sum.backward(1.0)
+        ddiff_dist = self.relu.backward(dact)
+        sim_anchor_neg, sim_anchor_pos = self.sub.backward(ddiff_dist)
+
+        if self.average:
+            n = emb_achor.shape[0]
+            loss /= n
+            sim_anchor_pos /= n
+            sim_anchor_neg /= n
+
+        return loss, (sim_anchor_pos, sim_anchor_neg)
+
+
 class AverageLosses:
     def __init__(
         self,
-        criterions: t.Tuple[_BaseLoss, ...],
+        criterions: t.Tuple[_BasePairedLoss, ...],
         weights: t.Optional[t.Tuple[float, ...]] = None,
         separated_y_true: bool = False,
         separated_y_preds: bool = False,
@@ -147,7 +181,9 @@ class AverageLosses:
 
 
 class _BaseRegularizer:
-    def __init__(self, parameters: t.Sequence[modules.BaseComponent], loss: _BaseLoss):
+    def __init__(
+        self, parameters: t.Sequence[modules.BaseComponent], loss: _BasePairedLoss
+    ):
         self.parameters = parameters
         self.loss = loss
 
@@ -156,7 +192,7 @@ class RegularizerL1(_BaseRegularizer):
     def __init__(
         self,
         parameters: t.Sequence[modules.BaseComponent],
-        loss: _BaseLoss,
+        loss: _BasePairedLoss,
         weight: float = 1.0,
     ):
         assert float(weight) >= 0.0
@@ -183,7 +219,7 @@ class RegularizerL2(_BaseRegularizer):
     def __init__(
         self,
         parameters: t.Sequence[modules.BaseComponent],
-        loss: _BaseLoss,
+        loss: _BasePairedLoss,
         weight: float = 1.0,
     ):
         assert float(weight) >= 0.0
