@@ -235,6 +235,8 @@ class GlobalMaxPool2d(_BaseFixedFilter):
         self.collapse_spatial_axes = base.CollapseAdjacentAxes(1, 2)
         self.max = base.Max(keepdims=keepdims, enforce_batch_dim=True, axis=1)
 
+        self.register_layers(self.collapse_spatial_axes, self.max)
+
     def forward(self, X):
         input_shape = X.shape
         out = self.collapse_spatial_axes(X)
