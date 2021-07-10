@@ -577,6 +577,9 @@ class ScaleByConstant(BaseLayer):
         super(ScaleByConstant, self).__init__()
         self.constant = float(constant) if constant is not None else None
 
+    def __call__(self, X, constant: t.Optional[float] = None):
+        return self.forward(X, constant)
+
     def forward(self, X, constant: t.Optional[float] = None):
         assert (constant is None) != (self.constant is None)
 
