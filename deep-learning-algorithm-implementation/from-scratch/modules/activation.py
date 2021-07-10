@@ -156,11 +156,22 @@ class GELU(base.BaseLayer):
 
 
 class CosineSimilarity(base.BaseLayer):
-    def __init__(self):
+    def __init__(self, pairwise: bool = True):
         super(CosineSimilarity, self).__init__()
-        self.mult = base.Matmul(transpose_X=True)
+
+        self.rowwise = not bool(pairwise)
+
+        if self.rowwise:
+            self.mult = base.Multiply()
+            self.sum = base.Sum(axis=1)
+            self.register_layers(self.mult, self.sum)
+
+        else:
+            self.mult = base.Matmul(transpose_X=True)
+            self.register_layers(self.mult)
+
         self.norm_vec = base.NormalizeVector(p=2, axis=1)
-        self.register_layers(self.mult, self.norm_vec)
+        self.register_layers(self.norm_vec)
 
     def __call__(self, X, Y):
         return self.forward(X, Y)
@@ -169,10 +180,19 @@ class CosineSimilarity(base.BaseLayer):
         X_norm = self.norm_vec(X)
         Y_norm = self.norm_vec(Y)
         out = self.mult(X_norm, Y_norm)
+
+        if self.rowwise:
+            out = self.sum(out)
+
         return out
 
     def backward(self, dout):
+        if self.rowwise:
+            dout = self.sum.backward(dout)
+
         dX_norm, dY_norm = self.mult.backward(dout)
+
         dY = self.norm_vec.backward(dY_norm)
         dX = self.norm_vec.backward(dX_norm)
+
         return dX, dY
