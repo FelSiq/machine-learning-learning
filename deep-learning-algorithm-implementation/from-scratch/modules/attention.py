@@ -245,7 +245,6 @@ class ConvChannelAttention2d(base.BaseLayer):
         self.global_pool_avg = filter_.GlobalAvgPool2d()
         self.add = base.Add()
         self.sigmoid = activation.Sigmoid()
-        self.multiply = base.Multiply()
 
         self.register_layers(
             self.mlp,
@@ -253,7 +252,6 @@ class ConvChannelAttention2d(base.BaseLayer):
             self.global_pool_avg,
             self.add,
             self.sigmoid,
-            self.multiply,
         )
 
     def forward(self, X):
@@ -264,25 +262,21 @@ class ConvChannelAttention2d(base.BaseLayer):
         mlp_avg = self.mlp(C_p_avg)
 
         logits = self.add(mlp_max, mlp_avg)
-        weights = self.sigmoid(logits)
-
-        out = self.multiply(X, weights)
+        out = self.sigmoid(logits)
 
         return out
 
     def backward(self, dout):
-        dX_a, dW = self.multiply.backward(dout)
-
-        dlogits = self.sigmoid.backward(dW)
+        dlogits = self.sigmoid.backward(dout)
         dmlp_max, dmlp_avg = self.add.backward(dlogits)
 
         dC_p_avg = self.mlp.backward(dmlp_avg)
         dC_p_max = self.mlp.backward(dmlp_max)
 
-        dX_b = self.global_pool_avg.backward(dC_p_avg)
-        dX_c = self.global_pool_max.backward(dC_p_max)
+        dX_a = self.global_pool_avg.backward(dC_p_avg)
+        dX_b = self.global_pool_max.backward(dC_p_max)
 
-        dX = dX_a + dX_b + dX_c
+        dX = dX_a + dX_b
 
         return dX
 
