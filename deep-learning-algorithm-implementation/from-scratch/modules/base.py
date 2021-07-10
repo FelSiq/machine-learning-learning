@@ -563,8 +563,8 @@ class Divide(BaseLayer):
     def backward(self, dout):
         (X, Y) = self._pop_from_cache()
 
-        dX = dout / Y
-        dY = -X / np.square(Y) * dout
+        dX = dout / (1e-7 + Y)
+        dY = -X / (1e-7 + np.square(Y)) * dout
 
         dX = _utils.reduce_grad_broadcasting(dX, dout, X.shape)
         dY = _utils.reduce_grad_broadcasting(dY, dout, Y.shape)
