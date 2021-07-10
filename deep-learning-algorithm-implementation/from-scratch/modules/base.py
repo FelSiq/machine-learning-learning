@@ -573,15 +573,23 @@ class Divide(BaseLayer):
 
 
 class ScaleByConstant(BaseLayer):
-    def __init__(self, constant: float):
+    def __init__(self, constant: t.Optional[float] = None):
         super(ScaleByConstant, self).__init__()
-        self.constant = float(constant)
+        self.constant = float(constant) if constant is not None else None
 
-    def forward(self, X):
-        return self.constant * X
+    def forward(self, X, constant: t.Optional[float] = None):
+        assert (constant is None) != (self.constant is None)
+
+        if constant is None:
+            constant = self.constant
+
+        self._store_in_cache(constant)
+
+        return constant * X
 
     def backward(self, dout):
-        return self.constant * dout
+        (constant,) = self._pop_from_cache()
+        return constant * dout
 
 
 class WeightedAverage(BaseLayer):
