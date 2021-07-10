@@ -6,24 +6,36 @@ import optimizers
 
 
 class SiameseNetwork(modules.BaseModel):
-    def __init__(self, dim_in: int, dim_hidden: int, dim_embed: int):
+    def __init__(
+        self, dim_in: int, dim_hidden: int, dim_embed: int, dropout: float = 0.2
+    ):
         super(SiameseNetwork, self).__init__()
 
         self.weights = modules.Sequential(
             [
+                modules.Conv2d(1, 16, 3, include_bias=False),
+                modules.BatchNorm2d(16),
+                modules.ReLU(inplace=True),
+                modules.SpatialDropout(dropout),
+                modules.Conv2d(16, 16, 3, include_bias=False),
+                modules.BatchNorm2d(16),
+                modules.ReLU(inplace=True),
+                modules.SpatialDropout(dropout),
                 modules.Flatten(),
-                modules.Linear(dim_in, dim_hidden, include_bias=False),
+                modules.Linear(4 * 4 * 16, dim_hidden, include_bias=False),
                 modules.BatchNorm1d(dim_hidden),
                 modules.ReLU(inplace=True),
+                modules.Dropout(dropout),
                 modules.Linear(dim_hidden, dim_embed, include_bias=False),
                 modules.BatchNorm1d(dim_embed),
                 modules.ReLU(inplace=True),
             ]
         )
 
-        self.sim = modules.CosineSimilarity()
+        self.sim_pairwise = modules.CosineSimilarity()
+        self.sim_rowwise = modules.CosineSimilarity(pairwise=False)
 
-        self.register_layers(self.weights, self.sim)
+        self.register_layers(self.weights, self.sim_pairwise, self.sim_rowwise)
 
     def __call__(self, X, Y):
         return self.forward(X, Y)
@@ -31,11 +43,17 @@ class SiameseNetwork(modules.BaseModel):
     def forward(self, X, Y):
         X_emb = self.weights(X)
         Y_emb = self.weights(Y)
-        out = self.sim(X_emb, Y_emb)
+
+        if not self.frozen:
+            out = self.sim_pairwise(X_emb, Y_emb)
+        else:
+
+            out = self.sim_rowwise(X_emb, Y_emb)
+
         return out
 
     def backward(self, dout):
-        dX_emb, dY_emb = self.sim.backward(dout)
+        dX_emb, dY_emb = self.sim_pairwise.backward(dout)
         dY = self.weights.backward(dY_emb)
         dX = self.weights.backward(dX_emb)
         return dX, dY
@@ -43,7 +61,11 @@ class SiameseNetwork(modules.BaseModel):
 
 def _test():
     import sklearn.datasets
+    import sklearn.model_selection
+    import sklearn.metrics
     import tqdm.auto
+
+    np.random.seed(16)
 
     def partition_by_class(X, y):
         partitions = {}
@@ -82,21 +104,31 @@ def _test():
         return zip(train_A, train_B)
 
     X, y = sklearn.datasets.load_digits(return_X_y=True)
+    X = X.reshape(-1, 8, 8, 1)
+    X_train, X_eval, y_train, y_eval = sklearn.model_selection.train_test_split(
+        X, y, test_size=0.2, shuffle=True, stratify=y
+    )
 
-    partitions, min_freq, batch_shape = partition_by_class(X, y)
+    if len(X_eval) % 2 == 1:
+        X_eval = X_eval[:-1, ...]
+
+    batch_A_eval, batch_B_eval = np.split(X_eval, 2, axis=0)
+    y_eval = np.equal(*np.split(y_eval, 2, axis=0)).astype(int, copy=False)
+
+    partitions, min_freq, batch_shape = partition_by_class(X_train, y_train)
     num_batches = min_freq // 2
 
     train_epochs = 39
     lr = 1e-3
-    batch_size = 32
 
     model = SiameseNetwork(8 * 8, 32, 16)
     optim = optimizers.Nadam(model.parameters, learning_rate=lr)
     criterion = losses.TripletLoss(margin=0.4)
 
     for epoch in np.arange(1, 1 + train_epochs):
-        loss_train = loss_eval = 0.0
+        total_loss_train = total_eval_recall = total_eval_precision = 0.0
         it = 0
+
         batches = prepare_batches(partitions, min_freq, batch_shape)
 
         for batch_A, batch_B in tqdm.auto.tqdm(batches, total=num_batches):
@@ -107,17 +139,27 @@ def _test():
             model.backward(loss_grad)
             optim.clip_grads_norm()
             optim.step()
-            loss_train += loss_train
+            total_loss_train += loss_train
 
             model.eval()
-            loss_eval += loss_train
+            y_preds = model(batch_A_eval, batch_B_eval).reshape(y_eval.shape)
+            y_preds = (y_preds >= 0.6).astype(int, copy=False)
+
+            recall_eval = sklearn.metrics.recall_score(y_preds, y_eval)
+            total_eval_recall += recall_eval
+
+            precision_eval = sklearn.metrics.precision_score(y_preds, y_eval)
+            total_eval_precision += precision_eval
 
             it += 1
 
-        loss_train /= it
-        loss_eval /= it
+        total_loss_train /= it
+        total_eval_recall /= it
+        total_eval_precision /= it
 
-        print(f"{epoch:<4} - loss train: {loss_train:.3f}, loss eval: {loss_eval:.3f}")
+        print(f"loss train     : {total_loss_train:.3f}")
+        print(f"recall eval    : {total_eval_recall:.3f}")
+        print(f"precision eval : {total_eval_precision:.3f}")
 
 
 if __name__ == "__main__":
