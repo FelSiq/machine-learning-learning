@@ -16,8 +16,8 @@ class _BasePairedLoss(_BaseLoss):
         raise NotImplementedError
 
 
-class _BaseTripleLoss(_BaseLoss):
-    def __call__(self, emb_anchor, emb_positive, emb_negative):
+class _BaseMatrixLoss(_BaseLoss):
+    def __call__(self, sim_mat):
         raise NotImplementedError
 
 
@@ -100,31 +100,79 @@ class CrossEntropyLoss(_BasePairedLoss):
         return ce_loss, grads
 
 
-class TripletLoss(_BaseTripleLoss):
+class TripletLoss(_BaseMatrixLoss):
     def __init__(self, margin: float, average: bool = True):
         assert float(margin) >= 0.0
         super(TripletLoss, self).__init__(average=average)
         self.margin = float(margin)
-        self.relu = base.Relu()
-        self.sum = base.Sum(axis=0, keepdims=False, enforce_batch_dim=False)
-        self.sub = base.Subtract()
 
-    def __call__(self, sim_anchor_pos, sim_anchor_neg):
-        diff_dist = self.sub(dist_neg, dist_pos)
-        act = self.relu(diff_dist + margin)
-        loss = float(self.sum(act))
+        self.sum_negs = modules.Sum(axis=1, keepdims=False, enforce_batch_dim=False)
+        self.max = modules.Max(axis=1, keepdims=False, enforce_batch_dim=False)
+        self.sum_batch = modules.Sum(axis=0, keepdims=False, enforce_batch_dim=False)
+        self.relu = modules.ReLU(inplace=True)
+        self.scale = modules.ScaleByConstant()
+        self.sub = modules.Subtract()
 
-        dact = self.sum.backward(1.0)
-        ddiff_dist = self.relu.backward(dact)
-        sim_anchor_neg, sim_anchor_pos = self.sub.backward(ddiff_dist)
+    def _neg_mean_forward(self, sim_mat_diag, sim_mat_off_diag):
+        sim_sum_neg = self.sum_negs(sim_mat_off_diag)
+        scale_const = 1.0 / (sim_sum_neg.size - 1.0)
+        sim_mean_neg = self.scale(sim_sum_neg, scale_const)
+        diff = self.sub(sim_mean_neg, sim_mat_diag)
+
+        loss = self.relu(diff + self.margin)
+        loss = self.sum_batch(loss)
+        return float(loss)
+
+    def _neg_mean_backward(self, dout):
+        dout = self.relu.backward(dout)
+        dsim_mean_neg, dsim_mat_diag = self.sub.backward(dout)
+        dsim_sum_neg = self.scale.backward(dsim_mean_neg)
+        dsim_mat_off_diag = self.sum_negs.backward(dsim_sum_neg)
+        return dsim_mat_diag, dsim_mat_off_diag
+
+    def _neg_closest_forward(self, sim_mat_diag, sim_mat_off_diag):
+        mask_a = np.identity(sim_mat_diag.size).astype(bool, copy=False)
+        mask_b = sim_mat_off_diag > sim_mat_diag.reshape(-1, 1)
+        mask = np.logical_or(mask_a, mask_b)
+
+        sim_mat_off_diag = np.copy(sim_mat_off_diag)
+        sim_mat_off_diag[mask] = -2.0
+        sim_closest_neg = self.max(sim_mat_off_diag)
+        diff = self.sub(sim_closest_neg, sim_mat_diag)
+
+        loss = self.relu(diff + self.margin)
+        loss = self.sum_batch(loss)
+        return float(loss)
+
+    def _neg_closest_backward(self, dout):
+        dout = self.relu.backward(dout)
+        dsim_closes_neg, dsim_mat_diag = self.sub.backward(dout)
+        dsim_mat_off_diag = self.max.backward(dsim_closes_neg)
+        return dsim_mat_diag, dsim_mat_off_diag
+
+    def __call__(self, sim_mat):
+        sim_mat_diag = np.diag(sim_mat)
+        sim_mat_off_diag = self.sub(sim_mat, np.diag(sim_mat_diag))
+
+        loss_a = self._neg_mean_forward(sim_mat_diag, sim_mat_off_diag)
+        loss_b = self._neg_closest_forward(sim_mat_diag, sim_mat_off_diag)
+
+        loss = float(loss_a + loss_b)
+
+        dsim_mat_diag_a, dsim_mat_off_diag_a = self._neg_closest_backward(1.0)
+        dsim_mat_diag_b, dsim_mat_off_diag_b = self._neg_mean_backward(1.0)
+        dsim_mat_off_diag = dsim_mat_off_diag_a + dsim_mat_off_diag_b
+        dsim_mat_a, dsim_mat_diag_c = self.sub.backward(dsim_mat_off_diag)
+        dsim_mat_diag_c = np.diag(dsim_mat_diag_c)
+        dsim_mat_diag = dsim_mat_diag_a + dsim_mat_diag_b + dsim_mat_diag_c
+        dsim_mat = dsim_mat_off_diag + np.diag(dsim_mat_diag)
 
         if self.average:
-            n = emb_achor.shape[0]
+            n = sim_mat_diag.size
             loss /= n
-            sim_anchor_pos /= n
-            sim_anchor_neg /= n
+            dsim_mat /= n
 
-        return loss, (sim_anchor_pos, sim_anchor_neg)
+        return loss, dsim_mat
 
 
 class AverageLosses:
