@@ -556,7 +556,7 @@ class Divide(BaseLayer):
         return self.forward(X, Y)
 
     def forward(self, X, Y):
-        out = X / Y
+        out = X / (1e-7 + Y)
         self._store_in_cache(X, Y)
         return out
 
