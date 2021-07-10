@@ -173,6 +173,6 @@ class CosineSimilarity(base.BaseLayer):
 
     def backward(self, dout):
         dX_norm, dY_norm = self.mult.backward(dout)
-        dY = self.norm_vec.backward(dY)
-        dX = self.norm_vec.backward(dX)
+        dY = self.norm_vec.backward(dY_norm)
+        dX = self.norm_vec.backward(dX_norm)
         return dX, dY
