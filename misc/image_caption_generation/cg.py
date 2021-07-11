@@ -1,5 +1,6 @@
 import typing as t
 
+import matplotlib.pyplot as plt
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -91,8 +92,8 @@ class ConvFullAttentionBlock(nn.Module):
 
         self.conv_att_chan = ConvAttentionChannel(dim_in)
         self.conv_att_spatial = ConvAttentionSpatial(dim_in)
-        self.conv_att_qkv = ConvAttentionQKV(dim_in, n_heads)
-        self.conv_final = nn.Conv2d(2 * dim_in, dim_in, 1, bias=False)
+        # self.conv_att_qkv = ConvAttentionQKV(dim_in, n_heads)
+        # self.conv_final = nn.Conv2d(2 * dim_in, dim_in, 1, bias=False)
 
     def forward(self, X):
         out_a = out_b = X
@@ -100,10 +101,11 @@ class ConvFullAttentionBlock(nn.Module):
         out_a = self.conv_att_chan(out_a)
         out_a = self.conv_att_spatial(out_a)
 
-        out_b = self.conv_att_qkv(out_b)
+        # out_b = self.conv_att_qkv(out_b)
 
-        out = torch.cat((out_a, out_b), axis=1)
-        out = self.conv_final(out)
+        # out = torch.cat((out_a, out_b), axis=1)
+        # out = self.conv_final(out)
+        out = out_a
 
         return out
 
@@ -128,6 +130,7 @@ class AttentionCNN(nn.Module):
             dim_dense_width = self._compute_out_dim(dim_dense_width, pool=True)
 
         dim_dense = dim_dense_height * dim_dense_width * dims[-1]
+        dim_hidden = (dim_dense + dim_emb) // 2
 
         self.weights = nn.Sequential(
             *[
@@ -137,16 +140,16 @@ class AttentionCNN(nn.Module):
                     nn.BatchNorm2d(dims[i]),
                     nn.ReLU(inplace=True),
                     nn.MaxPool2d(2),
-                    nn.Dropout2d(dropout, inplace=True),
+                    nn.Dropout2d(dropout, inplace=False),
                 )
                 for i in range(1, len(dims))
             ],
             nn.Flatten(),
-            nn.Linear(dim_dense, 2 * dim_emb, bias=False),
-            nn.BatchNorm1d(2 * dim_emb),
+            nn.Linear(dim_dense, dim_hidden, bias=False),
+            nn.BatchNorm1d(dim_hidden),
             nn.ReLU(inplace=True),
             nn.Dropout(dropout),
-            nn.Linear(2 * dim_emb, dim_emb),
+            nn.Linear(dim_hidden, dim_emb),
         )
 
     def forward(self, X):
@@ -228,8 +231,58 @@ class CaptionGenerator(nn.Module):
         return out, img_embed
 
 
+def logsoftmax_sample(logits, temperature=1.0):
+    assert 0 <= temperature <= 1.0
+
+    log_probs = nn.functional.log_softmax(logits, dim=-1)
+    # Note: sample uniform U(1e-6, 1 - 1e-6)
+    u = torch.rand_like(log_probs) * (1 - 2e-6) + 1e-6
+    g = -torch.log(-torch.log(u))
+    return torch.argmax(log_probs + g * temperature, axis=-1)
+
+
+def generate(
+    model,
+    img,
+    max_length: int,
+    vocab,
+    vocab_inv,
+    device,
+    temperature: float = 1.0,
+):
+    model.eval()
+
+    output = torch.zeros(max_length, dtype=torch.long)
+    output[0] = vocab["<SOS>"]
+
+    output = output.unsqueeze(1)
+    output = output.to(device)
+
+    img = img.unsqueeze(0)
+    img = img.to(device)
+
+    img_embed = None
+
+    for i in range(1, max_length):
+        cur_output, img_embed = model(img, output, img_embed=img_embed)
+        logits = cur_output[i]
+        next_token = logsoftmax_sample(logits, temperature)
+
+        if next_token == vocab["<EOS>"]:
+            break
+
+        output[i] = next_token.item()
+
+    out = [vocab_inv[int(token.item())] for token in output]
+    result = " ".join(out)
+
+    return result
+
+
 def _test():
     import tqdm.auto
+
+    np.random.seed(16)
 
     def pad_desc(y, pad_id: int = 0):
         y_lens = list(map(len, y))
@@ -237,34 +290,34 @@ def _test():
         return y_padded, y_lens
 
     device = "cuda"
-    train_epochs = 30
+    train_epochs = 100
     lr = 1e-3
 
     (
         dataloader_train,
         dataloader_eval,
-        word_dict,
-        word_dict_inv,
+        vocab,
+        vocab_inv,
     ) = data.prepare_tensors.get_data(batch_size_train=32)
 
     model = CaptionGenerator(
         dims=[3, 64, 128, 64],
         image_shape=(32, 32),
         dim_emb=32,
-        num_tokens=len(word_dict),
+        num_tokens=len(vocab),
         n_heads_cnn=4,
         n_heads_transf=8,
         num_layers=3,
-        dropout=0.3,
+        dropout=0.2,
     )
 
     modl = model.to(device)
 
     optim = torch.optim.Adam(model.parameters(), lr=lr)
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-        optim, factor=0.5, patience=5, mode="min"
+        optim, factor=0.1, patience=5, mode="min"
     )
-    criterion = nn.CrossEntropyLoss(ignore_index=word_dict["<PAD>"])
+    criterion = nn.CrossEntropyLoss(ignore_index=vocab["<PAD>"])
 
     for epoch in np.arange(1, 1 + train_epochs):
         total_loss_train = 0.0
@@ -285,7 +338,7 @@ def _test():
 
             optim.zero_grad()
             y_preds, _ = model(X_batch, y_batch_inp)
-            y_preds = y_preds.view(-1, len(word_dict))
+            y_preds = y_preds.view(-1, len(vocab))
             y_batch_target = y_batch_target.reshape(-1)
 
             loss = criterion(y_preds, y_batch_target)
@@ -307,7 +360,7 @@ def _test():
             y_batch_target = y_batch[1:, ...]
 
             y_preds, _ = model(X_batch, y_batch_inp)
-            y_preds = y_preds.view(-1, len(word_dict))
+            y_preds = y_preds.view(-1, len(vocab))
             y_batch_target = y_batch_target.reshape(-1)
 
             loss = criterion(y_preds, y_batch_target)
@@ -322,6 +375,39 @@ def _test():
 
         print(f"Loss train: {total_loss_train:.3f}")
         print(f"Loss eval: {total_loss_eval:.3f}")
+
+    img_train = next(iter(dataloader_train))[0][0]
+    img_eval = next(iter(dataloader_eval))[0][0]
+
+    result_train = generate(
+        model,
+        img_train,
+        20,
+        vocab,
+        vocab_inv,
+        device,
+        temperature=0.15,
+    )
+
+    result_eval = generate(
+        model,
+        img_eval,
+        20,
+        vocab,
+        vocab_inv,
+        device,
+        temperature=0.15,
+    )
+
+    fig, (ax1, ax2) = plt.subplots(2, figsize=(10, 10))
+
+    ax1.imshow(np.moveaxis(img_train.numpy(), 0, -1).astype(int))
+    ax1.set_title(result_train)
+
+    ax2.imshow(np.moveaxis(img_eval.numpy(), 0, -1).astype(int))
+    ax2.set_title(result_eval)
+
+    plt.show()
 
 
 if __name__ == "__main__":
