@@ -112,35 +112,44 @@ class ConvFullAttentionBlock(nn.Module):
 
 
 class AttentionCNN(nn.Module):
-    @staticmethod
-    def _compute_out_dim(dim_in, pool=True):
-        dim_out = 1 + (dim_in - 3)
+    KERNEL_SIZE = 5
+
+    @classmethod
+    def _compute_out_dim(cls, dim_in, pool=True, padding=False):
+        if padding:
+            dim_out = dim_in
+
+        else:
+            dim_out = 1 + (dim_in - cls.KERNEL_SIZE)
 
         if pool:
             dim_out //= 2
 
         return dim_out
 
-    def __init__(self, image_shape, dims, n_heads, dim_emb, dropout: float):
+    def __init__(
+            self, image_shape, dims, n_heads, dim_emb, dropout: float, pool: bool = True, padding: bool = True
+    ):
         super(AttentionCNN, self).__init__()
 
         dim_dense_height, dim_dense_width = image_shape
 
         for i in range(len(dims) - 1):
-            dim_dense_height = self._compute_out_dim(dim_dense_height, pool=True)
-            dim_dense_width = self._compute_out_dim(dim_dense_width, pool=True)
+            dim_dense_height = self._compute_out_dim(dim_dense_height, pool=pool, padding=padding)
+            dim_dense_width = self._compute_out_dim(dim_dense_width, pool=pool, padding=padding)
 
         dim_dense = dim_dense_height * dim_dense_width * dims[-1]
         dim_hidden = (dim_dense + dim_emb) // 2
+        padding = self.KERNEL_SIZE // 2 if padding else 0
 
         self.weights = nn.Sequential(
             *[
                 nn.Sequential(
-                    nn.Conv2d(dims[i - 1], dims[i], 3),
+                    nn.Conv2d(dims[i - 1], dims[i], self.KERNEL_SIZE, padding=padding),
                     ConvFullAttentionBlock(dims[i], n_heads),
                     nn.BatchNorm2d(dims[i]),
                     nn.ReLU(inplace=True),
-                    nn.MaxPool2d(2),
+                    nn.MaxPool2d(2) if pool else nn.Identity(),
                     nn.Dropout2d(dropout, inplace=False),
                 )
                 for i in range(1, len(dims))
@@ -247,7 +256,6 @@ def generate(
     max_length: int,
     codec,
     device,
-    temperature: float = 1.0,
 ):
     model.eval()
 
@@ -261,6 +269,7 @@ def generate(
     img_embed = None
 
     for i in range(1, max_length):
+        temperature = np.exp(-i + 1)
         cur_output, img_embed = model(img, output, img_embed=img_embed)
         logits = cur_output[i - 1]
         next_token = int(logsoftmax_sample(logits, temperature).item())
@@ -270,7 +279,7 @@ def generate(
 
         output[i, 0] = next_token
 
-    raw = output.detach().cpu().squeeze().tolist()
+    raw = output.detach().cpu().squeeze().tolist()[:i]
     print("raw:", raw)
     result = codec.decode_ids(raw)
 
@@ -281,6 +290,7 @@ def _test():
     import tqdm.auto
 
     np.random.seed(16)
+    torch.random.manual_seed(32)
 
     def pad_desc(y, pad_id: int):
         y_lens = list(map(len, y))
@@ -288,9 +298,9 @@ def _test():
         return y_padded, y_lens
 
     device = "cuda"
-    train_epochs = 15
-    lr = 1e-3
-    img_shape = (48, 48)
+    train_epochs = 20
+    lr = 2e-3
+    img_shape = (64, 64)
 
     (
         dataloader_train,
@@ -342,7 +352,13 @@ def _test():
 
             loss = criterion(y_preds, y_batch_target)
             loss.backward()
-            nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+
+            try:
+                nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+
+            except RuntimeError:
+                nn.utils.clip_grad_value_(model.parameters(), 1.0)
+
             optim.step()
 
             it_train += 1
@@ -386,7 +402,6 @@ def _test():
         30,
         codec,
         device,
-        temperature=0.05,
     )
 
     result_eval = generate(
@@ -395,7 +410,6 @@ def _test():
         30,
         codec,
         device,
-        temperature=0.05,
     )
 
     fig, (ax1, ax2) = plt.subplots(2, figsize=(10, 10))
