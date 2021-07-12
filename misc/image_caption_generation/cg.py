@@ -205,9 +205,11 @@ class CaptionGenerator(nn.Module):
         desc_lenp1 = 1 + len(description)
         mask = torch.triu(
             torch.full(
-                (desc_lenp1, desc_lenp1), fill_value=True, device=description.device
+                (desc_lenp1, desc_lenp1),
+                fill_value=float("-inf"),
+                device=description.device,
             ),
-            diagonal=1,
+            diagonal=2,
         )
         return mask
 
@@ -220,7 +222,7 @@ class CaptionGenerator(nn.Module):
 
         transf_in = torch.cat((img_embed, desc_embed), axis=0)
         mask = self._build_mask(desc_embed)
-        out = self.transf_encoder(transf_in, mask=mask)
+        out = self.transf_encoder(transf_in, mask)
         out = self.final_lin(out)
 
         # NOTE: removing output related to the image embedding
@@ -249,10 +251,8 @@ def generate(
 ):
     model.eval()
 
-    output = torch.zeros(max_length, dtype=torch.long)
-    output[0] = codec.BOS
-
-    output = output.unsqueeze(1)
+    output = torch.full((max_length, 1), fill_value=codec.vocab_size, dtype=torch.long)
+    output[0, 0] = codec.BOS
     output = output.to(device)
 
     img = img.unsqueeze(0)
@@ -268,9 +268,11 @@ def generate(
         if next_token == codec.EOS:
             break
 
-        output[i] = next_token
+        output[i, 0] = next_token
 
-    result = codec.decode_ids(output.detach().cpu().squeeze().tolist())
+    raw = output.detach().cpu().squeeze().tolist()
+    print("raw:", raw)
+    result = codec.decode_ids(raw)
 
     return result
 
@@ -286,22 +288,23 @@ def _test():
         return y_padded, y_lens
 
     device = "cuda"
-    train_epochs = 30
+    train_epochs = 15
     lr = 1e-3
+    img_shape = (48, 48)
 
     (
         dataloader_train,
         dataloader_eval,
         codec,
-    ) = data.prepare_tensors.get_data(batch_size_train=32)
+    ) = data.prepare_tensors.get_data(batch_size_train=64, img_shape=img_shape)
 
     model = CaptionGenerator(
         dims=[3, 64, 128, 64],
         codec=codec,
-        image_shape=(32, 32),
+        image_shape=img_shape,
         n_heads_cnn=5,
         n_heads_transf=5,
-        num_layers=3,
+        num_layers=4,
         dropout=0.2,
     )
 
@@ -380,7 +383,7 @@ def _test():
     result_train = generate(
         model,
         img_train,
-        20,
+        30,
         codec,
         device,
         temperature=0.05,
@@ -389,7 +392,7 @@ def _test():
     result_eval = generate(
         model,
         img_eval,
-        20,
+        30,
         codec,
         device,
         temperature=0.05,
@@ -397,10 +400,10 @@ def _test():
 
     fig, (ax1, ax2) = plt.subplots(2, figsize=(10, 10))
 
-    ax1.imshow(np.moveaxis(img_train.numpy(), 0, -1).astype(int))
+    ax1.imshow(np.moveaxis(img_train.numpy(), 0, -1))
     ax1.set_title(result_train)
 
-    ax2.imshow(np.moveaxis(img_eval.numpy(), 0, -1).astype(int))
+    ax2.imshow(np.moveaxis(img_eval.numpy(), 0, -1))
     ax2.set_title(result_eval)
 
     plt.show()

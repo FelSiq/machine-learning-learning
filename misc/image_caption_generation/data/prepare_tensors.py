@@ -93,7 +93,7 @@ def gather_data_from_disc(
 
         img = PIL.Image.open(name_img)
         img = img.resize(img_shape)
-        img = np.asfarray(img)
+        img = np.asfarray(img) / 255.0
 
         with open(name_desc, "r") as f:
             desc = f.read().lower().splitlines()
@@ -113,13 +113,14 @@ def word_to_int_(img_descriptions, codec):
 
 
 def get_data(
-    batch_size_train: int = 16,
-    batch_size_eval: int = 16,
+    batch_size_train: int = 32,
+    batch_size_eval: int = 32,
     eval_size: int = 64,
     vs: int = 3000,
     dim: int = 50,
+    img_shape: t.Tuple[int, int] = (32, 32),
 ):
-    imgs, descriptions = gather_data_from_disc()
+    imgs, descriptions = gather_data_from_disc(img_shape=img_shape)
     codec = bpemb.BPEmb(lang="en", vs=vs, dim=dim, add_pad_emb=True)
     word_to_int_(descriptions, codec)
 
