@@ -7,10 +7,7 @@ import numpy as np
 import torch
 import PIL
 import matplotlib.pyplot as plt
-import nltk
-
-
-nltk.download("punkt")
+import bpemb
 
 
 class IterableDataset(torch.utils.data.IterableDataset):
@@ -87,7 +84,6 @@ def gather_data_from_disc(
 
     n = len(os.listdir(imgs_uri))
 
-    token_freqs = collections.Counter()
     imgs = np.empty((n, 3, *img_shape), dtype=np.float32)
     descriptions = []  # type: t.List[t.List[str]]
 
@@ -102,58 +98,30 @@ def gather_data_from_disc(
         with open(name_desc, "r") as f:
             desc = f.read().lower().splitlines()
 
-        tokenized_desc = [nltk.tokenize.word_tokenize(sent) for sent in desc]
-
-        for td in tokenized_desc:
-            token_freqs.update(td)
-
         imgs[i, ...] = np.moveaxis(img, -1, 0)
-        descriptions.append(tokenized_desc)
+        descriptions.append(desc)
 
-    return imgs, descriptions, token_freqs
-
-
-def prepare_word_dict(token_freqs: t.Dict[str, int], token_min_freq: int):
-    unique_tokens = {
-        token for token, freq in token_freqs.items() if freq >= token_min_freq
-    }
-    unique_tokens = sorted(unique_tokens)
-    unique_tokens.insert(0, "<PAD>")
-    unique_tokens.extend(["<SOS>", "<EOS>", "<UNK>"])
-    word_dict = dict(zip(unique_tokens, range(len(unique_tokens))))
-    word_dict_inv = {v: k for k, v in word_dict.items()}
-    return word_dict, word_dict_inv
+    return imgs, descriptions
 
 
-def word_to_int_(
-    img_descriptions,
-    word_dict,
-    eos_token: str = "<EOS>",
-    sos_token: str = "<SOS>",
-    unk_token: str = "<UNK>",
-):
-    unk_id = word_dict[unk_token]
-
-    for descriptions in tqdm.auto.tqdm(img_descriptions):
-        for i, description in enumerate(descriptions):
-            description.append(eos_token)
-            description.insert(0, sos_token)
-
-            for j, token in enumerate(description):
-                description[j] = word_dict.get(token, unk_id)
-
-            descriptions[i] = torch.tensor(description, dtype=torch.long)
+def word_to_int_(img_descriptions, codec):
+    for i, descriptions in tqdm.auto.tqdm(enumerate(img_descriptions)):
+        descriptions = codec.encode_ids_with_bos_eos(descriptions)
+        img_descriptions[i] = [
+            torch.tensor(desc, dtype=torch.long) for desc in descriptions
+        ]
 
 
 def get_data(
     batch_size_train: int = 16,
     batch_size_eval: int = 16,
-    token_min_freq: int = 3,
     eval_size: int = 64,
+    vs: int = 3000,
+    dim: int = 50,
 ):
-    imgs, descriptions, token_freqs = gather_data_from_disc()
-    word_dict, word_dict_inv = prepare_word_dict(token_freqs, token_min_freq)
-    word_to_int_(descriptions, word_dict)
+    imgs, descriptions = gather_data_from_disc()
+    codec = bpemb.BPEmb(lang="en", vs=vs, dim=dim, add_pad_emb=True)
+    word_to_int_(descriptions, codec)
 
     imgs = torch.from_numpy(imgs)
 
@@ -173,7 +141,7 @@ def get_data(
         resample_descs=False,
     )
 
-    return dataloader_train, dataloader_eval, word_dict, word_dict_inv
+    return dataloader_train, dataloader_eval, codec
 
 
 if __name__ == "__main__":

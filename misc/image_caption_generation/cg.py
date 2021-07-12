@@ -6,6 +6,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torchvision
 import numpy as np
+import bpemb
 
 import data.prepare_tensors
 
@@ -157,47 +158,44 @@ class AttentionCNN(nn.Module):
 
 
 class PositionalEncoding(nn.Module):
-    # Source: https://pytorch.org/tutorials/beginner/transformer_tutorial.html
-    def __init__(self, dim_emb, dropout=0.0, max_len=40):
+    def __init__(self, dim_emb, dropout=0.0, max_len=80):
         super(PositionalEncoding, self).__init__()
         self.dropout = nn.Dropout(p=dropout)
-
-        pe = torch.zeros(max_len, dim_emb)
-        position = torch.arange(0, max_len, dtype=torch.float).unsqueeze(1)
-        div_term = torch.exp(
-            torch.arange(0, dim_emb, 2).float() * (-float(np.log(10000.0)) / dim_emb)
+        self.pos_enc = nn.Parameter(
+            torch.zeros((max_len, 1, dim_emb), dtype=torch.float), requires_grad=True
         )
-        pe[:, 0::2] = torch.sin(position * div_term)
-        pe[:, 1::2] = torch.cos(position * div_term)
-        pe = pe.unsqueeze(0).transpose(0, 1)
-        self.register_buffer("pe", pe)
 
-    def forward(self, x):
-        x = x + self.pe[: x.size(0), :]
-        return self.dropout(x)
+    def forward(self, X):
+        seq_len = X.size(0)
+        X = X + self.pos_enc[:seq_len, :]
+        return self.dropout(X)
 
 
 class CaptionGenerator(nn.Module):
     def __init__(
         self,
         image_shape: t.Tuple[int, int],
+        codec,
         dims: t.Tuple[int, ...],
-        dim_emb: int,
-        num_tokens: int,
         n_heads_cnn: int,
         n_heads_transf: int,
         num_layers: int,
         dropout: float,
     ):
         super(CaptionGenerator, self).__init__()
+        num_tokens = codec.vocab_size
+        dim_emb = codec.dim
+
         self.att_cnn = AttentionCNN(image_shape, dims, n_heads_cnn, dim_emb, dropout)
-        encoder_layer = nn.TransformerEncoderLayer(
-            d_model=dim_emb, nhead=n_heads_transf
-        )
+        emb_tensor = torch.from_numpy(codec.vectors.astype(np.float32, copy=False))
 
         self.embed = nn.Sequential(
-            nn.Embedding(num_tokens, dim_emb),
+            nn.Embedding.from_pretrained(emb_tensor, padding_idx=num_tokens),
             PositionalEncoding(dim_emb, dropout),
+        )
+
+        encoder_layer = nn.TransformerEncoderLayer(
+            d_model=dim_emb, nhead=n_heads_transf
         )
 
         self.transf_encoder = nn.TransformerEncoder(encoder_layer, num_layers)
@@ -245,15 +243,14 @@ def generate(
     model,
     img,
     max_length: int,
-    vocab,
-    vocab_inv,
+    codec,
     device,
     temperature: float = 1.0,
 ):
     model.eval()
 
     output = torch.zeros(max_length, dtype=torch.long)
-    output[0] = vocab["<SOS>"]
+    output[0] = codec.BOS
 
     output = output.unsqueeze(1)
     output = output.to(device)
@@ -265,16 +262,15 @@ def generate(
 
     for i in range(1, max_length):
         cur_output, img_embed = model(img, output, img_embed=img_embed)
-        logits = cur_output[i]
-        next_token = logsoftmax_sample(logits, temperature)
+        logits = cur_output[i - 1]
+        next_token = int(logsoftmax_sample(logits, temperature).item())
 
-        if next_token == vocab["<EOS>"]:
+        if next_token == codec.EOS:
             break
 
-        output[i] = next_token.item()
+        output[i] = next_token
 
-    out = [vocab_inv[int(token.item())] for token in output]
-    result = " ".join(out)
+    result = codec.decode_ids(output.detach().cpu().squeeze().tolist())
 
     return result
 
@@ -284,29 +280,27 @@ def _test():
 
     np.random.seed(16)
 
-    def pad_desc(y, pad_id: int = 0):
+    def pad_desc(y, pad_id: int):
         y_lens = list(map(len, y))
         y_padded = nn.utils.rnn.pad_sequence(y, batch_first=True, padding_value=pad_id)
         return y_padded, y_lens
 
     device = "cuda"
-    train_epochs = 100
+    train_epochs = 30
     lr = 1e-3
 
     (
         dataloader_train,
         dataloader_eval,
-        vocab,
-        vocab_inv,
+        codec,
     ) = data.prepare_tensors.get_data(batch_size_train=32)
 
     model = CaptionGenerator(
         dims=[3, 64, 128, 64],
+        codec=codec,
         image_shape=(32, 32),
-        dim_emb=32,
-        num_tokens=len(vocab),
-        n_heads_cnn=4,
-        n_heads_transf=8,
+        n_heads_cnn=5,
+        n_heads_transf=5,
         num_layers=3,
         dropout=0.2,
     )
@@ -317,7 +311,7 @@ def _test():
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
         optim, factor=0.1, patience=5, mode="min"
     )
-    criterion = nn.CrossEntropyLoss(ignore_index=vocab["<PAD>"])
+    criterion = nn.CrossEntropyLoss(ignore_index=codec.vocab_size)
 
     for epoch in np.arange(1, 1 + train_epochs):
         total_loss_train = 0.0
@@ -326,8 +320,10 @@ def _test():
         total_loss_eval = 0.0
         it_eval = 0
 
+        model.train()
+
         for X_batch, y_batch in tqdm.auto.tqdm(dataloader_train):
-            y_batch, _ = pad_desc(y_batch)
+            y_batch, _ = pad_desc(y_batch, pad_id=codec.vocab_size)
             y_batch = y_batch.transpose(0, 1)
 
             y_batch = y_batch.to(device)
@@ -338,7 +334,7 @@ def _test():
 
             optim.zero_grad()
             y_preds, _ = model(X_batch, y_batch_inp)
-            y_preds = y_preds.view(-1, len(vocab))
+            y_preds = y_preds.view(-1, codec.vocab_size)
             y_batch_target = y_batch_target.reshape(-1)
 
             loss = criterion(y_preds, y_batch_target)
@@ -349,8 +345,10 @@ def _test():
             it_train += 1
             total_loss_train += loss.item()
 
+        model.eval()
+
         for X_batch, y_batch in tqdm.auto.tqdm(dataloader_eval):
-            y_batch, _ = pad_desc(y_batch)
+            y_batch, _ = pad_desc(y_batch, pad_id=codec.vocab_size)
             y_batch = y_batch.transpose(0, 1)
 
             y_batch = y_batch.to(device)
@@ -360,7 +358,7 @@ def _test():
             y_batch_target = y_batch[1:, ...]
 
             y_preds, _ = model(X_batch, y_batch_inp)
-            y_preds = y_preds.view(-1, len(vocab))
+            y_preds = y_preds.view(-1, codec.vocab_size)
             y_batch_target = y_batch_target.reshape(-1)
 
             loss = criterion(y_preds, y_batch_target)
@@ -383,20 +381,18 @@ def _test():
         model,
         img_train,
         20,
-        vocab,
-        vocab_inv,
+        codec,
         device,
-        temperature=0.15,
+        temperature=0.05,
     )
 
     result_eval = generate(
         model,
         img_eval,
         20,
-        vocab,
-        vocab_inv,
+        codec,
         device,
-        temperature=0.15,
+        temperature=0.05,
     )
 
     fig, (ax1, ax2) = plt.subplots(2, figsize=(10, 10))
