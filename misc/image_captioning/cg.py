@@ -12,6 +12,8 @@ import data.prepare_tensors
 
 
 class ConvAttentionQKV(nn.Module):
+    # NOTE: consumes too much GPU memory and processing time for my taste.
+
     def __init__(self, dim_in: int, n_heads: int):
         super(ConvAttentionQKV, self).__init__()
 
@@ -112,7 +114,7 @@ class ConvFullAttentionBlock(nn.Module):
 
 
 class AttentionCNN(nn.Module):
-    KERNEL_SIZE = 5
+    KERNEL_SIZE = 3
 
     @classmethod
     def _compute_out_dim(cls, dim_in, pool=True, padding=False):
@@ -128,15 +130,26 @@ class AttentionCNN(nn.Module):
         return dim_out
 
     def __init__(
-            self, image_shape, dims, n_heads, dim_emb, dropout: float, pool: bool = True, padding: bool = True
+        self,
+        image_shape,
+        dims,
+        n_heads,
+        dim_emb,
+        dropout: float,
+        pool: bool = True,
+        padding: bool = True,
     ):
         super(AttentionCNN, self).__init__()
 
         dim_dense_height, dim_dense_width = image_shape
 
         for i in range(len(dims) - 1):
-            dim_dense_height = self._compute_out_dim(dim_dense_height, pool=pool, padding=padding)
-            dim_dense_width = self._compute_out_dim(dim_dense_width, pool=pool, padding=padding)
+            dim_dense_height = self._compute_out_dim(
+                dim_dense_height, pool=pool, padding=padding
+            )
+            dim_dense_width = self._compute_out_dim(
+                dim_dense_width, pool=pool, padding=padding
+            )
 
         dim_dense = dim_dense_height * dim_dense_width * dims[-1]
         dim_hidden = (dim_dense + dim_emb) // 2
@@ -146,7 +159,7 @@ class AttentionCNN(nn.Module):
             *[
                 nn.Sequential(
                     nn.Conv2d(dims[i - 1], dims[i], self.KERNEL_SIZE, padding=padding),
-                    ConvFullAttentionBlock(dims[i], n_heads),
+                    # ConvFullAttentionBlock(dims[i], n_heads),
                     nn.BatchNorm2d(dims[i]),
                     nn.ReLU(inplace=True),
                     nn.MaxPool2d(2) if pool else nn.Identity(),
@@ -204,23 +217,32 @@ class CaptionGenerator(nn.Module):
         )
 
         encoder_layer = nn.TransformerEncoderLayer(
-            d_model=dim_emb, nhead=n_heads_transf
+            d_model=dim_emb,
+            nhead=n_heads_transf,
+            dim_feedforward=1024,
+            dropout=0.5 * dropout,
         )
 
         self.transf_encoder = nn.TransformerEncoder(encoder_layer, num_layers)
         self.final_lin = nn.Linear(dim_emb, num_tokens)
 
-    def _build_mask(self, description):
+    def _build_mask_attention(self, description):
         desc_lenp1 = 1 + len(description)
         mask = torch.triu(
             torch.full(
                 (desc_lenp1, desc_lenp1),
-                fill_value=float("-inf"),
+                fill_value=True,
                 device=description.device,
             ),
-            diagonal=2,
+            diagonal=1,
         )
         return mask
+
+    def _build_mask_padding(self, description):
+        batch_size = description.size(1)
+        img_embed_row = torch.full((1, batch_size), False).to(description.device)
+        mask = torch.cat((img_embed_row, description == self.pad_id), dim=0)
+        return mask.transpose(0, 1)
 
     def forward(self, img, description, img_embed=None):
         if img_embed is None:
@@ -230,8 +252,9 @@ class CaptionGenerator(nn.Module):
         desc_embed = self.embed(description)
 
         transf_in = torch.cat((img_embed, desc_embed), axis=0)
-        mask = self._build_mask(desc_embed)
-        out = self.transf_encoder(transf_in, mask)
+        mask_attention = self._build_mask_attention(description)
+        mask_pad = self._build_mask_pad(description)
+        out = self.transf_encoder(transf_in, mask_attention, mask_pad)
         out = self.final_lin(out)
 
         # NOTE: removing output related to the image embedding
@@ -256,30 +279,31 @@ def generate(
     max_length: int,
     codec,
     device,
+    start_of_sentence=None,
 ):
     model.eval()
 
-    output = torch.full((max_length, 1), fill_value=codec.vocab_size, dtype=torch.long)
-    output[0, 0] = codec.BOS
-    output = output.to(device)
+    if start_of_sentence is None:
+        output = torch.tensor([[codec.BOS]], dtype=torch.long).to(device)
+
+    else:
+        output = start_of_sentence.unsqueeze(1).to(device)
 
     img = img.unsqueeze(0)
     img = img.to(device)
 
     img_embed = None
 
-    for i in range(1, max_length):
-        temperature = np.exp(-i + 1)
+    for i in range(max_length - len(output)):
         cur_output, img_embed = model(img, output, img_embed=img_embed)
-        logits = cur_output[i - 1]
-        next_token = int(logsoftmax_sample(logits, temperature).item())
+        logits = cur_output[-1].unsqueeze(0)
+        next_token = logsoftmax_sample(logits)
+        output = torch.cat((output, next_token), dim=0)
 
-        if next_token == codec.EOS:
+        if next_token.item() == codec.EOS:
             break
 
-        output[i, 0] = next_token
-
-    raw = output.detach().cpu().squeeze().tolist()[:i]
+    raw = output.detach().cpu().squeeze().tolist()
     print("raw:", raw)
     result = codec.decode_ids(raw)
 
@@ -298,24 +322,22 @@ def _test():
         return y_padded, y_lens
 
     device = "cuda"
-    train_epochs = 20
+    train_epochs = 30
     lr = 2e-3
-    img_shape = (64, 64)
+    img_shape = (48, 48)
 
-    (
-        dataloader_train,
-        dataloader_eval,
-        codec,
-    ) = data.prepare_tensors.get_data(batch_size_train=64, img_shape=img_shape)
+    (dataloader_train, dataloader_eval, codec,) = data.prepare_tensors.get_data(
+        batch_size_train=64, img_shape=img_shape, vs=5000, dim=200
+    )
 
     model = CaptionGenerator(
-        dims=[3, 64, 128, 64],
+        dims=[3, 128, 64, 64],
         codec=codec,
         image_shape=img_shape,
         n_heads_cnn=5,
         n_heads_transf=5,
-        num_layers=4,
-        dropout=0.2,
+        num_layers=3,
+        dropout=0.4,
     )
 
     modl = model.to(device)
