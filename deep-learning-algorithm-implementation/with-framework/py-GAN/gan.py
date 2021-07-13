@@ -138,7 +138,10 @@ class GAN:
         self.optim_disc = torch.optim.Adam(self.disc.parameters(), lr=lr_disc)
 
     def train(
-        self, dataloader, num_epochs: int = 32, print_it: int = -1,
+        self,
+        dataloader,
+        num_epochs: int = 32,
+        print_it: int = -1,
     ):
 
         if print_it < 0:

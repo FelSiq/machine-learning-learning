@@ -141,7 +141,9 @@ class Discriminator(nn.Module):
             )
 
         else:
-            block = nn.Sequential(conv_layer,)
+            block = nn.Sequential(
+                conv_layer,
+            )
 
         return block
 
@@ -276,7 +278,10 @@ class DCGAN:
             torch.nn.init.constant_(m.bias, 0)
 
     def train(
-        self, dataloader, num_epochs: int = 32, print_it: int = -1,
+        self,
+        dataloader,
+        num_epochs: int = 32,
+        print_it: int = -1,
     ):
 
         if print_it < 0:

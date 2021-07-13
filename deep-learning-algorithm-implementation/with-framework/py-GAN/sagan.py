@@ -244,7 +244,7 @@ def weights_init(m):
 
 def _test():
     device = "cuda"
-    num_epochs = 10
+    num_epochs = 15
     batch_size = 32
     conv_transpose = True
 

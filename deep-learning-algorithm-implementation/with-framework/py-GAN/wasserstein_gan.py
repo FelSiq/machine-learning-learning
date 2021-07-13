@@ -8,7 +8,10 @@ import numpy as np
 
 class Generator(nn.Module):
     def __init__(
-        self, num_channels: t.List[int], kernel_size: t.List[int], stride: t.List[int],
+        self,
+        num_channels: t.List[int],
+        kernel_size: t.List[int],
+        stride: t.List[int],
     ):
         super().__init__()
         self.gene = nn.Sequential(
@@ -133,7 +136,9 @@ class Critic(nn.Module):
             )
 
         else:
-            block = nn.Sequential(conv_layer,)
+            block = nn.Sequential(
+                conv_layer,
+            )
 
         return block
 
