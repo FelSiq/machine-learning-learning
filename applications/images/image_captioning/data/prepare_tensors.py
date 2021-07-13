@@ -2,9 +2,10 @@ import typing as t
 import os
 import collections
 
+import torchvision
+import torch
 import tqdm.auto
 import numpy as np
-import torch
 import PIL
 import matplotlib.pyplot as plt
 import bpemb
@@ -18,6 +19,7 @@ class IterableDataset(torch.utils.data.IterableDataset):
         batch_size: int,
         shuffle: bool = True,
         resample_descs: bool = True,
+        transforms: t.Optional[torchvision.transforms.Compose] = None,
     ):
         assert len(img) == len(descs)
         assert int(batch_size) > 0
@@ -30,6 +32,7 @@ class IterableDataset(torch.utils.data.IterableDataset):
         self.resample_descs = bool(resample_descs)
         self.chosen_desc_inds = None
         self.chosen_descs = None
+        self.transforms = transforms
 
         self.start = 0
         self.batch_size = int(batch_size)
@@ -45,6 +48,9 @@ class IterableDataset(torch.utils.data.IterableDataset):
 
         batch_img = self.img[self.start : end]
         batch_descs = self.chosen_descs[self.start : end]
+
+        if self.transforms is not None:
+            batch_img = self.transforms(batch_img)
 
         self.start = end
 
@@ -125,6 +131,7 @@ def get_data(
     vs: int = 3000,
     dim: int = 50,
     img_shape: t.Tuple[int, int] = (32, 32),
+    transforms: t.Optional[torchvision.transforms.Compose] = None,
 ):
     imgs, descriptions = gather_data_from_disc(img_shape=img_shape)
     codec = bpemb.BPEmb(lang="en", vs=vs, dim=dim, add_pad_emb=True)
@@ -146,6 +153,7 @@ def get_data(
         batch_size=batch_size_eval,
         shuffle=False,
         resample_descs=False,
+        transforms=transforms,
     )
 
     return dataloader_train, dataloader_eval, codec
