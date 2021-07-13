@@ -37,8 +37,11 @@ class SAGANBase(nn.Module):
                         num_heads=nah if chan_num % nah == 0 else 1,
                         batch_first=True,
                     )
-                    for chan_num in self.channels_num[1:]
+                    for chan_num in self.channels_num[:-1]
                 ]
+            )
+            self.batch_norms = nn.ModuleList(
+                [nn.BatchNorm2d(chan_num) for chan_num in self.channels_num[:-1]]
             )
 
     def spatial_attention(self, conv_maps, layer_id: int):
@@ -62,9 +65,13 @@ class SAGANBase(nn.Module):
         out = X
 
         for i, layer in enumerate(self.conv_layers):
+            H, W = out.size()[-2:]
+
+            if H * W > 1 and self.num_attention_heads > 0:
+                out = self.spatial_attention(out, layer_id=i) + out
+                out = self.batch_norms[i](out)
+
             out = layer(out)
-            if self.num_attention_heads > 0:
-                out = self.spatial_attention(out, layer_id=i)
 
         out = self.final_layer(out)
 
@@ -73,7 +80,12 @@ class SAGANBase(nn.Module):
 
 class Generator(SAGANBase):
     def __init__(
-        self, channels_num, kernel_sizes, strides, num_attention_heads: int = 8
+        self,
+        channels_num,
+        kernel_sizes,
+        strides,
+        num_attention_heads: int = 8,
+        conv_transpose: bool = True,
     ):
         super(Generator, self).__init__(
             channels_num=channels_num,
@@ -93,60 +105,75 @@ class Generator(SAGANBase):
                     out_channels=self.channels_num[i + 1],
                     kernel_size=self.kernel_sizes[i],
                     stride=self.strides[i],
+                    conv_transpose=conv_transpose,
                 )
                 for i in range(n - 2)
             ]
         )
 
-        self.final_layer = nn.Sequential(
-            nn.ConvTranspose2d(
-                in_channels=self.channels_num[-2],
-                out_channels=self.channels_num[-1],
-                kernel_size=self.kernel_sizes[-1],
-                stride=self.strides[-1],
-            ),
-            # nn.Upsample(scale_factor=2.0),
-            # nn.utils.parametrizations.spectral_norm(nn.Conv2d(
-            #      in_channels=self.channels_num[-2],
-            #      out_channels=self.channels_num[-1],
-            #      stride=self.strides[-1],
-            #      kernel_size=self.kernel_sizes[-1],
-            # )),
-            nn.Tanh(),
-        )
+        if conv_transpose:
+            self.final_layer = nn.Sequential(
+                nn.utils.parametrizations.spectral_norm(
+                    nn.ConvTranspose2d(
+                        in_channels=self.channels_num[-2],
+                        out_channels=self.channels_num[-1],
+                        kernel_size=self.kernel_sizes[-1],
+                        stride=self.strides[-1],
+                    )
+                ),
+                nn.Tanh(),
+            )
+
+        else:
+            self.final_layer = nn.Sequential(
+                nn.Upsample(scale_factor=2.0, mode="nearest"),
+                nn.utils.parametrizations.spectral_norm(
+                    nn.Conv2d(
+                        in_channels=self.channels_num[-2],
+                        out_channels=self.channels_num[-1],
+                        stride=self.strides[-1],
+                        kernel_size=self.kernel_sizes[-1],
+                    )
+                ),
+                nn.Tanh(),
+            )
 
     @staticmethod
-    def _build_conv_block(in_channels, out_channels, stride, kernel_size):
-        block = nn.Sequential(
-            nn.utils.parametrizations.spectral_norm(
-                nn.ConvTranspose2d(
-                    in_channels=in_channels,
-                    out_channels=out_channels,
-                    stride=stride,
-                    kernel_size=kernel_size,
-                    bias=False,
-                )
-            ),
-            nn.BatchNorm2d(out_channels),
-            nn.LeakyReLU(0.1, inplace=True),
-            nn.Dropout2d(0.5, inplace=False),
-        )
-        """
+    def _build_conv_block(
+        in_channels, out_channels, stride, kernel_size, conv_transpose: bool
+    ):
+        if conv_transpose:
+            block = nn.Sequential(
+                nn.utils.parametrizations.spectral_norm(
+                    nn.ConvTranspose2d(
+                        in_channels=in_channels,
+                        out_channels=out_channels,
+                        stride=stride,
+                        kernel_size=kernel_size,
+                        bias=False,
+                    )
+                ),
+                nn.BatchNorm2d(out_channels),
+                nn.GELU(),
+                nn.Dropout2d(0.2, inplace=False),
+            )
+
         else:
             block = nn.Sequential(
-                nn.Upsample(scale_factor=2.0),
-                nn.utils.parametrizations.spectral_norm(nn.Conv2d(
-                     in_channels=in_channels,
-                     out_channels=out_channels,
-                     stride=stride,
-                     kernel_size=kernel_size,
-                     bias=False,
-                )),
+                nn.Upsample(scale_factor=2.0, mode="nearest"),
+                nn.utils.parametrizations.spectral_norm(
+                    nn.Conv2d(
+                        in_channels=in_channels,
+                        out_channels=out_channels,
+                        stride=stride,
+                        kernel_size=kernel_size,
+                        bias=False,
+                    )
+                ),
                 nn.BatchNorm2d(out_channels),
-                nn.ReLU(inplace=True),
-                nn.Dropout2d(0.5, inplace=False)
+                nn.GELU(),
+                nn.Dropout2d(0.2, inplace=True),
             )
-        """
 
         return block
 
@@ -201,28 +228,52 @@ class Discriminator(SAGANBase):
                 bias=False,
             ),
             nn.BatchNorm2d(out_channels),
-            nn.LeakyReLU(0.2, inplace=True),
+            nn.GELU(),
         )
 
         return block
 
 
+def weights_init(m):
+    if isinstance(m, nn.Conv2d) or isinstance(m, nn.ConvTranspose2d):
+        torch.nn.init.normal_(m.weight, 0.0, 0.02)
+    if isinstance(m, nn.BatchNorm2d):
+        torch.nn.init.normal_(m.weight, 0.0, 0.02)
+        torch.nn.init.constant_(m.bias, 0)
+
+
 def _test():
     device = "cuda"
-    num_epochs = 30
-    batch_size = 64
+    num_epochs = 10
+    batch_size = 32
+    conv_transpose = True
 
-    checkpoint_path = "sagan_checkpoint.pt"
+    np.random.seed(16)
+    torch.random.manual_seed(32)
 
-    gen = Generator(
-        channels_num=[32, 256, 128, 128, 1],
-        kernel_sizes=[3, 4, 3, 4],
-        strides=[1, 1, 2, 2],
-        num_attention_heads=8,
-    )
-    # aux = torch.randn(1, 48, 1, 1)
-    # print(gen(aux).size())
-    # exit(0)
+    checkpoint_path = "sagan_checkpoint.tar"
+
+    if conv_transpose:
+        gen = Generator(
+            channels_num=[64, 256, 128, 64, 1],
+            kernel_sizes=[3, 4, 3, 4],
+            strides=[1, 1, 2, 2],
+            num_attention_heads=8,
+            conv_transpose=conv_transpose,
+        )
+
+    else:
+        gen = Generator(
+            channels_num=[64, 256, 128, 128, 128, 64, 1],
+            kernel_sizes=[1, 1, 3, 3, 5, 5],
+            strides=[1, 1, 1, 1, 1, 1],
+            num_attention_heads=8,
+            conv_transpose=conv_transpose,
+        )
+
+        # aux = torch.randn(1, 32, 1, 1)
+        # print(gen(aux).size())
+        # exit(0)
 
     disc = Discriminator(
         channels_num=[1, 16, 32, 1],
@@ -231,7 +282,10 @@ def _test():
         num_attention_heads=0,
     )
 
-    optim_gen = torch.optim.Adam(gen.parameters(), lr=5e-4)
+    gen.apply(weights_init)
+    disc.apply(weights_init)
+
+    optim_gen = torch.optim.Adam(gen.parameters(), lr=2e-4)
     optim_disc = torch.optim.Adam(disc.parameters(), lr=2e-4)
 
     try:
@@ -253,9 +307,9 @@ def _test():
     transform = torchvision.transforms.Compose(
         [
             torchvision.transforms.ToTensor(),
-            # torchvision.transforms.Normalize((0.0,), (0.33,)),
+            torchvision.transforms.RandomAffine(degrees=20, scale=(0.95, 1.05)),
             torchvision.transforms.Lambda(
-                lambda x: 2 * (x - x.min()) / (x.max() - x.min()) - 1
+                lambda x: 2.0 * (x - x.min()) / (1e-7 + x.max() - x.min()) - 1.0
             ),
         ]
     )
@@ -268,24 +322,33 @@ def _test():
 
     criterion = nn.BCEWithLogitsLoss()
 
-    for i in np.arange(1, 1 + num_epochs):
-        avg_loss_gene = avg_loss_disc = 0.0
-        it = 0
+    def update_mov_avg(cur, new, it, beta=0.9):
+        out = cur * beta + (1.0 - beta) * new
 
-        for i, (X_real, _) in enumerate(tqdm.auto.tqdm(dataloader)):
+        if it <= 150:
+            out /= 1.0 - beta ** it
+
+        return out
+
+    gene_it = disc_it = 0
+    mv_avg_gene = mv_avg_disc = 0.0
+
+    for epoch in np.arange(1, 1 + num_epochs):
+        pbar = tqdm.auto.tqdm(dataloader)
+        for i, (X_real, _) in enumerate(pbar):
             X_real = X_real.to(device)
             batch_size = X_real.size()[0]
 
             optim_disc.zero_grad()
             X_fake = gen.gen_and_forward(batch_size, device).detach()
-            y_preds_real = disc(X_real).view(-1)
-            y_preds_fake = disc(X_fake).view(-1)
+            y_preds_real = disc(X_real + 0.05 * torch.randn_like(X_real)).view(-1)
+            y_preds_fake = disc(X_fake + 0.05 * torch.randn_like(X_fake)).view(-1)
 
-            y_true_real = (torch.rand_like(y_preds_real) <= 0.92).float()
-            y_true_fake = (torch.rand_like(y_preds_fake) <= 0.08).float()
+            y_true_real = (torch.rand_like(y_preds_real) <= 0.98).float()
+            y_true_fake = (torch.rand_like(y_preds_fake) <= 0.02).float()
 
-            y_true_real += 0.4 * torch.rand_like(y_preds_real) - 0.2
-            y_true_fake += 0.4 * torch.rand_like(y_preds_fake) - 0.2
+            y_true_real += 0.2 * torch.rand_like(y_preds_real) - 0.1
+            y_true_fake += 0.2 * torch.rand_like(y_preds_fake) - 0.1
 
             y_true_real = torch.clip(y_true_real, 0.0, 1.0, out=y_true_real)
             y_true_fake = torch.clip(y_true_fake, 0.0, 1.0, out=y_true_fake)
@@ -298,7 +361,7 @@ def _test():
             torch.nn.utils.clip_grad_norm_(disc.parameters(), 1.0)
             optim_disc.step()
 
-            if i % 4 == 0:
+            if i % 5 == 0:
                 optim_gen.zero_grad()
                 X_fake = gen.gen_and_forward(batch_size, device)
                 y_preds = disc(X_fake).view(-1)
@@ -308,15 +371,19 @@ def _test():
                 torch.nn.utils.clip_grad_norm_(gen.parameters(), 1.0)
                 optim_gen.step()
 
-            avg_loss_gene += gene_loss.item()
-            avg_loss_disc += disc_loss_total.item()
-            it += 1
+                gene_it += 1
+                mv_avg_gene = update_mov_avg(mv_avg_gene, gene_loss.item(), gene_it)
 
-        avg_loss_gene /= it
-        avg_loss_disc /= it
+            disc_it += 1
+            mv_avg_disc = update_mov_avg(mv_avg_disc, disc_loss_total.item(), disc_it)
 
-        print(f"Gene loss: {avg_loss_gene:.3f}")
-        print(f"Disc loss: {avg_loss_disc:.3f}")
+            pbar.set_description(
+                f"{epoch:} of {num_epochs} - gene: {mv_avg_gene:.3f}, "
+                f"disc: {mv_avg_disc:.3f}"
+            )
+
+        print(f"Gene loss: {mv_avg_gene:.3f}")
+        print(f"Disc loss: {mv_avg_disc:.3f}")
 
     checkpoint = {
         "gen": gen.state_dict(),
@@ -335,8 +402,8 @@ def _test():
     X_true, _ = next(iter(dataloader))
     X_true = X_true[:n_plots]
 
-    # X_fake = (X_fake - X_fake.min()) / (X_fake.max() - X_fake.min())
-    # X_true = (X_true - X_true.min()) / (X_true.max() - X_true.min())
+    X_fake = (X_fake - X_fake.min()) / (X_fake.max() - X_fake.min())
+    X_true = (X_true - X_true.min()) / (X_true.max() - X_true.min())
 
     X_plot = torchvision.utils.make_grid(torch.cat((X_fake, X_true), dim=0), nrow=2)
     X_plot = X_plot.detach().permute(1, 2, 0).numpy()
