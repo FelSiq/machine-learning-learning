@@ -76,6 +76,8 @@ def gather_data_from_disc(
     imgs_uri: str = "./images",
     desc_uri: str = "./descriptions",
     img_shape: t.Tuple[int, int] = (32, 32),
+    mean: t.Tuple[int, int, int] = (0.485, 0.456, 0.406),
+    std: t.Tuple[int, int, int] = (0.229, 0.224, 0.225),
 ):
     script_path = os.path.dirname(os.path.realpath(__file__))
 
@@ -84,7 +86,7 @@ def gather_data_from_disc(
 
     n = len(os.listdir(imgs_uri))
 
-    imgs = np.empty((n, 3, *img_shape), dtype=np.float32)
+    imgs = np.empty((n, *img_shape, 3), dtype=np.float32)
     descriptions = []  # type: t.List[t.List[str]]
 
     for i in tqdm.auto.tqdm(range(n)):
@@ -93,13 +95,17 @@ def gather_data_from_disc(
 
         img = PIL.Image.open(name_img)
         img = img.resize(img_shape)
-        img = np.asfarray(img) / 255.0
+        img = np.asfarray(img)
 
         with open(name_desc, "r") as f:
             desc = f.read().lower().splitlines()
 
-        imgs[i, ...] = np.moveaxis(img, -1, 0)
+        imgs[i, ...] = img
         descriptions.append(desc)
+
+    imgs = (imgs / 255.0 - mean) / std
+    imgs = np.moveaxis(imgs, -1, 1)
+    imgs = imgs.astype(np.float32, copy=False)
 
     return imgs, descriptions
 
