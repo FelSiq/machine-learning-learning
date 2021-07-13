@@ -159,7 +159,7 @@ class AttentionCNN(nn.Module):
             *[
                 nn.Sequential(
                     nn.Conv2d(dims[i - 1], dims[i], self.KERNEL_SIZE, padding=padding),
-                    # ConvFullAttentionBlock(dims[i], n_heads),
+                    ConvFullAttentionBlock(dims[i], n_heads),
                     nn.BatchNorm2d(dims[i]),
                     nn.ReLU(inplace=True),
                     nn.MaxPool2d(2) if pool else nn.Identity(),
@@ -198,6 +198,7 @@ class CaptionGenerator(nn.Module):
         self,
         image_shape: t.Tuple[int, int],
         codec,
+        dim_emb: int,
         dims: t.Tuple[int, ...],
         n_heads_cnn: int,
         n_heads_transf: int,
@@ -205,21 +206,26 @@ class CaptionGenerator(nn.Module):
         dropout: float,
     ):
         super(CaptionGenerator, self).__init__()
+
         num_tokens = codec.vocab_size
         self.pad_id = num_tokens
-        dim_emb = codec.dim
+        codec_dim = codec.dim
 
         self.att_cnn = AttentionCNN(image_shape, dims, n_heads_cnn, dim_emb, dropout)
         emb_tensor = torch.from_numpy(codec.vectors.astype(np.float32, copy=False))
 
-        self.embed = nn.Sequential(
-            nn.Embedding.from_pretrained(emb_tensor, padding_idx=self.pad_id),
-            PositionalEncoding(dim_emb, dropout),
+        self.embed_desc = nn.Sequential(
+            nn.Embedding.from_pretrained(
+                emb_tensor, padding_idx=self.pad_id, freeze=False
+            ),
+            PositionalEncoding(codec_dim, dropout),
+            nn.Linear(codec_dim, dim_emb, bias=True),
         )
 
         encoder_layer = nn.TransformerEncoderLayer(
             d_model=dim_emb,
             nhead=n_heads_transf,
+            activation="gelu",
             dim_feedforward=1024,
             dropout=0.5 * dropout,
         )
@@ -250,7 +256,7 @@ class CaptionGenerator(nn.Module):
             img_embed = self.att_cnn(img)
             img_embed = torch.unsqueeze(img_embed, 0)
 
-        desc_embed = self.embed(description)
+        desc_embed = self.embed_desc(description)
 
         transf_in = torch.cat((img_embed, desc_embed), axis=0)
         mask_attention = self._build_mask_attention(description)
@@ -323,21 +329,22 @@ def _test():
         return y_padded, y_lens
 
     device = "cuda"
-    train_epochs = 1
+    train_epochs = 30
     lr = 2e-3
-    img_shape = (48, 48)
+    img_shape = (64, 64)
 
     (dataloader_train, dataloader_eval, codec,) = data.prepare_tensors.get_data(
-        batch_size_train=64, img_shape=img_shape, vs=5000, dim=200
+        batch_size_train=64, img_shape=img_shape, vs=3000, dim=100
     )
 
     model = CaptionGenerator(
-        dims=[3, 128, 64, 64],
+        dims=[3, 128, 128, 64, 64],
         codec=codec,
+        dim_emb=256,
         image_shape=img_shape,
         n_heads_cnn=5,
-        n_heads_transf=5,
-        num_layers=3,
+        n_heads_transf=8,
+        num_layers=4,
         dropout=0.4,
     )
 
@@ -413,6 +420,7 @@ def _test():
 
         scheduler.step(total_loss_eval)
 
+        print(f"Epoch: {epoch} / {train_epochs}")
         print(f"Loss train: {total_loss_train:.3f}")
         print(f"Loss eval: {total_loss_eval:.3f}")
 
