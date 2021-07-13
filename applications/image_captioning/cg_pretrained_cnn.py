@@ -178,7 +178,7 @@ def _test():
 
     device = "cuda"
     train_epochs = 40
-    lr = 3e-4
+    lr = 1e-3
     img_shape = (224, 224)
     checkpoint_uri = "checkpoint_pretrained.pt"
 
@@ -278,6 +278,7 @@ def _test():
 
         scheduler.step(total_loss_eval)
 
+        print(f"Epoch: {epoch} of {train_epochs}")
         print(f"Loss train: {total_loss_train:.3f}")
         print(f"Loss eval: {total_loss_eval:.3f}")
 
