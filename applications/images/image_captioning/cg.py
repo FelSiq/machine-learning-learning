@@ -330,23 +330,35 @@ def _test():
         return y_padded, y_lens
 
     device = "cuda"
-    train_epochs = 40
-    lr = 2e-3
-    img_shape = (64, 64)
+    train_epochs = 30
+    lr = 1e-4
+    img_shape = (32, 32)
     checkpoint_uri = "checkpoint.tar"
 
+    transforms = torchvision.transforms.Compose(
+        [
+            torchvision.transforms.RandomHorizontalFlip(0.5),
+            torchvision.transforms.ColorJitter(0.1, 0.1, 0.1, 0.1),
+            torchvision.transforms.RandomAffine(degrees=15, scale=(0.9, 1.1)),
+        ]
+    )
+
     (dataloader_train, dataloader_eval, codec,) = data.prepare_tensors.get_data(
-        batch_size_train=32, img_shape=img_shape, vs=3000, dim=100
+        batch_size_train=32,
+        img_shape=img_shape,
+        vs=3000,
+        dim=100,
+        transforms=transforms,
     )
 
     model = CaptionGenerator(
-        dims=[3, 128, 64, 64, 32],
+        dims=[3, 128, 64, 64, 64],
         codec=codec,
         dim_emb=256,
         image_shape=img_shape,
         n_heads_transf=8,
-        num_layers=4,
-        dropout=0.4,
+        num_layers=8,
+        dropout=0.3,
     )
 
     modl = model.to(device)
