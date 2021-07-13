@@ -73,7 +73,7 @@ class CaptionGenerator(nn.Module):
             d_model=dim_emb,
             nhead=n_heads_transf,
             activation="gelu",
-            dim_feedforward=512,
+            dim_feedforward=1024,
             dropout=0.5 * dropout,
         )
 
@@ -107,11 +107,8 @@ class CaptionGenerator(nn.Module):
 
         transf_in = torch.cat((img_embed, desc_embed), axis=0)
 
-        mask = pad_mask = None
-
-        if self.training:
-            mask = self._build_mask_attention(description)
-            pad_mask = self._build_mask_padding(description)
+        mask = self._build_mask_attention(description)
+        pad_mask = self._build_mask_padding(description)
 
         out = self.transf_encoder(transf_in, mask, pad_mask)
 
@@ -180,9 +177,10 @@ def _test():
         return y_padded, y_lens
 
     device = "cuda"
-    train_epochs = 5
+    train_epochs = 40
     lr = 3e-4
     img_shape = (224, 224)
+    checkpoint_uri = "checkpoint_pretrained.pt"
 
     (dataloader_train, dataloader_eval, codec,) = data.prepare_tensors.get_data(
         batch_size_train=64, img_shape=img_shape, vs=3000, dim=100
@@ -202,6 +200,18 @@ def _test():
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
         optim, factor=0.1, patience=5, mode="min"
     )
+
+    try:
+        checkpoint = torch.load(checkpoint_uri)
+        model = model.to(device)
+        model.load_state_dict(checkpoint["model"])
+        optim.load_state_dict(checkpoint["optim"])
+        scheduler.load_state_dict(checkpoint["scheduler"])
+        print("Loaded checkpoint successfully.")
+
+    except FileNotFoundError:
+        pass
+
     criterion = nn.CrossEntropyLoss(ignore_index=codec.vocab_size)
 
     for epoch in np.arange(1, 1 + train_epochs):
@@ -270,6 +280,14 @@ def _test():
 
         print(f"Loss train: {total_loss_train:.3f}")
         print(f"Loss eval: {total_loss_eval:.3f}")
+
+    checkpoint = {
+        "model": model.state_dict(),
+        "optim": optim.state_dict(),
+        "scheduler": scheduler.state_dict(),
+    }
+
+    torch.save(checkpoint, checkpoint_uri)
 
     X_test_batch_train, y_test_batch_train = next(iter(dataloader_train))
     X_test_batch_eval, y_test_batch_eval = next(iter(dataloader_eval))

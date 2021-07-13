@@ -90,7 +90,7 @@ class ConvAttentionSpatial(nn.Module):
 
 
 class ConvFullAttentionBlock(nn.Module):
-    def __init__(self, dim_in: int, n_heads: int):
+    def __init__(self, dim_in: int):
         super(ConvFullAttentionBlock, self).__init__()
 
         self.conv_att_chan = ConvAttentionChannel(dim_in)
@@ -133,7 +133,6 @@ class AttentionCNN(nn.Module):
         self,
         image_shape,
         dims,
-        n_heads,
         dim_emb,
         dropout: float,
         pool: bool = True,
@@ -159,7 +158,7 @@ class AttentionCNN(nn.Module):
             *[
                 nn.Sequential(
                     nn.Conv2d(dims[i - 1], dims[i], self.KERNEL_SIZE, padding=padding),
-                    ConvFullAttentionBlock(dims[i], n_heads),
+                    ConvFullAttentionBlock(dims[i]),
                     nn.BatchNorm2d(dims[i]),
                     nn.ReLU(inplace=True),
                     nn.MaxPool2d(2) if pool else nn.Identity(),
@@ -200,7 +199,6 @@ class CaptionGenerator(nn.Module):
         codec,
         dim_emb: int,
         dims: t.Tuple[int, ...],
-        n_heads_cnn: int,
         n_heads_transf: int,
         num_layers: int,
         dropout: float,
@@ -211,7 +209,7 @@ class CaptionGenerator(nn.Module):
         self.pad_id = num_tokens
         codec_dim = codec.dim
 
-        self.att_cnn = AttentionCNN(image_shape, dims, n_heads_cnn, dim_emb, dropout)
+        self.att_cnn = AttentionCNN(image_shape, dims, dim_emb, dropout)
         emb_tensor = torch.from_numpy(codec.vectors.astype(np.float32, copy=False))
 
         self.embed_desc = nn.Sequential(
@@ -221,6 +219,8 @@ class CaptionGenerator(nn.Module):
             PositionalEncoding(codec_dim, dropout),
             nn.Linear(codec_dim, dim_emb, bias=True),
         )
+
+        self.layer_norm = nn.LayerNorm(dim_emb)
 
         encoder_layer = nn.TransformerEncoderLayer(
             d_model=dim_emb,
@@ -259,22 +259,22 @@ class CaptionGenerator(nn.Module):
         desc_embed = self.embed_desc(description)
 
         transf_in = torch.cat((img_embed, desc_embed), axis=0)
+        transf_in = self.layer_norm(transf_in)
+
         mask_attention = self._build_mask_attention(description)
         mask_pad = self._build_mask_padding(description)
-        out = self.transf_encoder(transf_in, mask_attention, mask_pad)
-        out = self.final_lin(out)
 
+        out = self.transf_encoder(transf_in, mask_attention, mask_pad)
         # NOTE: removing output related to the image embedding
         out = out[1:, ...]
+        out = self.final_lin(out)
 
         return out, img_embed
 
 
-def logsoftmax_sample(logits, temperature=1.0):
+def logsoftmax_sample(logits, temperature=0.0):
     assert 0 <= temperature <= 1.0
-
     log_probs = nn.functional.log_softmax(logits, dim=-1)
-    # Note: sample uniform U(1e-6, 1 - 1e-6)
     u = torch.rand_like(log_probs) * (1 - 2e-6) + 1e-6
     g = -torch.log(-torch.log(u))
     return torch.argmax(log_probs + g * temperature, axis=-1)
@@ -304,7 +304,8 @@ def generate(
     for i in range(max_length - len(output)):
         cur_output, img_embed = model(img, output, img_embed=img_embed)
         logits = cur_output[-1].unsqueeze(0)
-        next_token = logsoftmax_sample(logits)
+        temperature = np.exp(-len(cur_output))
+        next_token = logsoftmax_sample(logits, temperature)
         output = torch.cat((output, next_token), dim=0)
 
         if next_token.item() == codec.EOS:
@@ -329,20 +330,20 @@ def _test():
         return y_padded, y_lens
 
     device = "cuda"
-    train_epochs = 30
+    train_epochs = 40
     lr = 2e-3
     img_shape = (64, 64)
+    checkpoint_uri = "checkpoint.tar"
 
     (dataloader_train, dataloader_eval, codec,) = data.prepare_tensors.get_data(
-        batch_size_train=64, img_shape=img_shape, vs=3000, dim=100
+        batch_size_train=32, img_shape=img_shape, vs=3000, dim=100
     )
 
     model = CaptionGenerator(
-        dims=[3, 128, 128, 64, 64],
+        dims=[3, 128, 64, 64, 32],
         codec=codec,
         dim_emb=256,
         image_shape=img_shape,
-        n_heads_cnn=5,
         n_heads_transf=8,
         num_layers=4,
         dropout=0.4,
@@ -354,6 +355,18 @@ def _test():
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
         optim, factor=0.1, patience=5, mode="min"
     )
+
+    try:
+        checkpoint = torch.load(checkpoint_uri)
+        model = model.to(device)
+        model.load_state_dict(checkpoint["model"])
+        optim.load_state_dict(checkpoint["optim"])
+        scheduler.load_state_dict(checkpoint["scheduler"])
+        print("Loaded checkpoint successfully.")
+
+    except FileNotFoundError:
+        pass
+
     criterion = nn.CrossEntropyLoss(ignore_index=codec.vocab_size)
 
     for epoch in np.arange(1, 1 + train_epochs):
@@ -423,6 +436,14 @@ def _test():
         print(f"Epoch: {epoch} / {train_epochs}")
         print(f"Loss train: {total_loss_train:.3f}")
         print(f"Loss eval: {total_loss_eval:.3f}")
+
+    checkpoint = {
+        "model": model.state_dict(),
+        "optim": optim.state_dict(),
+        "scheduler": scheduler.state_dict(),
+    }
+
+    torch.save(checkpoint, checkpoint_uri)
 
     img_train = next(iter(dataloader_train))[0][0]
     img_eval = next(iter(dataloader_eval))[0][0]
