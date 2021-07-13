@@ -206,13 +206,14 @@ class CaptionGenerator(nn.Module):
     ):
         super(CaptionGenerator, self).__init__()
         num_tokens = codec.vocab_size
+        self.pad_id = num_tokens
         dim_emb = codec.dim
 
         self.att_cnn = AttentionCNN(image_shape, dims, n_heads_cnn, dim_emb, dropout)
         emb_tensor = torch.from_numpy(codec.vectors.astype(np.float32, copy=False))
 
         self.embed = nn.Sequential(
-            nn.Embedding.from_pretrained(emb_tensor, padding_idx=num_tokens),
+            nn.Embedding.from_pretrained(emb_tensor, padding_idx=self.pad_id),
             PositionalEncoding(dim_emb, dropout),
         )
 
@@ -253,7 +254,7 @@ class CaptionGenerator(nn.Module):
 
         transf_in = torch.cat((img_embed, desc_embed), axis=0)
         mask_attention = self._build_mask_attention(description)
-        mask_pad = self._build_mask_pad(description)
+        mask_pad = self._build_mask_padding(description)
         out = self.transf_encoder(transf_in, mask_attention, mask_pad)
         out = self.final_lin(out)
 
@@ -322,7 +323,7 @@ def _test():
         return y_padded, y_lens
 
     device = "cuda"
-    train_epochs = 30
+    train_epochs = 1
     lr = 2e-3
     img_shape = (48, 48)
 
