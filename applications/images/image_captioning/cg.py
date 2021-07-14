@@ -11,6 +11,16 @@ import bpemb
 import data.prepare_tensors
 
 
+class SkipConnection(nn.Module):
+    def __init__(self, layer):
+        super(SkipConnection, self).__init__()
+        self.layer = layer
+
+    def forward(self, X):
+        return self.layer(X) + X
+
+
+
 class ConvAttentionQKV(nn.Module):
     # NOTE: consumes too much GPU memory and processing time for my taste.
 
@@ -25,11 +35,16 @@ class ConvAttentionQKV(nn.Module):
 
     def forward(self, conv_maps):
         N, E, H, W = conv_maps.size()
+
+        if H * W == 1:
+            return conv_maps
+
         conv_maps = conv_maps.view(N, E, H * W)
         conv_maps = conv_maps.swapaxes(1, 2)
         out, _ = self.attention(conv_maps, conv_maps, conv_maps)
         out = out.swapaxes(1, 2)
         out = out.view(N, E, H, W)
+
         return out
 
 
@@ -95,21 +110,11 @@ class ConvFullAttentionBlock(nn.Module):
 
         self.conv_att_chan = ConvAttentionChannel(dim_in)
         self.conv_att_spatial = ConvAttentionSpatial(dim_in)
-        # self.conv_att_qkv = ConvAttentionQKV(dim_in, n_heads)
-        # self.conv_final = nn.Conv2d(2 * dim_in, dim_in, 1, bias=False)
 
     def forward(self, X):
-        out_a = out_b = X
-
-        out_a = self.conv_att_chan(out_a)
-        out_a = self.conv_att_spatial(out_a)
-
-        # out_b = self.conv_att_qkv(out_b)
-
-        # out = torch.cat((out_a, out_b), axis=1)
-        # out = self.conv_final(out)
-        out = out_a
-
+        out = X
+        out = self.conv_att_chan(out)
+        out = self.conv_att_spatial(out)
         return out
 
 
@@ -134,6 +139,7 @@ class AttentionCNN(nn.Module):
         image_shape,
         dims,
         dim_emb,
+        n_heads: int,
         dropout: float,
         pool: bool = True,
         padding: bool = True,
@@ -157,6 +163,7 @@ class AttentionCNN(nn.Module):
         self.weights = nn.Sequential(
             *[
                 nn.Sequential(
+                    self._create_qkv_att_block(dims[i - 1], n_heads),
                     nn.Conv2d(dims[i - 1], dims[i], self.KERNEL_SIZE, padding=padding),
                     ConvFullAttentionBlock(dims[i]),
                     nn.BatchNorm2d(dims[i]),
@@ -173,6 +180,18 @@ class AttentionCNN(nn.Module):
             nn.Dropout(dropout),
             nn.Linear(dim_hidden, dim_emb),
         )
+
+    @staticmethod
+    def _create_qkv_att_block(dim_in, n_heads):
+        if dim_in % n_heads != 0:
+            return nn.Identity()
+
+        block = nn.Sequential(
+            SkipConnection(ConvAttentionQKV(dim_in, n_heads)),
+            nn.BatchNorm2d(dim_in),
+        )
+
+        return block
 
     def forward(self, X):
         return self.weights(X)
@@ -199,8 +218,9 @@ class CaptionGenerator(nn.Module):
         codec,
         dim_emb: int,
         dims: t.Tuple[int, ...],
+        n_heads_conv: int,
         n_heads_transf: int,
-        num_layers: int,
+        num_layers_transf: int,
         dropout: float,
     ):
         super(CaptionGenerator, self).__init__()
@@ -209,7 +229,13 @@ class CaptionGenerator(nn.Module):
         self.pad_id = num_tokens
         codec_dim = codec.dim
 
-        self.att_cnn = AttentionCNN(image_shape, dims, dim_emb, dropout)
+        self.att_cnn = AttentionCNN(
+            image_shape=image_shape,
+            dims=dims,
+            dim_emb=dim_emb,
+            n_heads=n_heads_conv,
+            dropout=dropout,
+        )
         emb_tensor = torch.from_numpy(codec.vectors.astype(np.float32, copy=False))
 
         self.embed_desc = nn.Sequential(
@@ -230,7 +256,7 @@ class CaptionGenerator(nn.Module):
             dropout=0.5 * dropout,
         )
 
-        self.transf_encoder = nn.TransformerEncoder(encoder_layer, num_layers)
+        self.transf_encoder = nn.TransformerEncoder(encoder_layer, num_layers_transf)
         self.final_lin = nn.Linear(dim_emb, num_tokens)
 
     def _build_mask_attention(self, description):
@@ -330,8 +356,8 @@ def _test():
         return y_padded, y_lens
 
     device = "cuda"
-    train_epochs = 30
-    lr = 1e-4
+    train_epochs = 15
+    lr = 2e-4
     img_shape = (32, 32)
     checkpoint_uri = "checkpoint.tar"
 
@@ -352,12 +378,13 @@ def _test():
     )
 
     model = CaptionGenerator(
-        dims=[3, 128, 64, 64, 64],
+        dims=[3, 256, 256, 128, 64],
         codec=codec,
         dim_emb=256,
         image_shape=img_shape,
+        n_heads_conv=8,
         n_heads_transf=8,
-        num_layers=8,
+        num_layers_transf=8,
         dropout=0.3,
     )
 
