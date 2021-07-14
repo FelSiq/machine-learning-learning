@@ -286,7 +286,7 @@ def _test():
     disc.apply(weights_init)
 
     optim_gen = torch.optim.Adam(gen.parameters(), lr=2e-4)
-    optim_disc = torch.optim.Adam(disc.parameters(), lr=2e-4)
+    optim_disc = torch.optim.RMSprop(disc.parameters(), lr=2e-4)
 
     try:
         checkpoint = torch.load(checkpoint_path)
@@ -347,8 +347,8 @@ def _test():
             y_true_real = (torch.rand_like(y_preds_real) <= 0.98).float()
             y_true_fake = (torch.rand_like(y_preds_fake) <= 0.02).float()
 
-            y_true_real += 0.2 * torch.rand_like(y_preds_real) - 0.1
-            y_true_fake += 0.2 * torch.rand_like(y_preds_fake) - 0.1
+            y_true_real += 0.4 * torch.rand_like(y_preds_real) - 0.2
+            y_true_fake += 0.4 * torch.rand_like(y_preds_fake) - 0.2
 
             y_true_real = torch.clip(y_true_real, 0.0, 1.0, out=y_true_real)
             y_true_fake = torch.clip(y_true_fake, 0.0, 1.0, out=y_true_fake)
@@ -361,7 +361,7 @@ def _test():
             torch.nn.utils.clip_grad_norm_(disc.parameters(), 1.0)
             optim_disc.step()
 
-            if i % 5 == 0:
+            if i % 3 == 0:
                 optim_gen.zero_grad()
                 X_fake = gen.gen_and_forward(batch_size, device)
                 y_preds = disc(X_fake).view(-1)
