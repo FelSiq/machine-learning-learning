@@ -215,6 +215,7 @@ class Discriminator(SAGANBase):
                 kernel_size=self.kernel_sizes[-1],
                 stride=self.strides[-1],
             ),
+            nn.Flatten(),
         )
 
     @staticmethod
@@ -244,7 +245,7 @@ def weights_init(m):
 
 def _test():
     device = "cuda"
-    num_epochs = 15
+    num_epochs = 40
     batch_size = 32
     conv_transpose = True
 
@@ -276,7 +277,7 @@ def _test():
         # exit(0)
 
     disc = Discriminator(
-        channels_num=[1, 16, 32, 1],
+        channels_num=[1, 16, 32, 11],
         kernel_sizes=[4, 4, 4],
         strides=(2, 2, 2),
         num_attention_heads=0,
@@ -307,7 +308,7 @@ def _test():
     transform = torchvision.transforms.Compose(
         [
             torchvision.transforms.ToTensor(),
-            torchvision.transforms.RandomAffine(degrees=20, scale=(0.95, 1.05)),
+            # torchvision.transforms.RandomAffine(degrees=20, scale=(0.95, 1.05)),
             torchvision.transforms.Lambda(
                 lambda x: 2.0 * (x - x.min()) / (1e-7 + x.max() - x.min()) - 1.0
             ),
@@ -321,6 +322,7 @@ def _test():
     )
 
     criterion = nn.BCEWithLogitsLoss()
+    criterion_cls = nn.CrossEntropyLoss()
 
     def update_mov_avg(cur, new, it, beta=0.9):
         out = cur * beta + (1.0 - beta) * new
@@ -335,14 +337,19 @@ def _test():
 
     for epoch in np.arange(1, 1 + num_epochs):
         pbar = tqdm.auto.tqdm(dataloader)
-        for i, (X_real, _) in enumerate(pbar):
+        for i, (X_real, y_cls_label) in enumerate(pbar):
             X_real = X_real.to(device)
+            y_cls_label = y_cls_label.to(device)
             batch_size = X_real.size()[0]
 
             optim_disc.zero_grad()
             X_fake = gen.gen_and_forward(batch_size, device).detach()
-            y_preds_real = disc(X_real + 0.05 * torch.randn_like(X_real)).view(-1)
-            y_preds_fake = disc(X_fake + 0.05 * torch.randn_like(X_fake)).view(-1)
+            y_preds_real = disc(X_real + 0.05 * torch.randn_like(X_real))
+            y_preds_fake = disc(X_fake + 0.05 * torch.randn_like(X_fake))
+
+            y_cls_preds = y_preds_real[:, 1:]
+            y_preds_real = y_preds_real[:, 0]
+            y_preds_fake = y_preds_fake[:, 0]
 
             y_true_real = (torch.rand_like(y_preds_real) <= 0.98).float()
             y_true_fake = (torch.rand_like(y_preds_fake) <= 0.02).float()
@@ -353,7 +360,9 @@ def _test():
             y_true_real = torch.clip(y_true_real, 0.0, 1.0, out=y_true_real)
             y_true_fake = torch.clip(y_true_fake, 0.0, 1.0, out=y_true_fake)
 
-            disc_loss_real = criterion(y_preds_real, y_true_real)
+            disc_loss_real = 0.7 * criterion(
+                y_preds_real, y_true_real
+            ) + 0.3 * criterion_cls(y_cls_preds, y_cls_label)
             disc_loss_fake = criterion(y_preds_fake, y_true_fake)
             disc_loss_total = 0.5 * (disc_loss_real + disc_loss_fake)
             disc_loss_total.backward()
@@ -364,7 +373,7 @@ def _test():
             if i % 3 == 0:
                 optim_gen.zero_grad()
                 X_fake = gen.gen_and_forward(batch_size, device)
-                y_preds = disc(X_fake).view(-1)
+                y_preds = disc(X_fake)[:, 0].view(-1)
                 gene_loss = criterion(y_preds, torch.ones_like(y_preds))
                 gene_loss.backward()
 
