@@ -275,7 +275,7 @@ class Discriminator(SAGANBase):
         kernel_sizes,
         strides,
         num_attention_heads: int = 4,
-        post_attention=post_attention,
+        post_attention: bool = True,
     ):
         super(Discriminator, self).__init__(
             channels_num=channels_num,
@@ -336,7 +336,7 @@ def weights_init(m):
 
 def _test():
     device = "cuda"
-    num_epochs = 30
+    num_epochs = 20
     batch_size = 32
     conv_transpose = True
 
