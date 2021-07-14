@@ -1,9 +1,80 @@
 import numpy as np
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 import torchvision
 import tqdm.auto
 import matplotlib.pyplot as plt
+
+
+class ConvAttentionChannel(nn.Module):
+    def __init__(self, dim_in: int, bottleneck_ratio: float = 0.20):
+        super(ConvAttentionChannel, self).__init__()
+
+        bottleneck_size = int(np.ceil(bottleneck_ratio * dim_in))
+
+        self.mlp = nn.Sequential(
+            nn.Flatten(),
+            nn.Linear(dim_in, bottleneck_size),
+            nn.ReLU(inplace=True),
+            nn.Linear(bottleneck_size, dim_in),
+        )
+
+    def forward(self, X):
+        spatial_shape = X.size()[2:]
+        chan_num = X.size()[1]
+
+        C_p_max = F.max_pool2d(X, kernel_size=spatial_shape)
+        C_p_avg = F.avg_pool2d(X, kernel_size=spatial_shape)
+
+        mlp_max = self.mlp(C_p_max)
+        mlp_avg = self.mlp(C_p_avg)
+
+        mlp_logits = mlp_max + mlp_avg
+
+        weights = torch.sigmoid(mlp_logits)
+        weights = weights.view(-1, chan_num, 1, 1)
+
+        out = X * weights
+
+        return out
+
+
+class ConvAttentionSpatial(nn.Module):
+    def __init__(self, dim_in: int):
+        super(ConvAttentionSpatial, self).__init__()
+        self.conv_combine_pools = nn.Conv2d(2, 1, kernel_size=3, padding=1)
+
+    def forward(self, X):
+        spatial_shape = X.size()[2:]
+        spatial_size = int(np.prod(spatial_shape))
+        chan_num = X.size()[1]
+
+        C_p_max, _ = X.max(axis=1, keepdim=True)
+        C_p_avg = X.mean(axis=1, keepdim=True)
+
+        C = torch.cat((C_p_max, C_p_avg), axis=1)
+
+        weights = self.conv_combine_pools(C)
+        weights = torch.sigmoid(weights)
+
+        out = X * weights
+
+        return out
+
+
+class ConvFullAttentionBlock(nn.Module):
+    def __init__(self, dim_in: int):
+        super(ConvFullAttentionBlock, self).__init__()
+
+        self.conv_att_chan = ConvAttentionChannel(dim_in)
+        self.conv_att_spatial = ConvAttentionSpatial(dim_in)
+
+    def forward(self, X):
+        out = X
+        out = self.conv_att_chan(out)
+        out = self.conv_att_spatial(out)
+        return out
 
 
 class SAGANBase(nn.Module):
@@ -13,6 +84,7 @@ class SAGANBase(nn.Module):
         kernel_sizes,
         strides,
         num_attention_heads,
+        post_attention: bool = True,
     ):
         super(SAGANBase, self).__init__()
 
@@ -40,8 +112,16 @@ class SAGANBase(nn.Module):
                     for chan_num in self.channels_num[:-1]
                 ]
             )
+
             self.batch_norms = nn.ModuleList(
                 [nn.BatchNorm2d(chan_num) for chan_num in self.channels_num[:-1]]
+            )
+
+        self.post_attention = bool(post_attention)
+
+        if self.post_attention:
+            self.post_attentions = nn.ModuleList(
+                [ConvFullAttentionBlock(chan_num) for chan_num in self.channels_num[1:]]
             )
 
     def spatial_attention(self, conv_maps, layer_id: int):
@@ -73,6 +153,9 @@ class SAGANBase(nn.Module):
 
             out = layer(out)
 
+            if self.post_attention:
+                out = self.post_attentions[i](out)
+
         out = self.final_layer(out)
 
         return out
@@ -86,12 +169,14 @@ class Generator(SAGANBase):
         strides,
         num_attention_heads: int = 8,
         conv_transpose: bool = True,
+        post_attention: bool = True,
     ):
         super(Generator, self).__init__(
             channels_num=channels_num,
             kernel_sizes=kernel_sizes,
             strides=strides,
             num_attention_heads=num_attention_heads,
+            post_attention=post_attention,
         )
 
         n = len(self.channels_num)
@@ -185,13 +270,19 @@ class Generator(SAGANBase):
 
 class Discriminator(SAGANBase):
     def __init__(
-        self, channels_num, kernel_sizes, strides, num_attention_heads: int = 4
+        self,
+        channels_num,
+        kernel_sizes,
+        strides,
+        num_attention_heads: int = 4,
+        post_attention=post_attention,
     ):
         super(Discriminator, self).__init__(
             channels_num=channels_num,
             kernel_sizes=kernel_sizes,
             strides=strides,
             num_attention_heads=num_attention_heads,
+            post_attention=post_attention,
         )
 
         n = len(self.channels_num)
@@ -245,7 +336,7 @@ def weights_init(m):
 
 def _test():
     device = "cuda"
-    num_epochs = 40
+    num_epochs = 30
     batch_size = 32
     conv_transpose = True
 
@@ -308,7 +399,6 @@ def _test():
     transform = torchvision.transforms.Compose(
         [
             torchvision.transforms.ToTensor(),
-            # torchvision.transforms.RandomAffine(degrees=20, scale=(0.95, 1.05)),
             torchvision.transforms.Lambda(
                 lambda x: 2.0 * (x - x.min()) / (1e-7 + x.max() - x.min()) - 1.0
             ),
