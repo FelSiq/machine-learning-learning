@@ -77,7 +77,7 @@ def get_data(
     )
 
     codec = bpemb.BPEmb(lang="en", vs=vocab_size, add_pad_emb=True)
-    pad_id = codec.spm.eos_id()
+    pad_id = codec.vocab_size
 
     def tokenize(data, labels):
         X = []
@@ -198,7 +198,7 @@ def _test():
                 total_batches += 1
                 train_loss += loss.item()
                 train_acc += (
-                    ((y_preds > 0.5).long() == y_batch.long()).float().mean().item()
+                    ((y_preds > 0.0).long() == y_batch.long()).float().mean().item()
                 )
 
         train_loss /= total_batches
@@ -219,7 +219,7 @@ def _test():
 
             total_batches += 1
             eval_loss += loss.item()
-            eval_acc += ((y_preds > 0.5).long() == y_batch.long()).float().mean().item()
+            eval_acc += ((y_preds > 0.0).long() == y_batch.long()).float().mean().item()
 
         eval_loss /= total_batches
         eval_acc /= total_batches
