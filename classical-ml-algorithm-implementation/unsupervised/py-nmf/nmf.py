@@ -25,17 +25,6 @@ class NMF(sklearn.base.TransformerMixin):
 
         self.H = np.empty((0, 0), dtype=float)
 
-    @staticmethod
-    def _clip_grad_norm(X, max_grad_norm: float = 1.0):
-        clip_coef = max_grad_norm / (1e-6 + float(np.linalg.norm(X, ord=2, axis=None)))
-
-        if clip_coef >= 1.0:
-            return X
-
-        X *= clip_coef
-
-        return X
-
     def _fit_transform(self, X, update_h: bool = True):
         X = np.asfarray(X)
 
@@ -46,29 +35,28 @@ class NMF(sklearn.base.TransformerMixin):
         if self.random_state is not None:
             np.random.seed(self.random_state)
 
-        W = np.random.random((n, self.n_topics)) * X_scaled_mean
-
-        if update_h:
+        if update_h or self.H.size == 0:
+            W = np.random.random((n, self.n_topics)) * X_scaled_mean
             self.H = np.random.random((self.n_topics, m)) * X_scaled_mean
 
+        else:
+            W = np.full((n, self.n_topics), fill_value=X_scaled_mean, dtype=float)
+
         for i in np.arange(self.max_iter):
-            # Update W given H
-            base_grad = (W @ self.H - X) / n
-            W_grad = base_grad @ self.H.T
-            self._clip_grad_norm(W_grad)
-            W -= self.learning_rate * W_grad
-            np.maximum(W, 0.0, out=W)
+            X_approx = W @ self.H
+            W_update = (X @ self.H.T) / (1e-6 + X_approx @ self.H.T)
 
             if update_h:
-                # Update H given W
-                H_grad = W.T @ base_grad
-                self._clip_grad_norm(H_grad)
-                self.H -= self.learning_rate * H_grad
-                np.maximum(self.H, 0.0, out=self.H)
+                H_update = (W.T @ X) / (1e-6 + W.T @ X_approx)
+                self.H *= H_update
+
+            W *= W_update
 
             if i % 100 == 0:
+                error = float(np.linalg.norm(X - W @ self.H, ord=2, axis=None))
                 print(
-                    f"Reconstruction error: {float(np.linalg.norm(base_grad, ord=2)):.4f}"
+                    f"({'Fit' if update_h else 'Transform'}) "
+                    f"Reconstruction error: {error:.4f}"
                 )
 
         return W
@@ -88,14 +76,20 @@ def _test():
     import sklearn.datasets
     import matplotlib.pyplot as plt
 
-    X, _ = sklearn.datasets.load_breast_cancer(return_X_y=True)
+    X, _ = sklearn.datasets.load_iris(return_X_y=True)
+    np.random.seed(32)
+    np.random.shuffle(X)
 
-    n_topics = 3
+    n_topics = 2
 
     ref = sklearn.decomposition.NMF(
-        n_components=n_topics, max_iter=512, random_state=16, init="random"
+        n_components=n_topics,
+        max_iter=1024,
+        random_state=16,
+        init="random",
+        solver="mu",
     )
-    model = NMF(n_topics=n_topics, max_iter=512, random_state=16)
+    model = NMF(n_topics=n_topics, max_iter=1024, random_state=16)
 
     res_ref = ref.fit_transform(X)
     res_model = model.fit_transform(X)
