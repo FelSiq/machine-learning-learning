@@ -87,15 +87,8 @@ def _test():
 
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 10), sharex=True, sharey=True)
 
-    all_colors = {
-        0: "red",
-        1: "blue",
-        2: "green",
-        3: "black",
-        4: "yellow",
-        5: "orange",
-        6: "purple",
-    }
+    n_cls = int(max(np.unique(ref_preds).size, np.unique(preds).size))
+    all_colors = dict(zip(range(n_cls), map(tuple, np.random.random((n_cls, 3)))))
     ref_colors = [all_colors[p_i] for p_i in ref_preds]
     colors = [all_colors[p_i] for p_i in preds]
 
