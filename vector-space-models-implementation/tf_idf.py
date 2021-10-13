@@ -8,7 +8,13 @@ import bag_of_n_grams
 
 
 class TFIDF(utils.BaseFreqs):
-    def __init__(self, n_gram: int = 1, lowercase: bool = False, smooth: bool = True, norm: t.Optional[float] = 2.0):
+    def __init__(
+        self,
+        n_gram: int = 1,
+        lowercase: bool = False,
+        smooth: bool = True,
+        norm: t.Optional[float] = 2.0,
+    ):
         assert int(n_gram) >= 1
         assert norm is None or float(norm) > 0.0
 
@@ -52,7 +58,9 @@ class TFIDF(utils.BaseFreqs):
             for term in tf_idf:
                 tf_idf[term] *= log_inv_doc_freqs[term]
 
-            norm = 1e-7 + float(np.linalg.norm(list(tf_idf.freqs.values()), ord=self.norm))
+            norm = 1e-7 + float(
+                np.linalg.norm(list(tf_idf.freqs.values()), ord=self.norm)
+            )
             tf_idf.freqs = {term: f / norm for term, f in tf_idf.freqs.items()}
 
         return self

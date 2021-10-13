@@ -6,29 +6,7 @@ import regex
 
 class BaseFreqs:
     def __init__(self, lowercase: bool = False):
-        self.freqs = collections.Counter()
         self.lowercase = bool(lowercase)
-
-    def __setitem__(self, x, v):
-        self.freqs[x] = v
-
-    def __len__(self):
-        return len(self.freqs)
-
-    def __iter__(self):
-        return iter(self.freqs.keys())
-
-    def __getitem__(self, i):
-        return self.freqs[i]
-
-    def __contains__(self, x: str):
-        if self.lowercase:
-            x = x.lower()
-
-        return x in self.freqs
-
-    def __str__(self):
-        return str(self.freqs)
 
     def _preprocess_tokens(self, X):
         if isinstance(X, str):
