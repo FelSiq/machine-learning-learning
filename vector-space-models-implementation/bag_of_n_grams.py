@@ -48,11 +48,11 @@ def _test():
     import sklearn.feature_extraction
 
     text = utils.get_text(0)
-    model = TermFrequency(norm=None, lowercase=True).fit(text)
+    model = TermFrequency(norm=2.0, lowercase=True, n_gram=2).fit(text)
 
-    ref_a = sklearn.feature_extraction.text.CountVectorizer().fit_transform([text])
+    ref_a = sklearn.feature_extraction.text.CountVectorizer(ngram_range=(2, 2)).fit_transform([text])
     ref_b = sklearn.feature_extraction.text.TfidfVectorizer(
-        norm="l2", use_idf=False
+        norm="l2", use_idf=False, ngram_range=(2, 2),
     ).fit_transform([text])
 
     print(model)
