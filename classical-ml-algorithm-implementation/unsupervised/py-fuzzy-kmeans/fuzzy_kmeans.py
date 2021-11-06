@@ -10,8 +10,9 @@ class FuzzyKMeans:
         self,
         k: int,
         p: float = 2.0,
-        max_iter: int = 64,
+        max_iter: int = 128,
         init: str = "k-means++",
+        tol: float = 1e-3,
         random_state: t.Optional[int] = None,
     ):
         p = float(p)
@@ -26,6 +27,9 @@ class FuzzyKMeans:
         self.p = p
         self.k = k
         self.max_iter = max_iter
+        self.tol = float(tol)
+
+        self.it_ = 0
 
         self.random_state = random_state
         self.init = init
@@ -76,7 +80,13 @@ class FuzzyKMeans:
             # W.T: (k, n)
             # X: (m, n)
             # W.T @ X: (k, n) @ (n, m): (k, m)
+            prev_centroids = self.centroids_
             self.centroids_ = W.T @ X / np.sum(W.T, axis=1, keepdims=True)
+            stop_criterion = float(np.max(np.abs(prev_centroids - self.centroids_)))
+            if stop_criterion < self.tol:
+                break
+
+        self.it_ = i
 
         return self
 
@@ -108,14 +118,16 @@ def _test():
     k = 3
 
     X, y = sklearn.datasets.make_blobs(centers=k, random_state=16)
+    np.random.seed(32)
+    X += np.random.randn(*X.shape)
 
     fig, axes = plt.subplots(2, 3, figsize=(15, 10), sharex=True, sharey=True)
 
     for i, p in enumerate((1.1, 1.5, 2, 3, 4, 5)):
-        model = FuzzyKMeans(k=k, p=p, random_state=16)
+        model = FuzzyKMeans(k=k, p=p, random_state=16, init="k-means++")
         y_preds = model.fit_predict(X)
         ax = axes[i // 3][i % 3]
-        ax.set_title(f"$p={p}$")
+        ax.set_title(f"$p={p}$ (it={model.it_})")
         ax.scatter(*X.T, c=y_preds)
 
     plt.show()
