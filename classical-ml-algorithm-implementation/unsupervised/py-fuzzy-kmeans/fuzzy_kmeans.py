@@ -81,6 +81,7 @@ class FuzzyKMeans:
             # X: (m, n)
             # W.T @ X: (k, n) @ (n, m): (k, m)
             prev_centroids = self.centroids_
+            np.power(W, self.p, out=W)
             self.centroids_ = W.T @ X / np.sum(W.T, axis=1, keepdims=True)
             stop_criterion = float(np.max(np.abs(prev_centroids - self.centroids_)))
             if stop_criterion < self.tol:
@@ -99,7 +100,7 @@ class FuzzyKMeans:
 
         W = np.sum(1.0 / dists, axis=1, keepdims=True)
         # W: (n, 1)
-        W = np.power(dists * W, -self.p)
+        W = 1.0 / (dists * W)
         # W: (n, k)
 
         np.clip(W, 0.0, 1.0, out=W)
