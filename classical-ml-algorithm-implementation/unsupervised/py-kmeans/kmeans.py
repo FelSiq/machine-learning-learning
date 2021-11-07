@@ -7,26 +7,21 @@ class KMeans:
         self,
         n_clusters: int,
         max_iter: int = 256,
-        metric: str = "euclidean",
         init: str = "random",
-        init_sample_power: float = 2.0,
     ):
         assert int(n_clusters) >= 1
         assert int(max_iter) >= 0
         assert init in {"random", "kmeans++"}
-        assert float(init_sample_power) > 0.0
 
         self.n_clusters = int(n_clusters)
         self.max_iter = int(max_iter)
-        self.metric = str(metric)
         self.init = init
-        self.init_sample_power = float(init_sample_power)
 
         self.cluster_ids = np.empty(0, dtype=int)
         self.centroids = np.empty(0, dtype=int)
 
     def _update_clusters(self, X):
-        distances = scipy.spatial.distance.cdist(X, self.centroids, metric=self.metric)
+        distances = scipy.spatial.distance.cdist(X, self.centroids, metric="euclidean")
         self.cluster_ids = distances.argmin(axis=1)
         return self.cluster_ids
 
@@ -51,9 +46,8 @@ class KMeans:
 
         for k in np.arange(1, self.n_clusters):
             new_centroid_dist = scipy.spatial.distance.cdist(
-                X, self.centroids[k - 1, None, :], metric=self.metric
+                X, self.centroids[k - 1, None, :], metric="sqeuclidean"
             ).ravel()
-            np.power(new_centroid_dist, self.init_sample_power, out=new_centroid_dist)
             np.minimum(centroid_min_dists, new_centroid_dist, out=centroid_min_dists)
 
             sample_probs = centroid_min_dists / float(np.sum(centroid_min_dists))
